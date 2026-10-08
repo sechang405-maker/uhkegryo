@@ -1,10 +1,13 @@
 param(
-    [string]$Project = 'proj2-509406',
+    [Parameter(Mandatory = $true)][string]$Project,
     [string]$Zone = 'us-central1-a',
     [string]$AdminEmail,
     [string]$Domain
 )
 $ErrorActionPreference = 'Stop'
+if ($Project -eq 'proj2-509406') {
+    throw '팀 프로젝트 proj2-509406은 개인 실험 대상으로 사용할 수 없습니다.'
+}
 Set-Location (Split-Path $PSScriptRoot -Parent)
 function Invoke-Gcloud {
     & gcloud @args

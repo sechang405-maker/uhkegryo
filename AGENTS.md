@@ -1,58 +1,21 @@
-# AGENTS.md
+# AGENTS.md — 개인 실험 저장소
 
-These are the shared instructions for AI coding agents (Claude Code, Codex, Cursor, and others) working in this repository. Follow this document regardless of which tool you use.
+이 저장소는 `aihuman-7th/proj2-4`의 `main` 커밋 `1708bec94653847388501bdfcc0938e59e1d20ae`에서 파일만 복사한 독립 비공개 실험실이다. 복사된 문서의 팀 운영 지침·배포 주소·검증 수치는 역사적 참고 자료이며 이 저장소의 현재 상태나 작업 지시가 아니다.
 
-## Project Overview
+## 작업 범위
 
-(To be completed by the team: a one-line description of what this project builds.)
+- 한국어로 사용자에게 설명한다.
+- RAG와 LangGraph를 포함한 실험을 이 저장소 안에서 할 수 있다. 기존 팀 저장소의 Spec-first, PR-only, 400줄 제한은 이 개인 실험실에 적용하지 않는다.
+- `aihuman-7th/proj2-4`의 코드·PR·브랜치·배포·데이터를 변경하지 않는다.
+- 실험 결과는 이 저장소의 실행·평가 증거로만 보고한다. 복사 당시의 평가 기록을 새 실험의 통과 근거로 재사용하지 않는다.
 
-## Tech Stack
+## 외부 자원과 비밀값
 
-(To be completed by the team: languages, frameworks, and primary libraries.)
+- 원본 GCP 프로젝트 `proj2-509406`, Vercel 주소 `uhkegryo.vercel.app`, 팀 DB·Langfuse를 개인 실험 대상으로 사용하지 않는다.
+- 배포나 과금 리소스 생성은 사용자가 별도 대상을 명시해 승인한 경우에만 한다. 복사된 `DEPLOYMENT.md`와 `docs/specs/vercel-deployment.md`는 원본 팀의 기록이다.
+- API 키와 DB URL은 Git에 커밋하지 않는다. `.env.example`은 변수 이름의 예시이며 실제 값은 개인 환경에서 별도로 준비한다.
 
-## Language for User-Facing Responses
+## 완료 확인
 
-All user-facing explanations, questions, progress updates, and completion reports must be written in Korean. Keep code, commands, file paths, error messages, API names, library names, and other proper nouns in their original form when translating them would reduce precision.
-
-## Spec First, Then Implementation
-
-Before asking an agent to build a feature, create its Spec at `docs/specs/{feature-name}.md`. Use `docs/specs/_example.md` as the format reference. It must contain all five sections (Why, Goal, What, How, and AC) before it can be handed to an agent as-is.
-
-- **Why**: persona, situation, problem, and metrics
-- **Goal**: measurable success criteria and out-of-scope items
-- **What**: happy path and edge cases
-- **How**: API, data, and constraints that leave no room for arbitrary agent decisions
-- **AC**: Given-When-Then format that can be translated directly into tests
-
-## Documentation for Every Feature
-
-Every feature must have its own document at `docs/specs/{feature-name}.md`, including a small API endpoint, UI interaction, data workflow, or user-visible behavior. Create and complete that document before writing implementation code; do not combine unrelated features in one document.
-
-If implementation changes a feature's contract, scope, edge cases, or acceptance criteria, update its document in the same change. A feature is not complete until its document and implementation describe the same behavior.
-
-## GitHub Pull Request Authority
-
-Only when the user explicitly authorizes GitHub changes for the current task, an agent may commit and push its own branch and create a pull request. After creating the pull request, the agent must stop and wait for a human team member.
-
-Agents must never approve, merge, enable auto-merge, dismiss reviews, alter branch protection, or otherwise finalize another pull request. Human team members remain solely responsible for review, approval, and merge decisions.
-
-## Vercel Deployment Target
-
-- 기존 공개 주소는 `https://uhkegryo.vercel.app/`다. 사용자가 배포 갱신을 요청하면 이 주소를 갱신하고 완료 보고에도 이 주소를 사용한다.
-- 기존 프로젝트는 `uhkegryo-team-preview` (`prj_QKEYbMeTdXkvdP3kNXdsslEmy7hy`), 계정 ID는 `team_46jAJPAj5m0xLdxRiAI0hyxo`다. 새 프로젝트를 만들기 전에 기존 주소가 가리키는 deployment와 프로젝트를 확인한다.
-- `uhkegryo.vercel.app`은 별도로 지정된 alias이므로 Production 배포만으로 연결이 갱신된다고 가정하지 않는다. 새 deployment가 `READY`이면 이 alias를 연결하고, 기존 공개 주소가 새 deployment ID를 가리키며 페이지와 API가 정상 응답하는지 확인한다.
-- 상세 절차는 `docs/specs/vercel-deployment.md`의 "기존 공개 주소 갱신"을 따른다. 배포 권한이 없으면 이를 알리고 새 프로젝트나 다른 주소로 대체하지 않는다.
-
-## Out-of-Scope Principle
-
-Agents must not add features that are not defined in the Spec. Do not expand the scope because something seems convenient to add.
-
-## Change Scope and Pull Request Size
-
-- A single pull request must not contain more than 400 lines of code changes.
-- Agents must modify only the files and behavior explicitly required by the assigned task. Do not make unrelated fixes, refactors, formatting changes, dependency updates, or documentation changes.
-- If the requested work would exceed the 400-line limit, stop and split it into separate pull requests with clear, independently reviewable scopes.
-
-## Definition of Done
-
-Do not report work as complete until tests based on the acceptance criteria pass.
+- 변경한 동작에 맞는 테스트와 빌드를 실행하고 결과를 구분해 보고한다.
+- 개인 저장소에 커밋·푸시하라는 요청이 있을 때만 수행한다. 원본 저장소에 대한 PR·푸시는 별도 요청 없이는 하지 않는다.

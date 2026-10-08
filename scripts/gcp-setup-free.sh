@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# GCP 완전 무료 설정 스크립트 (Neon PostgreSQL + Cloud Run)
-# 실행 전: gcloud auth login, gcloud config set project <PROJECT_ID>, billing 활성화 필수
+# 개인 실험용 GCP 설정 스크립트 (과금 가능)
+# 실행 전: 별도 GCP 프로젝트의 LAB_GCP_PROJECT_ID, 인증, 예산 확인 필수
 # Neon: https://neon.tech 에서 프로젝트 생성 후 연결 문자열 준비
 
 set -euo pipefail
 
-PROJECT_ID="proj2-509406"
+PROJECT_ID="${LAB_GCP_PROJECT_ID:?Set LAB_GCP_PROJECT_ID to a separate lab project}"
+if [[ "$PROJECT_ID" == "proj2-509406" ]]; then
+  echo "팀 프로젝트 proj2-509406은 개인 실험 대상으로 사용할 수 없습니다." >&2
+  exit 1
+fi
 REGION="asia-northeast3"
 API_SERVICE_NAME="api"
 MCP_SERVICE_NAME="mcp"
@@ -68,7 +72,7 @@ echo "   gcloud secrets create SEARXNG_SECRET --data-file=- --project=${PROJECT_
 echo ""
 
 echo "=== 5. Cloud Build 트리거 생성 (GitHub 연결 필요) ==="
-echo "콘솔에서 수동 생성: Cloud Build > 트리거 > 저장소 연결 (aihuman-7th/proj2-4)"
+echo "콘솔에서 수동 생성: Cloud Build > 트리거 > 저장소 연결 (sechang405-maker/proj2-4-rag-langgraph-lab)"
 echo "설정:"
 echo "  - 이름: deploy-api"
 echo "  - 이벤트: 브랜치 푸시"

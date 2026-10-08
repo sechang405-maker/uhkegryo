@@ -1,3 +1,4 @@
+# 원본 팀의 Cloud Build 템플릿이다. 개인 실험 저장소에 배포 트리거를 연결하지 않았다.
 # Cloud Build 설정: backend/ 변경 시 Docker 빌드 → Artifact Registry → Cloud Run 배포
 # 트리거: GitHub main 브랜치 push, backend/**·searxng/** 경로 변경 감지
 # 팀 운영: API 내부 worker를 위해 최소 인스턴스 1개·상시 CPU 할당 (유휴 과금)

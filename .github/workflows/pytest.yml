@@ -1,4 +1,4 @@
-name: Backend Tests
+name: Tests
 
 on:
   push:
@@ -19,3 +19,22 @@ jobs:
         run: docker build --tag proj2-4/searxng:ci ./searxng
       - name: Run pytest
         run: python -m pytest backend/tests
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Test frontend
+        run: npm test
+      - name: Build frontend
+        run: npm run build

@@ -1,6 +1,8 @@
 # UH케그려 — 캐주얼 캐릭터 일러스트 레퍼런스 해석 Agent
 
-**배포 사이트:** [https://uhkegryo.vercel.app/](https://uhkegryo.vercel.app/)
+> 개인 비공개 실험 저장소입니다. `aihuman-7th/proj2-4`의 `main` 커밋 `1708bec`를 파일 스냅샷으로 가져왔습니다. 아래의 팀 배포·PR·평가 기록은 원본 프로젝트의 역사적 증거이며, 이 저장소의 실험 결과나 배포 완료를 뜻하지 않습니다. 별도 DB·API 키·배포 대상 없이 원본 서비스를 실험에 연결하지 마세요.
+
+**원본 팀 배포(참고용, 이 저장소의 배포 아님):** [https://uhkegryo.vercel.app/](https://uhkegryo.vercel.app/)
 
 > 전문 용어가 낯선 초보자가 텍스트로 묘사한 캐주얼 캐릭터의 **체형/소체, 포즈, 구도**를 기초 드로잉 용어와 역할별 Pinterest 탐색 계획으로 바꾸는 Agent입니다.
 
@@ -136,8 +138,8 @@ SearXNG 검색 규칙은 [SearXNG Pinterest 검색 Spec](docs/specs/searxng-pint
 ### PowerShell
 
 ```powershell
-git clone https://github.com/aihuman-7th/proj2-4.git
-cd proj2-4
+git clone https://github.com/sechang405-maker/proj2-4-rag-langgraph-lab.git
+cd proj2-4-rag-langgraph-lab
 Copy-Item .env.example .env
 # .env에 DATABASE_URL, OPENROUTER_API_KEY, Langfuse 내부 비밀값을 채운 뒤 실행
 docker compose up --build -d
@@ -190,7 +192,7 @@ API health의 기대 본문은 `{"status":"ok"}`입니다. 두 Langfuse health e
 API와 별도로, 새 PowerShell 창에서 frontend를 시작합니다. Langfuse UI가 3000을 사용하므로 Next.js는 **3001** 포트를 사용합니다.
 
 ```powershell
-cd proj2-4\frontend
+cd proj2-4-rag-langgraph-lab\frontend
 npm ci
 npm run dev -- --port 3001
 ```

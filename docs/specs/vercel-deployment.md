@@ -1,5 +1,7 @@
 # 팀 운영 배포 — Vercel·Cloud Run API/worker
 
+> 개인 실험 저장소에서는 이 문서를 원본 팀 배포의 역사적 계약으로만 취급한다. 아래 Vercel alias·Cloud Run 서비스·GCP 프로젝트를 실험 대상으로 갱신하지 않는다.
+
 팀 프로젝트 기간의 실제 서비스 운영 계약이다. 개인별 종료 후 공개 방식은 [개인 포트폴리오 배포](./personal-portfolio-deployment.md)를 따른다. 기존 파일 경로는 참조 호환을 위해 유지한다.
 
 ## Why
