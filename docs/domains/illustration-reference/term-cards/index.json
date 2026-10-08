@@ -1,0 +1,1296 @@
+{
+  "dataset_name": "illustration_reference_master_term_cards",
+  "dataset_version": "0.8-json-runtime-catalog-reviewed",
+  "status": "fully_reviewed_runtime_approved",
+  "purpose": "캐주얼 캐릭터 일러스트 레퍼런스 해석 Agent의 런타임 TERM_CARD 카탈로그입니다. index와 categories에 적힌 5개 JSON 파일을 함께 검증하고 메모리에 로드해 런타임 용어 선택에 사용합니다.",
+  "source_documents": [
+    "docs/domains/illustration-reference/term-cards/SOURCE_PROVENANCE.md"
+  ],
+  "card_count": 82.0,
+  "data_governance": {
+    "source_of_truth": "versioned_json_runtime_catalog",
+    "json_role": "runtime_source_and_review_input",
+    "external_vocabulary_lookup": "disabled",
+    "change_control": "카드 변경은 사람 검수, API 계약, Skill, 평가셋 갱신을 함께 검토한 뒤 반영합니다.",
+    "persistent_database_status": "not_used_for_term_cards"
+  },
+  "runtime_contract": {
+    "load_rule": "runtime_eligible가 true이고 mvp_status가 active_in_current_contract인 카드만 현재 Agent의 선택 후보로 로드합니다.",
+    "selectable_roles_current_mvp": [
+      "body",
+      "pose",
+      "view",
+      "perspective",
+      "layout"
+    ],
+    "promotion_rule": "현재 5개 역할 파일의 82개 카드는 오세창 검수를 거쳐 모두 runtime_eligible=true로 승인되었습니다. 이후 새 카드는 오세창 검수와 query_fragments, look_for, confidence_gate, requires 조건의 확정, API 계약·Skill·평가셋 검토 뒤에만 추가합니다.",
+    "query_rule": "구현 시 코드는 선택된 카드의 query_fragments만 결합하고, 기존 조각의 drawing 포함 여부를 검사하거나 제거하지 않은 채 최종 검색어 끝에 고정 접미사 drawing을 무조건 한 번 추가해야 합니다. 따라서 현재 pose_gesture 카드의 gesture drawing과 action line reference 조각을 결합한 최종 검색어는 gesture drawing action line reference drawing입니다. 일상어 설명을 검색어에 그대로 덧붙이지 않고, 카드에 있는 표준 전문용어 조각만 사용합니다. requires_all_of는 모두, requires_any_of는 하나 이상 충족해야 합니다."
+  },
+  "pinterest_search_contract": {
+    "principle": "Pinterest 검색은 짧고 검증 가능한 표준 전문용어를 사용하고, 초보자용 풀이는 검색어가 아닌 화면 피드백으로 분리합니다.",
+    "input_source": "선택된 카드의 query_fragments",
+    "allow_llm_freeform_query": false,
+    "allow_explanatory_sentence_as_query": false,
+    "allow_abstract_intent_as_direct_query": false,
+    "abstract_input_policy": "'귀여운 포즈', '히어로 포즈'처럼 체형·포즈·시점이 특정되지 않은 표현은 링크를 만들지 않습니다. LLM은 사용자가 원하는 축을 한 가지 질문으로 좁힌 뒤에만 허용 term_id를 선택합니다.",
+    "direct_search_disabled_term_ids": [
+      "pose_power_pose",
+      "pose_action",
+      "intent_hero_pose",
+      "intent_villain_pose",
+      "intent_cute_pose",
+      "intent_cool_pose",
+      "intent_shy_pose",
+      "intent_confident_pose",
+      "intent_tired_pose",
+      "intent_surprised_pose",
+      "style_classical_greek_pose",
+      "style_renaissance_pose",
+      "style_baroque_pose",
+      "style_art_nouveau_pose",
+      "style_pop_art_pose"
+    ],
+    "result_limit": "검색 provider는 역할별 최대 8개의 pin_id, pin_url, thumbnail_url, status를 원래 순서로 반환합니다. UI는 응답 전용 원격 thumbnail_url을 원본 pin_url 링크로 표시합니다. Pin ID·URL·상태는 세션·job 이력에 유지하며, 이미지 바이트·썸네일 URL·Pin 본문 등 부가 메타데이터는 저장하지 않습니다. 결과의 존재·적합성은 서버가 보장하지 않습니다."
+  },
+  "beginner_feedback_contract": {
+    "purpose": "초보자가 표준 전문용어를 배워 다음 검색과 러프 작업에 다시 사용할 수 있도록 돕습니다. 쉬운 설명은 전문용어를 대체하지 않습니다.",
+    "ui_display_order": [
+      "term_label",
+      "plain_meaning_ko",
+      "selection_reason_template_ko",
+      "reference_checkpoints_ko"
+    ],
+    "term_selection_rule": "LLM은 입력의 실제 단서가 confidence_gate를 통과할 때만 term_id를 고릅니다. 단서가 부족하면 terminology와 Pinterest 링크를 만들지 않고 InterpretationOutput의 clarifying_question을 반환합니다.",
+    "body_term_notice": "체형 카드는 사람을 평가하거나 진단하는 분류가 아닙니다. 캐릭터의 실루엣과 비례를 찾기 위한 레퍼런스 용어입니다.",
+    "candidate_policy": "현재 5개 역할 파일의 82개 카드는 모두 초보자 화면과 검색 결과의 선택 후보입니다. 새 카드 또는 파일 밖 용어는 별도 검수·계약 확정 전까지 선택 후보가 아닙니다.",
+    "feedback_fallback_rule": "현재 승인 카드는 active_term_feedback의 초보자용 설명·선택 이유·확인 지점을 표시합니다. 이후 새 카드에 화면 설명이 없으면 label_ko, source_answer_draft, look_for만 표시하고, 없는 문구를 LLM이 지어내지 않습니다. pinterest_search_notice_ko, common_confusion_ko, clarifying_question_ko는 검수용 비공개 메타데이터이며 API와 UI에 노출하지 않습니다."
+  },
+  "beginner_feedback_review": {
+    "status": "reviewed",
+    "reviewed_by": "오세창",
+    "reviewed_at": "2026-09-23",
+    "scope": "5개 역할 파일의 82개 term_id 전체에 대한 런타임 승인 상태와 active_term_feedback의 초보자용 용어 설명·선택 이유·검색 안내·확인 지점·혼동 안내·추가 질문.",
+    "excluded": "외부 검색 결과, 실제 외부 어휘 조회 결과, 평가 실행 결과, 역할별 JSON에 없는 새 term_id"
+  },
+  "active_term_feedback": {
+    "body_hourglass": {
+      "plain_meaning_ko": "어깨와 골반 폭이 비슷하고, 그 사이의 허리가 상대적으로 들어가 보이는 실루엣입니다.",
+      "selection_reason_template_ko": "입력에 어깨와 골반 폭이 비슷하고 허리가 들어간다는 단서가 있을 때 '모래시계형'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'hourglass body'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "의상을 제외한 어깨·골반의 전체 폭",
+        "허리선이 몸통에서 들어가는 위치"
+      ],
+      "common_confusion_ko": [
+        "코르셋, 큰 치마, 허리선이 높은 의상만으로 체형을 판단하지 않습니다."
+      ],
+      "clarifying_question_ko": "의상 실루엣이 아니라 몸 자체의 어깨와 골반 비율을 기준으로 찾는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "body_inverted_triangle": {
+      "plain_meaning_ko": "어깨나 상체 폭이 골반보다 넓고, 아래로 갈수록 좁아 보이는 실루엣입니다.",
+      "selection_reason_template_ko": "입력에 넓은 어깨와 상대적으로 좁은 허리·골반이 함께 나타날 때 '역삼각형'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'inverted triangle body'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "어깨선과 골반선의 실제 폭",
+        "상체에서 하체로 이어지는 외곽선"
+      ],
+      "common_confusion_ko": [
+        "망토, 퍼프소매, 갑옷처럼 의상만 넓어 보이는 경우와 구분합니다."
+      ],
+      "clarifying_question_ko": "넓어 보이는 이유가 캐릭터의 어깨 비율인가요, 아니면 의상이나 장식인가요?",
+      "review_status": "reviewed"
+    },
+    "body_triangle": {
+      "plain_meaning_ko": "상체보다 골반이나 하체 쪽이 넓어 보이고, 아래로 갈수록 실루엣이 넓어지는 비례입니다.",
+      "selection_reason_template_ko": "입력에 좁은 어깨와 더 넓은 골반 또는 하체가 함께 나타날 때 '삼각형'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'triangle body'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "어깨선과 골반선의 폭 차이",
+        "하체로 이어지는 외곽선의 넓이"
+      ],
+      "common_confusion_ko": [
+        "넓은 치마나 바지 한 벌만으로 하체 비례를 단정하지 않습니다."
+      ],
+      "clarifying_question_ko": "하체가 넓어 보이는 이유가 실제 골반 비례인가요, 아니면 치마·바지 같은 의상인가요?",
+      "review_status": "reviewed"
+    },
+    "body_slim": {
+      "plain_meaning_ko": "몸통과 팔다리의 폭이 전반적으로 좁고 가늘게 보이는 비례입니다.",
+      "selection_reason_template_ko": "입력에 가는 팔다리와 전반적으로 좁은 실루엣이 함께 나타날 때 '슬림'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'slim body'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "몸통 폭과 팔·다리 굵기의 전체 관계",
+        "의상 주름이 아닌 기본 실루엣"
+      ],
+      "common_confusion_ko": [
+        "한 부위만 가늘거나 헐렁한 옷을 입은 경우와 구분합니다."
+      ],
+      "clarifying_question_ko": "전체 비례가 가는 캐릭터인가요, 특정 부위만 가늘게 보이는 캐릭터인가요?",
+      "review_status": "reviewed"
+    },
+    "body_childlike": {
+      "plain_meaning_ko": "머리가 몸에 비해 상대적으로 크고, 팔다리와 몸통이 짧고 단순하게 보이는 캐릭터 비례입니다.",
+      "selection_reason_template_ko": "입력에 큰 머리, 짧은 팔다리, 단순한 몸 비례가 함께 나타날 때 '유아형'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'childlike proportion'이라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "머리와 전신의 비율",
+        "팔다리 길이와 관절 표현의 단순화"
+      ],
+      "common_confusion_ko": [
+        "키가 작은 성인 캐릭터와 유아 비례 캐릭터는 같은 뜻이 아닙니다."
+      ],
+      "clarifying_question_ko": "원하는 것은 작은 키인가요, 아니면 머리가 크고 팔다리가 짧은 캐릭터 비례인가요?",
+      "review_status": "reviewed"
+    },
+    "pose_contrapposto": {
+      "plain_meaning_ko": "한쪽 다리에 체중을 실어 골반과 어깨가 서로 반대 방향으로 기우는 서 있는 자세입니다.",
+      "selection_reason_template_ko": "입력에 한쪽 다리 지지와 골반·어깨의 기울기가 함께 확인될 때 '콘트라포스토'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'contrapposto pose'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "체중을 받는 지지 다리",
+        "지지 다리 쪽으로 올라간 골반과 반대 방향의 어깨선"
+      ],
+      "common_confusion_ko": [
+        "몸을 단순히 S자로 휘는 것만으로는 콘트라포스토가 아닙니다."
+      ],
+      "clarifying_question_ko": "양발에 고르게 서 있나요, 아니면 한쪽 다리에 몸을 기대고 있나요?",
+      "review_status": "reviewed"
+    },
+    "pose_weight_shift": {
+      "plain_meaning_ko": "서 있을 때 체중이 한쪽 다리나 발에 더 실려 몸의 중심이 옮겨진 자세입니다.",
+      "selection_reason_template_ko": "입력에 한쪽 발이나 다리에 기대 선다는 단서가 있을 때 '체중 이동 스탠딩'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'weight shift standing pose'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "바닥을 단단히 지지하는 발",
+        "몸통 중심이 어느 다리 위에 놓이는지"
+      ],
+      "common_confusion_ko": [
+        "체중 이동은 콘트라포스토의 단서가 될 수 있지만, 골반·어깨의 반대 기울기까지 항상 뜻하지는 않습니다."
+      ],
+      "clarifying_question_ko": "체중이 실린 다리가 보이도록 전신 레퍼런스를 찾는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_s_curve": {
+      "plain_meaning_ko": "머리부터 몸통, 골반까지 이어지는 중심 흐름이 완만한 S자처럼 휘어 보이는 자세입니다.",
+      "selection_reason_template_ko": "입력에 몸의 중심선이 부드럽게 굽거나 곡선적인 흐름이 있다는 단서가 있을 때 'S자 흐름'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'S curve pose'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "머리·가슴·골반을 잇는 중심선",
+        "곡선이 자세의 흐름인지, 옷 주름인지"
+      ],
+      "common_confusion_ko": [
+        "S자 흐름은 체중이 한쪽 다리에 실린 콘트라포스토와 겹칠 수 있지만 같은 용어는 아닙니다."
+      ],
+      "clarifying_question_ko": "원하는 핵심이 한쪽 다리 지지인가요, 몸 전체의 부드러운 곡선 흐름인가요?",
+      "review_status": "reviewed"
+    },
+    "pose_standing": {
+      "plain_meaning_ko": "두 발 또는 한 발로 바닥을 지지하며 서 있는 기본 자세입니다.",
+      "selection_reason_template_ko": "입력에 서 있다, 발로 바닥을 딛고 있다는 단서가 있을 때 '스탠딩'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'standing pose'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "발바닥과 바닥의 접점",
+        "머리·가슴·골반이 지지 다리 위에 놓이는 관계"
+      ],
+      "common_confusion_ko": [
+        "스탠딩은 정면·측면 같은 시점을 뜻하지 않습니다."
+      ],
+      "clarifying_question_ko": "정면, 3/4, 아래에서 올려다보는 시점 중 어느 방향의 서 있는 자세가 필요한가요?",
+      "review_status": "reviewed"
+    },
+    "pose_sitting": {
+      "plain_meaning_ko": "엉덩이나 골반을 의자·바닥 등에 지지하고 앉아 있는 기본 자세입니다.",
+      "selection_reason_template_ko": "입력에 의자나 바닥에 앉는다는 단서가 있을 때 '시팅'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'seated pose'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "골반이 닿는 지지면",
+        "다리와 발이 놓이는 방향"
+      ],
+      "common_confusion_ko": [
+        "쪼그려 앉기, 무릎 꿇기, 바닥 양반다리는 별도의 세부 자세입니다."
+      ],
+      "clarifying_question_ko": "의자에 앉나요, 바닥에 앉나요? 다리는 어떤 방식으로 놓이나요?",
+      "review_status": "reviewed"
+    },
+    "pose_gesture": {
+      "plain_meaning_ko": "손동작이 아니라, 인물의 움직임과 힘의 방향을 한 줄로 빠르게 잡는 동세 또는 액션 라인입니다.",
+      "selection_reason_template_ko": "입력에 움직임의 방향, 힘, 빠른 러프의 흐름이 나타날 때 '동세/액션 라인'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'gesture drawing action line reference drawing' 검색어로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "머리부터 몸통을 지나는 가장 긴 움직임 선",
+        "팔·다리가 그 흐름을 강화하는 방향"
+      ],
+      "common_confusion_ko": [
+        "gesture drawing은 손가락 제스처가 아니라 전신 동세를 뜻합니다."
+      ],
+      "clarifying_question_ko": "손 모양을 찾는 것인가요, 전신이 움직이는 방향을 잡는 것인가요?",
+      "review_status": "reviewed"
+    },
+    "pose_reclining": {
+      "plain_meaning_ko": "상체나 몸 전체를 바닥·소품에 기대어 비스듬히 쉬는 자세입니다.",
+      "selection_reason_template_ko": "입력에 기대다, 비스듬히 눕다, 상체를 받치고 쉰다는 단서가 있을 때 '리클라이닝'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'reclining pose'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "상체를 받치는 바닥·쿠션·팔",
+        "골반과 어깨의 기울기"
+      ],
+      "common_confusion_ko": [
+        "완전히 바닥에 누운 자세와, 의자나 바닥에 기대어 비스듬히 쉰 자세는 구분합니다."
+      ],
+      "clarifying_question_ko": "완전히 누운 자세인가요, 팔·등으로 몸을 받치며 기대는 자세인가요?",
+      "review_status": "reviewed"
+    },
+    "view_front": {
+      "plain_meaning_ko": "얼굴과 몸통의 앞면이 보는 사람 쪽을 향하는 시점입니다.",
+      "selection_reason_template_ko": "입력에 정면, 앞을 보고 있다, 얼굴과 몸이 관객을 향한다는 단서가 있을 때 '프론트 뷰'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'front view'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "얼굴 중앙선과 몸통 중앙선",
+        "양쪽 어깨·눈·골반이 얼마나 대칭으로 보이는지"
+      ],
+      "common_confusion_ko": [
+        "프론트 뷰는 서 있는 자세가 아니라 카메라와 인물의 방향을 뜻합니다."
+      ],
+      "clarifying_question_ko": "얼굴만 정면인가요, 몸통까지 정면을 향하나요?",
+      "review_status": "reviewed"
+    },
+    "view_three_quarter": {
+      "plain_meaning_ko": "인물이 정면과 측면의 중간 방향으로 돌아가 한쪽 면이 조금 더 보이는 시점입니다.",
+      "selection_reason_template_ko": "입력에 살짝 옆을 본다, 45도쯤 돌아섰다는 단서가 있을 때 '3/4 뷰'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'three quarter view'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "가까운 쪽 눈·어깨·골반이 더 넓게 보이는지",
+        "얼굴 중앙선이 어느 쪽으로 돌아가는지"
+      ],
+      "common_confusion_ko": [
+        "3/4 뷰는 완전한 측면 뷰와 다릅니다."
+      ],
+      "clarifying_question_ko": "완전히 옆을 보는 모습인가요, 정면에서 조금만 돌아선 모습인가요?",
+      "review_status": "reviewed"
+    },
+    "view_high_angle": {
+      "plain_meaning_ko": "카메라가 인물보다 높은 곳에 있어 아래를 내려다보는 시점입니다.",
+      "selection_reason_template_ko": "입력에 위에서 내려다본다, 카메라가 인물보다 높다는 단서가 있을 때 '하이 앵글'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'high angle view'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "머리·어깨 윗면이 더 보이는지",
+        "발과 바닥이 화면 아래쪽으로 멀어지는지"
+      ],
+      "common_confusion_ko": [
+        "하이 앵글은 장면 전체를 수직으로 보는 조감도와 다를 수 있습니다."
+      ],
+      "clarifying_question_ko": "인물을 약간 위에서 보는 정도인가요, 장면 전체를 거의 위에서 내려다보는 정도인가요?",
+      "review_status": "reviewed"
+    },
+    "view_low_angle": {
+      "plain_meaning_ko": "카메라가 인물보다 낮은 곳에 있어 위를 올려다보는 시점입니다.",
+      "selection_reason_template_ko": "입력에 아래에서 올려다본다, 카메라가 인물보다 낮다는 단서가 있을 때 '로우 앵글'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'low angle view'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "발이나 하체가 화면에 더 가깝게 보이는지",
+        "머리 쪽으로 갈수록 작아지는지"
+      ],
+      "common_confusion_ko": [
+        "로우 앵글은 극단적으로 바닥 가까이에서 보는 개미 눈높이와 다를 수 있습니다."
+      ],
+      "clarifying_question_ko": "조금 아래에서 올려다보는 시점인가요, 바닥 가까이에서 극단적으로 올려다보는 시점인가요?",
+      "review_status": "reviewed"
+    },
+    "perspective_three_point": {
+      "plain_meaning_ko": "가로·세로 방향의 선이 모두 서로 다른 소실점으로 향해, 위나 아래에서 본 강한 원근감을 만드는 방식입니다.",
+      "selection_reason_template_ko": "입력에 높은 곳이나 낮은 곳에서 본 건물·배경과 강한 위아래 원근이 함께 나타날 때 '3점 투시'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'three point perspective'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "수평 방향 선이 향하는 두 소실점",
+        "수직선까지 위나 아래의 세 번째 소실점으로 기우는지"
+      ],
+      "common_confusion_ko": [
+        "건물의 수직선이 평행하게 유지되면 보통 3점 투시가 아닙니다."
+      ],
+      "clarifying_question_ko": "인물 시점만 필요한가요, 배경 건물까지 강하게 기울어지는 원근이 필요한가요?",
+      "review_status": "reviewed"
+    },
+    "perspective_foreshortening": {
+      "plain_meaning_ko": "몸의 가까운 부분은 크게, 먼 부분은 작게 보여 길이가 화면에서 짧아 보이는 원근 표현입니다.",
+      "selection_reason_template_ko": "입력에 손·발·팔이 카메라 쪽으로 크게 다가온다는 단서가 있을 때 '과투시/단축법'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'foreshortening pose'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "카메라에 가장 가까운 신체 부위",
+        "가까운 부분과 먼 부분의 크기 차이"
+      ],
+      "common_confusion_ko": [
+        "팔·다리가 실제로 짧은 체형이라는 뜻이 아니라, 카메라 방향 때문에 짧아 보이는 표현입니다."
+      ],
+      "clarifying_question_ko": "가까이 튀어나오는 부위가 손인가요, 발인가요, 아니면 얼굴·몸통인가요?",
+      "review_status": "reviewed"
+    },
+    "perspective_vanishing_point": {
+      "plain_meaning_ko": "멀어지는 평행선이 화면 안에서 한 점으로 모여 보이는 원근의 기준점입니다.",
+      "selection_reason_template_ko": "입력에 길·복도·건물 선이 멀리 한곳으로 모인다는 단서가 있을 때 '소실점'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'vanishing point'라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "같은 방향으로 멀어지는 선들",
+        "그 선들이 화면에서 만나는 위치"
+      ],
+      "common_confusion_ko": [
+        "소실점은 화면에서 시선이 가장 먼저 가는 초점과 같은 뜻이 아닙니다."
+      ],
+      "clarifying_question_ko": "캐릭터만 필요한가요, 길·방·건물처럼 원근선이 보이는 배경도 필요한가요?",
+      "review_status": "reviewed"
+    },
+    "composition_rule_of_thirds": {
+      "plain_meaning_ko": "화면을 가로·세로 각각 세 부분으로 나누고, 주요 요소를 선이나 교차점 근처에 두는 기본 배치 방법입니다.",
+      "selection_reason_template_ko": "입력에 인물을 화면 한가운데에서 조금 비키게 두거나 안정적인 화면 배치를 원한다는 단서가 있을 때 '삼분할 구도'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'rule of thirds composition'이라는 표준 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "화면을 나눈 세로·가로 선",
+        "얼굴·손·중요 소품이 선 또는 교차점 근처에 있는지"
+      ],
+      "common_confusion_ko": [
+        "삼분할은 모든 요소를 교차점에 반드시 올려야 한다는 규칙이 아닙니다."
+      ],
+      "clarifying_question_ko": "인물을 중앙에서 벗어나게 두고 싶나요, 아니면 인물과 배경의 빈 공간 비율을 조정하고 싶나요?",
+      "review_status": "reviewed"
+    },
+    "body_human_proportion": {
+      "plain_meaning_ko": "'인체 비례' 레퍼런스를 찾을 때 '머리·몸통·팔다리의 길이와 폭이 전신에서 이루는 관계', '의상 외곽선이 아니라 인물 기본 골격의 비례' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '전신 비례 또는 머리 대비 신체 길이라는 명시' 단서가 확인될 때 인체 비례로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'human proportion' + 'figure reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "머리·몸통·팔다리의 길이와 폭이 전신에서 이루는 관계",
+        "의상 외곽선이 아니라 인물 기본 골격의 비례"
+      ],
+      "common_confusion_ko": [
+        "'헐렁한 옷이나 과장된 소매'만으로는 이 용어를 확정하지 않습니다.",
+        "'특정 부위의 크기만 언급함'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "인체 비례에 해당하는지 확인하려고 합니다. 입력에서 '전신 비례 또는 머리 대비 신체 길이라는 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_legs_crossed_at_knee": {
+      "plain_meaning_ko": "'무릎 위 다리 꼬기' 레퍼런스를 찾을 때 '한쪽 다리가 다른 다리의 무릎 위로 올라감', '골반의 기울기와 앉은 지지점' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '의자에 앉아 다리를 꼰다는 묘사' 단서가 확인될 때 무릎 위 다리 꼬기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'leg crossing pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "한쪽 다리가 다른 다리의 무릎 위로 올라감",
+        "골반의 기울기와 앉은 지지점"
+      ],
+      "common_confusion_ko": [
+        "'발목만 교차함'만으로는 이 용어를 확정하지 않습니다.",
+        "'바닥에 양반다리를 함'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "무릎 위 다리 꼬기에 해당하는지 확인하려고 합니다. 입력에서 '의자에 앉아 다리를 꼰다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_ankles_crossed": {
+      "plain_meaning_ko": "'발목 교차' 레퍼런스를 찾을 때 '두 다리는 나란히 두고 발목만 교차함', '무릎 위 교차와 구분됨' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '발목만 꼬는다는 묘사' 단서가 확인될 때 발목 교차로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'crossed ankles reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "두 다리는 나란히 두고 발목만 교차함",
+        "무릎 위 교차와 구분됨"
+      ],
+      "common_confusion_ko": [
+        "'무릎 위 다리 꼬기'만으로는 이 용어를 확정하지 않습니다.",
+        "'바닥에 양반다리'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "발목 교차에 해당하는지 확인하려고 합니다. 입력에서 '발목만 꼬는다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_cross_legged_floor": {
+      "plain_meaning_ko": "'바닥 양반다리' 레퍼런스를 찾을 때 '바닥에 앉음', '정강이 또는 발목이 몸 앞에서 교차함' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '바닥에 양반다리로 앉는다는 묘사' 단서가 확인될 때 바닥 양반다리로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'cross legged floor sitting' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "바닥에 앉음",
+        "정강이 또는 발목이 몸 앞에서 교차함"
+      ],
+      "common_confusion_ko": [
+        "'의자에 앉음'만으로는 이 용어를 확정하지 않습니다.",
+        "'한쪽 무릎 위 다리 꼬기'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "바닥 양반다리에 해당하는지 확인하려고 합니다. 입력에서 '바닥에 양반다리로 앉는다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_support_chair": {
+      "plain_meaning_ko": "'의자 지지' 레퍼런스를 찾을 때 '엉덩이 또는 등·팔이 의자에 지지됨', '좌석과 신체 접점이 보임' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '의자에 앉거나 기대는다는 묘사' 단서가 확인될 때 의자 지지로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'sitting on chair' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "엉덩이 또는 등·팔이 의자에 지지됨",
+        "좌석과 신체 접점이 보임"
+      ],
+      "common_confusion_ko": [
+        "'바닥이나 소파에 앉음'만으로는 이 용어를 확정하지 않습니다.",
+        "'배경에 의자만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "의자 지지에 해당하는지 확인하려고 합니다. 입력에서 '의자에 앉거나 기대는다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_support_floor": {
+      "plain_meaning_ko": "'바닥 지지' 레퍼런스를 찾을 때 '엉덩이·다리·손 또는 등이 바닥에 지지됨', '가구가 아닌 바닥이 주된 지지면임' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '바닥에 앉거나 눕는다는 묘사' 단서가 확인될 때 바닥 지지로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'sitting on floor' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "엉덩이·다리·손 또는 등이 바닥에 지지됨",
+        "가구가 아닌 바닥이 주된 지지면임"
+      ],
+      "common_confusion_ko": [
+        "'배경에 바닥이 보임'만으로는 이 용어를 확정하지 않습니다.",
+        "'의자에 앉음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "바닥 지지에 해당하는지 확인하려고 합니다. 입력에서 '바닥에 앉거나 눕는다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_support_wall": {
+      "plain_meaning_ko": "'벽 기대기' 레퍼런스를 찾을 때 '등·어깨·손 중 일부가 벽에 닿음', '몸의 무게 일부가 벽으로 분산됨' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '벽에 기대어 선다는 묘사' 단서가 확인될 때 벽 기대기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'leaning against wall' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "등·어깨·손 중 일부가 벽에 닿음",
+        "몸의 무게 일부가 벽으로 분산됨"
+      ],
+      "common_confusion_ko": [
+        "'벽이 배경에 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'그림자만 벽에 닿음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "벽 기대기에 해당하는지 확인하려고 합니다. 입력에서 '벽에 기대어 선다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_hand_pointing": {
+      "plain_meaning_ko": "'손가락으로 가리키기' 레퍼런스를 찾을 때 '검지가 특정 방향을 향함', '손목과 팔 방향이 가리키는 대상과 연결됨' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '손가락으로 가리킨다는 묘사' 단서가 확인될 때 손가락으로 가리키기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'pointing hand gesture' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "검지가 특정 방향을 향함",
+        "손목과 팔 방향이 가리키는 대상과 연결됨"
+      ],
+      "common_confusion_ko": [
+        "'팔을 앞으로 뻗기만 함'만으로는 이 용어를 확정하지 않습니다.",
+        "'물건을 잡고 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "손가락으로 가리키기에 해당하는지 확인하려고 합니다. 입력에서 '손가락으로 가리킨다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_hand_open_palm": {
+      "plain_meaning_ko": "'편 손바닥' 레퍼런스를 찾을 때 '손가락이 펴짐', '손바닥 방향이 관찰자 또는 대상 쪽을 향함' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '손바닥을 펴 보인다는 묘사' 단서가 확인될 때 편 손바닥로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'open palm hand gesture' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "손가락이 펴짐",
+        "손바닥 방향이 관찰자 또는 대상 쪽을 향함"
+      ],
+      "common_confusion_ko": [
+        "'손에 물건을 들고 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'손가락으로 가리킴'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "편 손바닥에 해당하는지 확인하려고 합니다. 입력에서 '손바닥을 펴 보인다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_hand_fist": {
+      "plain_meaning_ko": "'주먹 쥐기' 레퍼런스를 찾을 때 '손가락이 손바닥 안쪽으로 접힘', '엄지가 손가락 바깥 또는 위쪽을 지지함' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '주먹을 쥔다는 묘사' 단서가 확인될 때 주먹 쥐기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'clenched fist hand pose' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "손가락이 손바닥 안쪽으로 접힘",
+        "엄지가 손가락 바깥 또는 위쪽을 지지함"
+      ],
+      "common_confusion_ko": [
+        "'손에 물건을 가볍게 듦'만으로는 이 용어를 확정하지 않습니다.",
+        "'손가락으로 가리킴'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "주먹 쥐기에 해당하는지 확인하려고 합니다. 입력에서 '주먹을 쥔다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_action_two_hand_aiming": {
+      "plain_meaning_ko": "'양손 조준' 레퍼런스를 찾을 때 '양손이 하나의 방향을 향해 모임', '상체와 시선이 조준 방향에 정렬됨' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '양손으로 든 소품을 목표에 겨눈다는 묘사' 단서가 확인될 때 양손 조준로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'rifle aiming' + 'reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "양손이 하나의 방향을 향해 모임",
+        "상체와 시선이 조준 방향에 정렬됨"
+      ],
+      "common_confusion_ko": [
+        "'단순히 양손으로 물건을 듦'만으로는 이 용어를 확정하지 않습니다.",
+        "'한 손만 뻗음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "양손 조준에 해당하는지 확인하려고 합니다. 입력에서 '양손으로 든 소품을 목표에 겨눈다는 묘사'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_kneeling": {
+      "plain_meaning_ko": "무릎이 바닥이나 지지면에 닿는 자세입니다. 상체가 세워졌는지 숙여졌는지를 함께 확인합니다.",
+      "selection_reason_template_ko": "입력에서 '닐링 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 닐링로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'kneeling pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "무릎이 바닥이나 지지면에 닿는 자세입니다. 상체가 세워졌는지 숙여졌는지를 함께 확인합니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "닐링에 해당하는지 확인하려고 합니다. 입력에서 '닐링 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_t_pose": {
+      "plain_meaning_ko": "양팔을 옆으로 벌려 T자에 가깝게 선 기준 자세입니다.",
+      "selection_reason_template_ko": "입력에서 'T포즈 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 T포즈로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 't-pose' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "양팔을 옆으로 벌려 T자에 가깝게 선 기준 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "T포즈에 해당하는지 확인하려고 합니다. 입력에서 'T포즈 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_a_pose": {
+      "plain_meaning_ko": "양팔을 아래 방향으로 약간 벌려 A자에 가깝게 선 기준 자세입니다.",
+      "selection_reason_template_ko": "입력에서 'A포즈 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 A포즈로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'sheet pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "양팔을 아래 방향으로 약간 벌려 A자에 가깝게 선 기준 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "A포즈에 해당하는지 확인하려고 합니다. 입력에서 'A포즈 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_relaxed_stand": {
+      "plain_meaning_ko": "몸의 긴장을 낮추고 자연스럽게 서 있는 자세입니다. 체중이 한쪽으로 쏠렸는지는 별도로 확인합니다.",
+      "selection_reason_template_ko": "입력에서 '편안한 서기 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 편안한 서기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'relaxed stand' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "몸의 긴장을 낮추고 자연스럽게 서 있는 자세입니다. 체중이 한쪽으로 쏠렸는지는 별도로 확인합니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "편안한 서기에 해당하는지 확인하려고 합니다. 입력에서 '편안한 서기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_military_stand": {
+      "plain_meaning_ko": "발과 몸통을 정렬해 바르게 선 자세입니다. 팔과 손의 위치는 별도 조건으로 둡니다.",
+      "selection_reason_template_ko": "입력에서 '군인 자세 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 군인 자세로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'military stand pose' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "발과 몸통을 정렬해 바르게 선 자세입니다. 팔과 손의 위치는 별도 조건으로 둡니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "군인 자세에 해당하는지 확인하려고 합니다. 입력에서 '군인 자세 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_contrapposto_arm_raised": {
+      "plain_meaning_ko": "콘트라포스토를 기본으로 하되 한쪽 팔을 들어 올린 조합 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '팔을 든 콘트라포스토 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 팔을 든 콘트라포스토로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'contrapposto with arm raised' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "콘트라포스토를 기본으로 하되 한쪽 팔을 들어 올린 조합 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "팔을 든 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 '팔을 든 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_sitting_upright": {
+      "plain_meaning_ko": "등을 세우고 상체를 비교적 수직으로 유지한 앉은 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '바르게 앉음 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 바르게 앉음로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'upright sitting pose' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "등을 세우고 상체를 비교적 수직으로 유지한 앉은 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "바르게 앉음에 해당하는지 확인하려고 합니다. 입력에서 '바르게 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_sitting_on_edge": {
+      "plain_meaning_ko": "좌석 앞쪽 끝에 앉아 체중이 앞으로 실린 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '의자 끝에 앉음 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 의자 끝에 앉음로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'sitting on edge reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "좌석 앞쪽 끝에 앉아 체중이 앞으로 실린 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "의자 끝에 앉음에 해당하는지 확인하려고 합니다. 입력에서 '의자 끝에 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_slouching": {
+      "plain_meaning_ko": "등과 어깨를 구부리며 상체를 낮춘 앉은 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '웅크리고 앉음 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 웅크리고 앉음로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'slouching' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "등과 어깨를 구부리며 상체를 낮춘 앉은 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "웅크리고 앉음에 해당하는지 확인하려고 합니다. 입력에서 '웅크리고 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_sitting_leaning_forward": {
+      "plain_meaning_ko": "앉은 상태에서 상체를 앞쪽으로 기울인 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '앞으로 기대 앉음 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 앞으로 기대 앉음로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'leaning forward reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "앉은 상태에서 상체를 앞쪽으로 기울인 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "앞으로 기대 앉음에 해당하는지 확인하려고 합니다. 입력에서 '앞으로 기대 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_sitting_leaning_back": {
+      "plain_meaning_ko": "앉은 상태에서 등을 뒤쪽 지지면으로 기울인 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '뒤로 기대 앉음 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 뒤로 기대 앉음로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'leaning back' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "앉은 상태에서 등을 뒤쪽 지지면으로 기울인 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "뒤로 기대 앉음에 해당하는지 확인하려고 합니다. 입력에서 '뒤로 기대 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_lotus": {
+      "plain_meaning_ko": "두 발을 반대쪽 허벅지 위에 올리는 좌법입니다. 일반 양반다리와 구분합니다.",
+      "selection_reason_template_ko": "입력에서 '연화좌 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 연화좌로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'lotus position' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "두 발을 반대쪽 허벅지 위에 올리는 좌법입니다. 일반 양반다리와 구분합니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "연화좌에 해당하는지 확인하려고 합니다. 입력에서 '연화좌 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_half_lotus": {
+      "plain_meaning_ko": "한쪽 발만 반대쪽 허벅지 위에 올리는 좌법입니다.",
+      "selection_reason_template_ko": "입력에서 '반연화좌 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 반연화좌로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'half lotus' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "한쪽 발만 반대쪽 허벅지 위에 올리는 좌법입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "반연화좌에 해당하는지 확인하려고 합니다. 입력에서 '반연화좌 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_seiza": {
+      "plain_meaning_ko": "무릎을 꿇고 발 위에 앉는 일본식 좌법입니다.",
+      "selection_reason_template_ko": "입력에서 '정좌 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 정좌로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'seiza pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "무릎을 꿇고 발 위에 앉는 일본식 좌법입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "정좌에 해당하는지 확인하려고 합니다. 입력에서 '정좌 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_squatting": {
+      "plain_meaning_ko": "무릎과 엉덩이를 낮추고 발 또는 발바닥으로 몸을 지지하는 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '쪼그리고 앉음 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 쪼그리고 앉음로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'squatting pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "무릎과 엉덩이를 낮추고 발 또는 발바닥으로 몸을 지지하는 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "쪼그리고 앉음에 해당하는지 확인하려고 합니다. 입력에서 '쪼그리고 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_lying_down": {
+      "plain_meaning_ko": "바닥이나 침대에 몸통을 완전히 댄 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '누움 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 누움로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'lying down' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "바닥이나 침대에 몸통을 완전히 댄 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "누움에 해당하는지 확인하려고 합니다. 입력에서 '누움 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_propping_on_elbows": {
+      "plain_meaning_ko": "누운 상태에서 팔꿈치로 상체를 들어 지지한 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '팔꿈치로 지탱 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 팔꿈치로 지탱로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'propping on elbows' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "누운 상태에서 팔꿈치로 상체를 들어 지지한 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "팔꿈치로 지탱에 해당하는지 확인하려고 합니다. 입력에서 '팔꿈치로 지탱 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_side_lying": {
+      "plain_meaning_ko": "몸의 옆면을 바닥이나 지지면에 댄 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '옆으로 누움 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 옆으로 누움로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'side-lying pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "몸의 옆면을 바닥이나 지지면에 댄 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "옆으로 누움에 해당하는지 확인하려고 합니다. 입력에서 '옆으로 누움 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_prone": {
+      "plain_meaning_ko": "가슴이나 배 쪽이 바닥을 향하도록 엎드린 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '엎드림 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 엎드림로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'prone reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "가슴이나 배 쪽이 바닥을 향하도록 엎드린 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "엎드림에 해당하는지 확인하려고 합니다. 입력에서 '엎드림 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_supine": {
+      "plain_meaning_ko": "등이 바닥이나 침대에 닿고 얼굴이 위를 향한 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '등을 대고 누움 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 등을 대고 누움로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'supine pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "등이 바닥이나 침대에 닿고 얼굴이 위를 향한 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "등을 대고 누움에 해당하는지 확인하려고 합니다. 입력에서 '등을 대고 누움 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_action": {
+      "plain_meaning_ko": "동작의 순간과 힘의 방향을 강조한 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '액션 포즈 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 액션 포즈로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'action pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "동작의 순간과 힘의 방향을 강조한 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "액션 포즈에 해당하는지 확인하려고 합니다. 입력에서 '액션 포즈 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_jumping": {
+      "plain_meaning_ko": "발이 지면에서 떨어져 공중에 있는 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '점프 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 점프로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'jumping' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "발이 지면에서 떨어져 공중에 있는 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "점프에 해당하는지 확인하려고 합니다. 입력에서 '점프 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_running": {
+      "plain_meaning_ko": "보폭과 팔의 반대 움직임이 나타나는 이동 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '달리기 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 달리기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'running' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "보폭과 팔의 반대 움직임이 나타나는 이동 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "달리기에 해당하는지 확인하려고 합니다. 입력에서 '달리기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_walking": {
+      "plain_meaning_ko": "한 발은 지지하고 다른 발은 이동하는 보행 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '걷기 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 걷기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'walking' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "한 발은 지지하고 다른 발은 이동하는 보행 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "걷기에 해당하는지 확인하려고 합니다. 입력에서 '걷기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_turning": {
+      "plain_meaning_ko": "몸통이나 머리가 기존 진행 방향과 다른 쪽으로 회전한 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '돌아보기 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 돌아보기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'turning' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "몸통이나 머리가 기존 진행 방향과 다른 쪽으로 회전한 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "돌아보기에 해당하는지 확인하려고 합니다. 입력에서 '돌아보기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_twisting": {
+      "plain_meaning_ko": "상체와 하체 또는 어깨와 골반의 방향이 서로 다르게 회전한 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '비틀기 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 비틀기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'twisting' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "상체와 하체 또는 어깨와 골반의 방향이 서로 다르게 회전한 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "비틀기에 해당하는지 확인하려고 합니다. 입력에서 '비틀기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_reaching": {
+      "plain_meaning_ko": "팔 또는 손을 목표 방향으로 길게 뻗는 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '손 뻗기 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 손 뻗기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'reaching' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "팔 또는 손을 목표 방향으로 길게 뻗는 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "손 뻗기에 해당하는지 확인하려고 합니다. 입력에서 '손 뻗기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_crouching": {
+      "plain_meaning_ko": "무릎을 굽히고 몸의 높이를 낮춘 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '웅크리기 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 웅크리기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'crouching' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "무릎을 굽히고 몸의 높이를 낮춘 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "웅크리기에 해당하는지 확인하려고 합니다. 입력에서 '웅크리기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_leaping": {
+      "plain_meaning_ko": "큰 보폭이나 추진력으로 공중에 뛰어오른 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '도약 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 도약로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'leaping' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "큰 보폭이나 추진력으로 공중에 뛰어오른 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "도약에 해당하는지 확인하려고 합니다. 입력에서 '도약 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_falling": {
+      "plain_meaning_ko": "균형을 잃거나 아래 방향으로 떨어지는 순간의 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '낙하 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 낙하로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'falling' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "균형을 잃거나 아래 방향으로 떨어지는 순간의 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "낙하에 해당하는지 확인하려고 합니다. 입력에서 '낙하 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_balancing": {
+      "plain_meaning_ko": "좁은 지지점 위에서 몸의 균형을 유지하려는 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '균형 잡기 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 균형 잡기로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'balancing' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "좁은 지지점 위에서 몸의 균형을 유지하려는 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "균형 잡기에 해당하는지 확인하려고 합니다. 입력에서 '균형 잡기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_contrapposto_classic": {
+      "plain_meaning_ko": "한쪽 다리 지지와 골반·어깨의 반대 기울기가 분명한 전형적 콘트라포스토입니다.",
+      "selection_reason_template_ko": "입력에서 '클래식 콘트라포스토 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 클래식 콘트라포스토로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'classic contrapposto' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "한쪽 다리 지지와 골반·어깨의 반대 기울기가 분명한 전형적 콘트라포스토입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "클래식 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 '클래식 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_contrapposto_weight_shift": {
+      "plain_meaning_ko": "체중 이동이 보이지만 골반·어깨의 반대 기울기는 약한 콘트라포스토 계열 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '체중 이동 콘트라포스토 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 체중 이동 콘트라포스토로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'weight shift contrapposto' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "체중 이동이 보이지만 골반·어깨의 반대 기울기는 약한 콘트라포스토 계열 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "체중 이동 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 '체중 이동 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_contrapposto_dynamic": {
+      "plain_meaning_ko": "콘트라포스토의 지지 구조에 팔·몸통의 큰 움직임이 더해진 자세입니다.",
+      "selection_reason_template_ko": "입력에서 '역동적 콘트라포스토 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 역동적 콘트라포스토로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'dynamic contrapposto' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "콘트라포스토의 지지 구조에 팔·몸통의 큰 움직임이 더해진 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "역동적 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 '역동적 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_contrapposto_s_curve": {
+      "plain_meaning_ko": "콘트라포스토의 지지 구조와 S자 몸통 흐름이 함께 나타난 자세입니다.",
+      "selection_reason_template_ko": "입력에서 'S자 곡선 콘트라포스토 또는 이에 해당하는 자세의 명시' 단서가 확인될 때 S자 곡선 콘트라포스토로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 's-curve contrapposto' + 'pose reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "콘트라포스토의 지지 구조와 S자 몸통 흐름이 함께 나타난 자세입니다."
+      ],
+      "common_confusion_ko": [
+        "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "S자 곡선 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 'S자 곡선 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "view_profile": {
+      "plain_meaning_ko": "인물을 옆에서 본 시점입니다.",
+      "selection_reason_template_ko": "입력에서 '측면 뷰 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 측면 뷰로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'profile' + 'view reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "인물을 옆에서 본 시점입니다."
+      ],
+      "common_confusion_ko": [
+        "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
+        "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "측면 뷰에 해당하는지 확인하려고 합니다. 입력에서 '측면 뷰 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "view_back": {
+      "plain_meaning_ko": "인물을 뒤에서 본 시점입니다.",
+      "selection_reason_template_ko": "입력에서 '뒷면 뷰 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 뒷면 뷰로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'back view' + 'view reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "인물을 뒤에서 본 시점입니다."
+      ],
+      "common_confusion_ko": [
+        "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
+        "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "뒷면 뷰에 해당하는지 확인하려고 합니다. 입력에서 '뒷면 뷰 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "view_birds_eye": {
+      "plain_meaning_ko": "높은 곳에서 장면 전체를 내려다보는 시점입니다. 단순 하이 앵글보다 위쪽에 가깝습니다.",
+      "selection_reason_template_ko": "입력에서 '조감도 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 조감도로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'bird's eye view' + 'view reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "높은 곳에서 장면 전체를 내려다보는 시점입니다. 단순 하이 앵글보다 위쪽에 가깝습니다."
+      ],
+      "common_confusion_ko": [
+        "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
+        "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "조감도에 해당하는지 확인하려고 합니다. 입력에서 '조감도 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "view_worms_eye": {
+      "plain_meaning_ko": "아주 낮은 위치에서 위로 올려다보는 시점입니다. 단순 로우 앵글보다 아래쪽에 가깝습니다.",
+      "selection_reason_template_ko": "입력에서 '개미 눈높이 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 개미 눈높이로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'worm's eye view' + 'view reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "아주 낮은 위치에서 위로 올려다보는 시점입니다. 단순 로우 앵글보다 아래쪽에 가깝습니다."
+      ],
+      "common_confusion_ko": [
+        "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
+        "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "개미 눈높이에 해당하는지 확인하려고 합니다. 입력에서 '개미 눈높이 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "view_dutch_angle": {
+      "plain_meaning_ko": "카메라의 수평선을 기울여 불안정하거나 긴장된 느낌을 만드는 시점입니다.",
+      "selection_reason_template_ko": "입력에서 '더치 앵글 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 더치 앵글로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'dutch angle' + 'view reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "카메라의 수평선을 기울여 불안정하거나 긴장된 느낌을 만드는 시점입니다."
+      ],
+      "common_confusion_ko": [
+        "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
+        "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "더치 앵글에 해당하는지 확인하려고 합니다. 입력에서 '더치 앵글 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "perspective_one_point": {
+      "plain_meaning_ko": "'1점 투시' 레퍼런스를 찾을 때 '깊이 방향의 평행선이 한 소실점으로 모임', '정면을 향한 복도·방·도로처럼 수직선이 평행하게 유지되는 공간' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '1점 투시 또는 하나의 소실점이라는 명시' 단서가 확인될 때 1점 투시로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'one point perspective' + 'character background reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "깊이 방향의 평행선이 한 소실점으로 모임",
+        "정면을 향한 복도·방·도로처럼 수직선이 평행하게 유지되는 공간"
+      ],
+      "common_confusion_ko": [
+        "'인물 한 명을 정면에서 본다는 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'배경 원근선 없이 정면 뷰만 제시됨'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "1점 투시에 해당하는지 확인하려고 합니다. 입력에서 '1점 투시 또는 하나의 소실점이라는 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "perspective_two_point": {
+      "plain_meaning_ko": "'2점 투시' 레퍼런스를 찾을 때 '좌우 깊이 방향 선이 서로 다른 두 소실점으로 모임', '모서리가 화면을 향하고 수직선은 평행하게 유지되는 공간' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '2점 투시 또는 두 소실점이라는 명시' 단서가 확인될 때 2점 투시로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'two point perspective' + 'character reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "좌우 깊이 방향 선이 서로 다른 두 소실점으로 모임",
+        "모서리가 화면을 향하고 수직선은 평행하게 유지되는 공간"
+      ],
+      "common_confusion_ko": [
+        "'인물이 3/4 뷰라는 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
+        "'수직선까지 수렴하는 3점 투시 묘사'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "2점 투시에 해당하는지 확인하려고 합니다. 입력에서 '2점 투시 또는 두 소실점이라는 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "layout_composition": {
+      "plain_meaning_ko": "'구도' 레퍼런스를 찾을 때 '인물·배경·빈 공간이 화면 안에서 이루는 배치', '시선이 향하는 주된 요소와 보조 요소의 관계' 단서를 우선 확인한다.",
+      "selection_reason_template_ko": "입력에서 '구도 또는 화면 배치라는 명시' 단서가 확인될 때 구도로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'character illustration' + 'composition reference' 검색 조각으로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "인물·배경·빈 공간이 화면 안에서 이루는 배치",
+        "시선이 향하는 주된 요소와 보조 요소의 관계"
+      ],
+      "common_confusion_ko": [
+        "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
+        "'색감이나 화풍만 언급함'만으로는 이 용어를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "구도에 해당하는지 확인하려고 합니다. 입력에서 '구도 또는 화면 배치라는 명시'가 보이는 것이 맞나요?",
+      "review_status": "reviewed"
+    },
+    "pose_hands_on_hips": {
+      "plain_meaning_ko": "손을 골반이나 허리 옆에 두어 팔꿈치가 바깥으로 벌어지는 자세입니다.",
+      "selection_reason_template_ko": "입력에 손을 허리에 대거나 팔꿈치를 벌린다는 단서가 있을 때 '허리에 손'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'hands on hips pose drawing' 검색어로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "손이 골반·허리 옆에 놓이는지",
+        "팔꿈치가 몸통 바깥으로 꺾여 보이는지"
+      ],
+      "common_confusion_ko": [
+        "손을 주머니에 넣은 모습은 '허리에 손'과 다릅니다.",
+        "팔을 몸 옆으로 내린 모습만으로는 이 자세를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "손이 실제로 허리나 골반 옆에 놓여 있고, 팔꿈치가 바깥으로 향한 자세인가요?",
+      "review_status": "reviewed"
+    },
+    "pose_arms_crossed": {
+      "plain_meaning_ko": "두 팔을 몸통 앞에서 교차해 반대쪽 팔을 받치거나 감싸는 자세입니다.",
+      "selection_reason_template_ko": "입력에 팔짱을 끼거나 두 팔을 가슴 앞에서 교차한다는 단서가 있을 때 '팔짱'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'arms crossed pose drawing' 검색어로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "두 팔이 몸통 앞에서 서로 교차하는지",
+        "손이나 팔꿈치가 반대쪽 팔에 닿는지"
+      ],
+      "common_confusion_ko": [
+        "한 팔만 몸통 앞에 둔 모습은 팔짱과 다릅니다.",
+        "물건을 두 팔로 안고 있는 모습만으로는 이 자세를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "두 팔이 몸통 앞에서 서로 교차해 반대쪽 팔을 잡고 있나요?",
+      "review_status": "reviewed"
+    },
+    "pose_hands_behind_back": {
+      "plain_meaning_ko": "두 손이나 팔을 몸 뒤로 보내 등 뒤에서 맞잡거나 가린 자세입니다.",
+      "selection_reason_template_ko": "입력에 두 손을 등 뒤로 보내거나 등 뒤에서 손을 잡는다는 단서가 있을 때 '등 뒤로 깍지 낀 손'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'hands behind back pose drawing' 검색어로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "양손 또는 팔이 골반 뒤쪽으로 향하는지",
+        "손이 몸통 뒤에서 맞잡히거나 가려지는지"
+      ],
+      "common_confusion_ko": [
+        "인물을 뒤에서 본 시점만으로는 이 자세를 확정하지 않습니다.",
+        "한 팔이 몸통 뒤로 잠시 가려진 모습은 두 손을 등 뒤로 둔 자세와 다릅니다."
+      ],
+      "clarifying_question_ko": "두 손을 등 뒤로 보내 맞잡은 자세가 필요한가요, 아니면 단순히 뒷모습이 필요한가요?",
+      "review_status": "reviewed"
+    },
+    "pose_hand_on_chin": {
+      "plain_meaning_ko": "손가락이나 손바닥을 턱 또는 턱선에 대는 자세입니다.",
+      "selection_reason_template_ko": "입력에 턱을 손으로 받치거나 손을 턱에 댄다는 단서가 있을 때 '턱에 손'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'hand on chin pose drawing' 검색어로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "손가락 또는 손바닥이 턱·턱선에 닿는지",
+        "팔이 얼굴 아래쪽을 향하는지"
+      ],
+      "common_confusion_ko": [
+        "볼이나 이마에 손을 댄 모습은 '턱에 손'과 다릅니다.",
+        "고개만 아래로 숙인 모습은 이 자세를 뜻하지 않습니다."
+      ],
+      "clarifying_question_ko": "손이 볼이나 이마가 아니라 턱 또는 턱선에 닿아 있나요?",
+      "review_status": "reviewed"
+    },
+    "pose_hand_on_chest": {
+      "plain_meaning_ko": "한 손이나 양손을 윗가슴 또는 흉골 부근에 얹는 자세입니다.",
+      "selection_reason_template_ko": "입력에 손을 가슴에 얹거나 흉골 부근을 짚는다는 단서가 있을 때 '가슴에 손'으로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'hand on chest pose drawing' 검색어로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "한 손 또는 양손이 윗가슴·흉골 부근에 닿는지",
+        "손가락이 몸통 쪽으로 향하는지"
+      ],
+      "common_confusion_ko": [
+        "가슴 높이에서 물건을 든 모습은 '가슴에 손'과 다릅니다.",
+        "팔짱을 낀 모습만으로는 이 자세를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "손이 물건이 아니라 자신의 윗가슴이나 흉골 부근에 닿아 있나요?",
+      "review_status": "reviewed"
+    },
+    "pose_salute": {
+      "plain_meaning_ko": "편 손을 관자놀이나 이마 가까이 들어 올리고 팔꿈치를 옆으로 향하게 하는 경례 자세입니다.",
+      "selection_reason_template_ko": "입력에 경례하거나 손을 이마 가까이 들어 올린다는 단서가 있을 때 '경례'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'salute drawing' 검색어로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "편 손이 관자놀이나 이마 가까이에 놓이는지",
+        "팔꿈치가 옆이나 바깥으로 향하는지"
+      ],
+      "common_confusion_ko": [
+        "손으로 눈부심을 가리는 모습은 경례와 다를 수 있습니다.",
+        "손을 흔드는 모습만으로는 경례를 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "손을 이마 가까이 올린 이유가 경례인가요, 아니면 햇빛을 가리거나 인사하는 동작인가요?",
+      "review_status": "reviewed"
+    },
+    "view_over_the_shoulder": {
+      "plain_meaning_ko": "앞쪽 인물의 어깨나 머리 일부를 전경에 두고, 그 너머의 대상이나 장면을 바라보는 시점입니다.",
+      "selection_reason_template_ko": "입력에 어깨 너머로 보거나 전경의 어깨를 지나 대상을 본다는 단서가 있을 때 '오버더숄더 뷰'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'over the shoulder drawing' 검색어로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "앞쪽 인물의 어깨나 머리 일부가 전경에 놓이는지",
+        "전경 너머의 대상이나 장면으로 시선이 이어지는지"
+      ],
+      "common_confusion_ko": [
+        "인물을 단순히 뒤에서 본 모습은 오버더숄더 뷰와 다릅니다.",
+        "인물이 고개만 뒤로 돌린 모습은 이 시점을 뜻하지 않습니다."
+      ],
+      "clarifying_question_ko": "앞쪽 인물의 어깨를 전경에 두고 그 너머의 대상을 보는 화면이 필요한가요?",
+      "review_status": "reviewed"
+    },
+    "view_full_body": {
+      "plain_meaning_ko": "머리부터 발까지가 한 화면 안에 들어와 전신 비례와 자세를 함께 볼 수 있는 시점입니다.",
+      "selection_reason_template_ko": "입력에 전신이 보이거나 머리부터 발까지 나온다는 단서가 있을 때 '전신 뷰'로 해석합니다.",
+      "pinterest_search_notice_ko": "Pinterest에서는 'full body reference drawing' 검색어로 찾습니다.",
+      "reference_checkpoints_ko": [
+        "머리부터 발까지 한 화면 안에 보이는지",
+        "손발 끝이 화면 바깥으로 잘리지 않는지"
+      ],
+      "common_confusion_ko": [
+        "상반신이나 반신만 보이는 구도는 전신 뷰와 다릅니다.",
+        "발이나 머리가 화면 밖으로 잘린 구도는 전신 뷰로 확정하지 않습니다."
+      ],
+      "clarifying_question_ko": "손발까지 포함한 전신 비례가 필요한가요, 아니면 상반신 중심 구도가 필요한가요?",
+      "review_status": "reviewed"
+    }
+  },
+  "status_definitions": {
+    "active_in_current_contract": "현재 Agent가 선택할 수 있는 카드",
+    "pending_modifier_contract": "카드는 검수됐지만 modifier API 계약이 완성되기 전에는 선택하지 않는 카드",
+    "candidate_primary_pose": "추가 검수와 평가 뒤에 기본 포즈로 승격할 후보",
+    "candidate_modifier_combination": "기본 포즈에 결합하는 후보",
+    "candidate_modifier_contract": "손·머리 등 detail 계약이 추가된 뒤에만 쓸 후보",
+    "candidate_specialized_pose": "문화·용법을 별도 검토할 전문 포즈 후보",
+    "candidate_view": "시점 계약 확장 뒤에 쓸 후보",
+    "candidate_intent_pose": "구체 포즈가 아닌 연출 의도 후보",
+    "candidate_body": "체형·인체 비례 계약 확장 뒤에 쓸 후보",
+    "candidate_perspective": "원근 선택 계약 확장 뒤에 쓸 후보",
+    "candidate_layout": "구도 선택 계약 확장 뒤에 쓸 후보",
+    "not_current_mvp": "현재 MVP 범위 밖의 스타일 또는 연출 의도"
+  },
+  "category_load_order": [
+    "body",
+    "pose",
+    "view",
+    "perspective",
+    "layout"
+  ],
+
+  "categories": [
+    {
+      "role": "body",
+      "file": "body.json",
+      "card_count": 6
+    },
+    {
+      "role": "pose",
+      "file": "pose.json",
+      "card_count": 58
+    },
+    {
+      "role": "view",
+      "file": "view.json",
+      "card_count": 11
+    },
+    {
+      "role": "perspective",
+      "file": "perspective.json",
+      "card_count": 5
+    },
+    {
+      "role": "layout",
+      "file": "layout.json",
+      "card_count": 2
+    }
+  ]
+}

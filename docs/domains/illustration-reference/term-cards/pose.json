@@ -1,0 +1,2017 @@
+{
+  "role": "pose",
+  "card_count": 58,
+  "cards": [
+    {
+      "term_id": "pose_contrapposto",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "콘트라포스토",
+      "label_en": "contrapposto",
+      "source_type": "team_card",
+      "query_fragments": [
+        "contrapposto pose",
+        "standing reference"
+      ],
+      "look_for": [
+        "한 다리에 체중이 실림",
+        "골반과 어깨가 반대 방향으로 기울어짐"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "한쪽 다리에 체중을 싣는다는 묘사",
+          "골반과 어깨의 반대 기울기 묘사"
+        ],
+        "do_not_infer_from": [
+          "몸이 휘어 보인다는 묘사만 있음",
+          "두 발에 같은 힘을 준다고 명시됨"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '콘트라포스토' 레퍼런스를 찾을 때 '한 다리에 체중이 실림', '골반과 어깨가 반대 방향으로 기울어짐' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_weight_shift",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "체중 이동 스탠딩",
+      "label_en": "weight-shift standing pose",
+      "source_type": "team_card",
+      "query_fragments": [
+        "stand weight shift reference"
+      ],
+      "look_for": [
+        "무게가 한쪽 다리로 치우침",
+        "반대쪽 다리가 힘을 덜 받음"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "한쪽에 기대서 선다는 묘사",
+          "한쪽 다리에 힘을 준다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "정면으로 서 있다는 묘사만 있음",
+          "카메라가 기울었다는 묘사"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '체중 이동 스탠딩' 레퍼런스를 찾을 때 '무게가 한쪽 다리로 치우침', '반대쪽 다리가 힘을 덜 받음' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_s_curve",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "S자 흐름",
+      "label_en": "S-curve pose",
+      "source_type": "team_card",
+      "query_fragments": [
+        "s curve pose"
+      ],
+      "look_for": [
+        "머리부터 골반까지 부드럽게 이어지는 S자 흐름",
+        "몸통의 반대 방향 굴곡"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "S자로 휘어진 자세라는 묘사",
+          "허리와 몸통의 곡선 흐름 묘사"
+        ],
+        "do_not_infer_from": [
+          "지지 다리 단서 없이 콘트라포스토라고 단정하는 경우",
+          "의상 주름만 휘어 보이는 경우"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: 'S자 흐름' 레퍼런스를 찾을 때 '머리부터 골반까지 부드럽게 이어지는 S자 흐름', '몸통의 반대 방향 굴곡' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_standing",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "스탠딩",
+      "label_en": "standing pose",
+      "source_type": "team_card",
+      "query_fragments": [
+        "standing pose reference"
+      ],
+      "look_for": [
+        "발로 바닥을 지지함",
+        "상체가 수직으로 서 있음"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "서 있는 자세라는 명시",
+          "두 발 또는 한 발로 선다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "인물의 방향만 있음",
+          "배경 투시 정보만 있음"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '스탠딩' 레퍼런스를 찾을 때 '발로 바닥을 지지함', '상체가 수직으로 서 있음' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_sitting",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "시팅",
+      "label_en": "seated pose",
+      "source_type": "team_card",
+      "query_fragments": [
+        "seated pose reference"
+      ],
+      "look_for": [
+        "엉덩이 또는 허벅지가 의자·바닥·소파에 지지됨",
+        "다리의 힘이 바닥이나 좌석에 분산됨"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "앉아 있다는 명시",
+          "의자·바닥·소파에 앉는다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "벽에 기대 선 자세",
+          "완전히 누운 자세"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '시팅' 레퍼런스를 찾을 때 '엉덩이 또는 허벅지가 의자·바닥·소파에 지지됨', '다리의 힘이 바닥이나 좌석에 분산됨' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_gesture",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "동세/액션 라인",
+      "label_en": "gesture drawing",
+      "source_type": "team_card",
+      "query_fragments": [
+        "gesture drawing",
+        "action line reference"
+      ],
+      "look_for": [
+        "움직임의 방향",
+        "큰 동세",
+        "세부보다 전체 흐름"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "달리기·춤·점프 등 동작 묘사",
+          "동세나 액션 라인을 원한다는 명시"
+        ],
+        "do_not_infer_from": [
+          "손가락 모양만 묘사됨",
+          "정지 포즈가 구체적으로 정해짐"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '동세/액션 라인' 레퍼런스를 찾을 때 '움직임의 방향', '큰 동세' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_reclining",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "리클라이닝",
+      "label_en": "reclining pose",
+      "source_type": "team_card",
+      "query_fragments": [
+        "reclining pose reference"
+      ],
+      "look_for": [
+        "등·팔꿈치·옆구리 등으로 몸을 지지함",
+        "몸통이 눕는 방향으로 기울어짐"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "기대어 눕는다는 묘사",
+          "소파·바닥에 몸을 눕힌다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "의자에 똑바로 앉은 자세",
+          "단순한 고개 기울임"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '리클라이닝' 레퍼런스를 찾을 때 '등·팔꿈치·옆구리 등으로 몸을 지지함', '몸통이 눕는 방향으로 기울어짐' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_legs_crossed_at_knee",
+      "role": "pose",
+      "component": "lower_body",
+      "label_ko": "무릎 위 다리 꼬기",
+      "label_en": "legs crossed at knee",
+      "source_type": "team_card",
+      "query_fragments": [
+        "leg crossing pose reference"
+      ],
+      "look_for": [
+        "한쪽 다리가 다른 다리의 무릎 위로 올라감",
+        "골반의 기울기와 앉은 지지점"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "의자에 앉아 다리를 꼰다는 묘사",
+          "무릎 위로 다리를 올린다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "발목만 교차함",
+          "바닥에 양반다리를 함"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '무릎 위 다리 꼬기' 레퍼런스를 찾을 때 '한쪽 다리가 다른 다리의 무릎 위로 올라감', '골반의 기울기와 앉은 지지점' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_ankles_crossed",
+      "role": "pose",
+      "component": "lower_body",
+      "label_ko": "발목 교차",
+      "label_en": "ankles crossed",
+      "source_type": "team_card",
+      "query_fragments": [
+        "crossed ankles reference"
+      ],
+      "look_for": [
+        "두 다리는 나란히 두고 발목만 교차함",
+        "무릎 위 교차와 구분됨"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "발목만 꼬는다는 묘사",
+          "다리는 붙이고 발만 교차한다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "무릎 위 다리 꼬기",
+          "바닥에 양반다리"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '발목 교차' 레퍼런스를 찾을 때 '두 다리는 나란히 두고 발목만 교차함', '무릎 위 교차와 구분됨' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_cross_legged_floor",
+      "role": "pose",
+      "component": "lower_body",
+      "label_ko": "바닥 양반다리",
+      "label_en": "cross-legged floor sitting",
+      "source_type": "team_card",
+      "query_fragments": [
+        "cross legged floor sitting",
+        "pose reference"
+      ],
+      "look_for": [
+        "바닥에 앉음",
+        "정강이 또는 발목이 몸 앞에서 교차함"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "바닥에 양반다리로 앉는다는 묘사",
+          "바닥에 다리를 접어 앉는다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "의자에 앉음",
+          "한쪽 무릎 위 다리 꼬기"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '바닥 양반다리' 레퍼런스를 찾을 때 '바닥에 앉음', '정강이 또는 발목이 몸 앞에서 교차함' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_support_chair",
+      "role": "pose",
+      "component": "support",
+      "label_ko": "의자 지지",
+      "label_en": "chair support",
+      "source_type": "team_card",
+      "query_fragments": [
+        "sitting on chair",
+        "pose reference"
+      ],
+      "look_for": [
+        "엉덩이 또는 등·팔이 의자에 지지됨",
+        "좌석과 신체 접점이 보임"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "의자에 앉거나 기대는다는 묘사",
+          "chair라는 소품 명시"
+        ],
+        "do_not_infer_from": [
+          "바닥이나 소파에 앉음",
+          "배경에 의자만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '의자 지지' 레퍼런스를 찾을 때 '엉덩이 또는 등·팔이 의자에 지지됨', '좌석과 신체 접점이 보임' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_support_floor",
+      "role": "pose",
+      "component": "support",
+      "label_ko": "바닥 지지",
+      "label_en": "floor support",
+      "source_type": "team_card",
+      "query_fragments": [
+        "sitting on floor",
+        "pose reference"
+      ],
+      "look_for": [
+        "엉덩이·다리·손 또는 등이 바닥에 지지됨",
+        "가구가 아닌 바닥이 주된 지지면임"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "바닥에 앉거나 눕는다는 묘사",
+          "바닥을 짚는다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "배경에 바닥이 보임",
+          "의자에 앉음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '바닥 지지' 레퍼런스를 찾을 때 '엉덩이·다리·손 또는 등이 바닥에 지지됨', '가구가 아닌 바닥이 주된 지지면임' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_support_wall",
+      "role": "pose",
+      "component": "support",
+      "label_ko": "벽 기대기",
+      "label_en": "leaning against wall",
+      "source_type": "team_card",
+      "query_fragments": [
+        "leaning against wall",
+        "pose reference"
+      ],
+      "look_for": [
+        "등·어깨·손 중 일부가 벽에 닿음",
+        "몸의 무게 일부가 벽으로 분산됨"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "벽에 기대어 선다는 묘사",
+          "벽을 짚는다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "벽이 배경에 있음",
+          "그림자만 벽에 닿음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '벽 기대기' 레퍼런스를 찾을 때 '등·어깨·손 중 일부가 벽에 닿음', '몸의 무게 일부가 벽으로 분산됨' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_hand_pointing",
+      "role": "pose",
+      "component": "hand_gesture",
+      "label_ko": "손가락으로 가리키기",
+      "label_en": "pointing hand gesture",
+      "source_type": "team_card",
+      "query_fragments": [
+        "pointing hand gesture"
+      ],
+      "look_for": [
+        "검지가 특정 방향을 향함",
+        "손목과 팔 방향이 가리키는 대상과 연결됨"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "손가락으로 가리킨다는 묘사",
+          "검지를 뻗는다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "팔을 앞으로 뻗기만 함",
+          "물건을 잡고 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '손가락으로 가리키기' 레퍼런스를 찾을 때 '검지가 특정 방향을 향함', '손목과 팔 방향이 가리키는 대상과 연결됨' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_hand_open_palm",
+      "role": "pose",
+      "component": "hand_gesture",
+      "label_ko": "편 손바닥",
+      "label_en": "open palm gesture",
+      "source_type": "team_card",
+      "query_fragments": [
+        "open palm hand gesture"
+      ],
+      "look_for": [
+        "손가락이 펴짐",
+        "손바닥 방향이 관찰자 또는 대상 쪽을 향함"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "손바닥을 펴 보인다는 묘사",
+          "손을 펼친다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "손에 물건을 들고 있음",
+          "손가락으로 가리킴"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '편 손바닥' 레퍼런스를 찾을 때 '손가락이 펴짐', '손바닥 방향이 관찰자 또는 대상 쪽을 향함' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_hand_fist",
+      "role": "pose",
+      "component": "hand_gesture",
+      "label_ko": "주먹 쥐기",
+      "label_en": "clenched fist gesture",
+      "source_type": "team_card",
+      "query_fragments": [
+        "clenched fist hand pose"
+      ],
+      "look_for": [
+        "손가락이 손바닥 안쪽으로 접힘",
+        "엄지가 손가락 바깥 또는 위쪽을 지지함"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "주먹을 쥔다는 묘사",
+          "손을 꽉 쥔다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "손에 물건을 가볍게 듦",
+          "손가락으로 가리킴"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '주먹 쥐기' 레퍼런스를 찾을 때 '손가락이 손바닥 안쪽으로 접힘', '엄지가 손가락 바깥 또는 위쪽을 지지함' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_action_two_hand_aiming",
+      "role": "pose",
+      "component": "prop_action",
+      "label_ko": "양손 조준",
+      "label_en": "two-handed aiming action",
+      "source_type": "team_card",
+      "query_fragments": [
+        "rifle aiming",
+        "reference"
+      ],
+      "look_for": [
+        "양손이 하나의 방향을 향해 모임",
+        "상체와 시선이 조준 방향에 정렬됨"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "양손으로 든 소품을 목표에 겨눈다는 묘사",
+          "양손이 같은 방향을 향해 조준한다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "단순히 양손으로 물건을 듦",
+          "한 손만 뻗음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [
+        "pose_sitting",
+        "pose_standing"
+      ],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '양손 조준' 레퍼런스를 찾을 때 '양손이 하나의 방향을 향해 모임', '상체와 시선이 조준 방향에 정렬됨' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_kneeling",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "닐링",
+      "label_en": "Kneeling",
+      "source_type": "team_card",
+      "query_fragments": [
+        "kneeling pose reference"
+      ],
+      "look_for": [
+        "무릎이 바닥이나 지지면에 닿는 자세입니다. 상체가 세워졌는지 숙여졌는지를 함께 확인합니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "닐링 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "basic_postures",
+      "source_answer_draft": "무릎이 바닥이나 지지면에 닿는 자세입니다. 상체가 세워졌는지 숙여졌는지를 함께 확인합니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_t_pose",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "T포즈",
+      "label_en": "T-Pose",
+      "source_type": "team_card",
+      "query_fragments": [
+        "t-pose",
+        "pose reference"
+      ],
+      "look_for": [
+        "양팔을 옆으로 벌려 T자에 가깝게 선 기준 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "T포즈 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "standing_poses",
+      "source_answer_draft": "양팔을 옆으로 벌려 T자에 가깝게 선 기준 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_a_pose",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "A포즈",
+      "label_en": "A-Pose",
+      "source_type": "team_card",
+      "query_fragments": [
+        "sheet pose reference"
+      ],
+      "look_for": [
+        "양팔을 아래 방향으로 약간 벌려 A자에 가깝게 선 기준 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "A포즈 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "standing_poses",
+      "source_answer_draft": "양팔을 아래 방향으로 약간 벌려 A자에 가깝게 선 기준 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_relaxed_stand",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "편안한 서기",
+      "label_en": "Relaxed Stand",
+      "source_type": "team_card",
+      "query_fragments": [
+        "relaxed stand",
+        "pose reference"
+      ],
+      "look_for": [
+        "몸의 긴장을 낮추고 자연스럽게 서 있는 자세입니다. 체중이 한쪽으로 쏠렸는지는 별도로 확인합니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "편안한 서기 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "standing_poses",
+      "source_answer_draft": "몸의 긴장을 낮추고 자연스럽게 서 있는 자세입니다. 체중이 한쪽으로 쏠렸는지는 별도로 확인합니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_military_stand",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "군인 자세",
+      "label_en": "Military Stand",
+      "source_type": "team_card",
+      "query_fragments": [
+        "military stand pose"
+      ],
+      "look_for": [
+        "발과 몸통을 정렬해 바르게 선 자세입니다. 팔과 손의 위치는 별도 조건으로 둡니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "군인 자세 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "standing_poses",
+      "source_answer_draft": "발과 몸통을 정렬해 바르게 선 자세입니다. 팔과 손의 위치는 별도 조건으로 둡니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_contrapposto_arm_raised",
+      "role": "pose",
+      "component": "pose_variant",
+      "label_ko": "팔을 든 콘트라포스토",
+      "label_en": "Contrapposto with Arm Raised",
+      "source_type": "team_card",
+      "query_fragments": [
+        "contrapposto with arm raised",
+        "pose reference"
+      ],
+      "look_for": [
+        "콘트라포스토를 기본으로 하되 한쪽 팔을 들어 올린 조합 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "팔을 든 콘트라포스토 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_contrapposto"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "standing_poses",
+      "source_answer_draft": "콘트라포스토를 기본으로 하되 한쪽 팔을 들어 올린 조합 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_sitting_upright",
+      "role": "pose",
+      "component": "modifier",
+      "label_ko": "바르게 앉음",
+      "label_en": "Sitting Upright",
+      "source_type": "team_card",
+      "query_fragments": [
+        "upright sitting pose"
+      ],
+      "look_for": [
+        "등을 세우고 상체를 비교적 수직으로 유지한 앉은 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "바르게 앉음 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "sitting_poses",
+      "source_answer_draft": "등을 세우고 상체를 비교적 수직으로 유지한 앉은 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_sitting_on_edge",
+      "role": "pose",
+      "component": "modifier",
+      "label_ko": "의자 끝에 앉음",
+      "label_en": "Sitting on Edge",
+      "source_type": "team_card",
+      "query_fragments": [
+        "sitting on edge reference"
+      ],
+      "look_for": [
+        "좌석 앞쪽 끝에 앉아 체중이 앞으로 실린 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "의자 끝에 앉음 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting",
+        "pose_support_chair"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "sitting_poses",
+      "source_answer_draft": "좌석 앞쪽 끝에 앉아 체중이 앞으로 실린 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_slouching",
+      "role": "pose",
+      "component": "modifier",
+      "label_ko": "웅크리고 앉음",
+      "label_en": "Slouching",
+      "source_type": "team_card",
+      "query_fragments": [
+        "slouching",
+        "pose reference"
+      ],
+      "look_for": [
+        "등과 어깨를 구부리며 상체를 낮춘 앉은 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "웅크리고 앉음 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "sitting_poses",
+      "source_answer_draft": "등과 어깨를 구부리며 상체를 낮춘 앉은 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_sitting_leaning_forward",
+      "role": "pose",
+      "component": "modifier",
+      "label_ko": "앞으로 기대 앉음",
+      "label_en": "Leaning Forward",
+      "source_type": "team_card",
+      "query_fragments": [
+        "leaning forward reference"
+      ],
+      "look_for": [
+        "앉은 상태에서 상체를 앞쪽으로 기울인 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "앞으로 기대 앉음 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "sitting_poses",
+      "source_answer_draft": "앉은 상태에서 상체를 앞쪽으로 기울인 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_sitting_leaning_back",
+      "role": "pose",
+      "component": "modifier",
+      "label_ko": "뒤로 기대 앉음",
+      "label_en": "Leaning Back",
+      "source_type": "team_card",
+      "query_fragments": [
+        "leaning back",
+        "pose reference"
+      ],
+      "look_for": [
+        "앉은 상태에서 등을 뒤쪽 지지면으로 기울인 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "뒤로 기대 앉음 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "sitting_poses",
+      "source_answer_draft": "앉은 상태에서 등을 뒤쪽 지지면으로 기울인 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_lotus",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "연화좌",
+      "label_en": "Lotus Position",
+      "source_type": "team_card",
+      "query_fragments": [
+        "lotus position",
+        "pose reference"
+      ],
+      "look_for": [
+        "두 발을 반대쪽 허벅지 위에 올리는 좌법입니다. 일반 양반다리와 구분합니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "연화좌 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting",
+        "pose_support_floor"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "sitting_poses",
+      "source_answer_draft": "두 발을 반대쪽 허벅지 위에 올리는 좌법입니다. 일반 양반다리와 구분합니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_half_lotus",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "반연화좌",
+      "label_en": "Half Lotus",
+      "source_type": "team_card",
+      "query_fragments": [
+        "half lotus",
+        "pose reference"
+      ],
+      "look_for": [
+        "한쪽 발만 반대쪽 허벅지 위에 올리는 좌법입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "반연화좌 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting",
+        "pose_support_floor"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "sitting_poses",
+      "source_answer_draft": "한쪽 발만 반대쪽 허벅지 위에 올리는 좌법입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_seiza",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "정좌",
+      "label_en": "Seiza",
+      "source_type": "team_card",
+      "query_fragments": [
+        "seiza pose reference"
+      ],
+      "look_for": [
+        "무릎을 꿇고 발 위에 앉는 일본식 좌법입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "정좌 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_sitting",
+        "pose_kneeling"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "sitting_poses",
+      "source_answer_draft": "무릎을 꿇고 발 위에 앉는 일본식 좌법입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_squatting",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "쪼그리고 앉음",
+      "label_en": "Squatting",
+      "source_type": "team_card",
+      "query_fragments": [
+        "squatting pose reference"
+      ],
+      "look_for": [
+        "무릎과 엉덩이를 낮추고 발 또는 발바닥으로 몸을 지지하는 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "쪼그리고 앉음 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "sitting_poses",
+      "source_answer_draft": "무릎과 엉덩이를 낮추고 발 또는 발바닥으로 몸을 지지하는 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_lying_down",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "누움",
+      "label_en": "Lying Down",
+      "source_type": "team_card",
+      "query_fragments": [
+        "lying down",
+        "pose reference"
+      ],
+      "look_for": [
+        "바닥이나 침대에 몸통을 완전히 댄 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "누움 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "reclining_poses",
+      "source_answer_draft": "바닥이나 침대에 몸통을 완전히 댄 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_propping_on_elbows",
+      "role": "pose",
+      "component": "modifier",
+      "label_ko": "팔꿈치로 지탱",
+      "label_en": "Propping on Elbows",
+      "source_type": "team_card",
+      "query_fragments": [
+        "propping on elbows",
+        "pose reference"
+      ],
+      "look_for": [
+        "누운 상태에서 팔꿈치로 상체를 들어 지지한 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "팔꿈치로 지탱 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_lying_down"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "reclining_poses",
+      "source_answer_draft": "누운 상태에서 팔꿈치로 상체를 들어 지지한 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_side_lying",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "옆으로 누움",
+      "label_en": "Side-Lying",
+      "source_type": "team_card",
+      "query_fragments": [
+        "side-lying pose reference"
+      ],
+      "look_for": [
+        "몸의 옆면을 바닥이나 지지면에 댄 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "옆으로 누움 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "reclining_poses",
+      "source_answer_draft": "몸의 옆면을 바닥이나 지지면에 댄 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_prone",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "엎드림",
+      "label_en": "Prone",
+      "source_type": "team_card",
+      "query_fragments": [
+        "prone reference"
+      ],
+      "look_for": [
+        "가슴이나 배 쪽이 바닥을 향하도록 엎드린 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "엎드림 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "reclining_poses",
+      "source_answer_draft": "가슴이나 배 쪽이 바닥을 향하도록 엎드린 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_supine",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "등을 대고 누움",
+      "label_en": "Supine",
+      "source_type": "team_card",
+      "query_fragments": [
+        "supine pose reference"
+      ],
+      "look_for": [
+        "등이 바닥이나 침대에 닿고 얼굴이 위를 향한 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "등을 대고 누움 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "reclining_poses",
+      "source_answer_draft": "등이 바닥이나 침대에 닿고 얼굴이 위를 향한 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_action",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "액션 포즈",
+      "label_en": "Action Pose",
+      "source_type": "team_card",
+      "query_fragments": [
+        "action pose reference"
+      ],
+      "look_for": [
+        "동작의 순간과 힘의 방향을 강조한 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "액션 포즈 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "동작의 순간과 힘의 방향을 강조한 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_jumping",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "점프",
+      "label_en": "Jumping",
+      "source_type": "team_card",
+      "query_fragments": [
+        "jumping",
+        "pose reference"
+      ],
+      "look_for": [
+        "발이 지면에서 떨어져 공중에 있는 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "점프 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "발이 지면에서 떨어져 공중에 있는 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_running",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "달리기",
+      "label_en": "Running",
+      "source_type": "team_card",
+      "query_fragments": [
+        "running",
+        "pose reference"
+      ],
+      "look_for": [
+        "보폭과 팔의 반대 움직임이 나타나는 이동 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "달리기 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "보폭과 팔의 반대 움직임이 나타나는 이동 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_walking",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "걷기",
+      "label_en": "Walking",
+      "source_type": "team_card",
+      "query_fragments": [
+        "walking",
+        "pose reference"
+      ],
+      "look_for": [
+        "한 발은 지지하고 다른 발은 이동하는 보행 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "걷기 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "한 발은 지지하고 다른 발은 이동하는 보행 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_turning",
+      "role": "pose",
+      "component": "modifier",
+      "label_ko": "돌아보기",
+      "label_en": "Turning",
+      "source_type": "team_card",
+      "query_fragments": [
+        "turning",
+        "pose reference"
+      ],
+      "look_for": [
+        "몸통이나 머리가 기존 진행 방향과 다른 쪽으로 회전한 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "돌아보기 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "몸통이나 머리가 기존 진행 방향과 다른 쪽으로 회전한 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_twisting",
+      "role": "pose",
+      "component": "modifier",
+      "label_ko": "비틀기",
+      "label_en": "Twisting",
+      "source_type": "team_card",
+      "query_fragments": [
+        "twisting",
+        "pose reference"
+      ],
+      "look_for": [
+        "상체와 하체 또는 어깨와 골반의 방향이 서로 다르게 회전한 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "비틀기 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "상체와 하체 또는 어깨와 골반의 방향이 서로 다르게 회전한 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_reaching",
+      "role": "pose",
+      "component": "modifier",
+      "label_ko": "손 뻗기",
+      "label_en": "Reaching",
+      "source_type": "team_card",
+      "query_fragments": [
+        "reaching",
+        "pose reference"
+      ],
+      "look_for": [
+        "팔 또는 손을 목표 방향으로 길게 뻗는 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "손 뻗기 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "팔 또는 손을 목표 방향으로 길게 뻗는 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_crouching",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "웅크리기",
+      "label_en": "Crouching",
+      "source_type": "team_card",
+      "query_fragments": [
+        "crouching",
+        "pose reference"
+      ],
+      "look_for": [
+        "무릎을 굽히고 몸의 높이를 낮춘 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "웅크리기 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "무릎을 굽히고 몸의 높이를 낮춘 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_leaping",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "도약",
+      "label_en": "Leaping",
+      "source_type": "team_card",
+      "query_fragments": [
+        "leaping",
+        "pose reference"
+      ],
+      "look_for": [
+        "큰 보폭이나 추진력으로 공중에 뛰어오른 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "도약 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "큰 보폭이나 추진력으로 공중에 뛰어오른 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_falling",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "낙하",
+      "label_en": "Falling",
+      "source_type": "team_card",
+      "query_fragments": [
+        "falling",
+        "pose reference"
+      ],
+      "look_for": [
+        "균형을 잃거나 아래 방향으로 떨어지는 순간의 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "낙하 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "균형을 잃거나 아래 방향으로 떨어지는 순간의 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_balancing",
+      "role": "pose",
+      "component": "primary",
+      "label_ko": "균형 잡기",
+      "label_en": "Balancing",
+      "source_type": "team_card",
+      "query_fragments": [
+        "balancing",
+        "pose reference"
+      ],
+      "look_for": [
+        "좁은 지지점 위에서 몸의 균형을 유지하려는 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "균형 잡기 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "dynamic_gesture_poses",
+      "source_answer_draft": "좁은 지지점 위에서 몸의 균형을 유지하려는 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_contrapposto_classic",
+      "role": "pose",
+      "component": "pose_variant",
+      "label_ko": "클래식 콘트라포스토",
+      "label_en": "Classic Contrapposto",
+      "source_type": "team_card",
+      "query_fragments": [
+        "classic contrapposto",
+        "pose reference"
+      ],
+      "look_for": [
+        "한쪽 다리 지지와 골반·어깨의 반대 기울기가 분명한 전형적 콘트라포스토입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "클래식 콘트라포스토 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_contrapposto"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "contrapposto_variants",
+      "source_answer_draft": "한쪽 다리 지지와 골반·어깨의 반대 기울기가 분명한 전형적 콘트라포스토입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_contrapposto_weight_shift",
+      "role": "pose",
+      "component": "pose_variant",
+      "label_ko": "체중 이동 콘트라포스토",
+      "label_en": "Weight Shift Contrapposto",
+      "source_type": "team_card",
+      "query_fragments": [
+        "weight shift contrapposto",
+        "pose reference"
+      ],
+      "look_for": [
+        "체중 이동이 보이지만 골반·어깨의 반대 기울기는 약한 콘트라포스토 계열 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "체중 이동 콘트라포스토 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_contrapposto",
+        "pose_weight_shift"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "contrapposto_variants",
+      "source_answer_draft": "체중 이동이 보이지만 골반·어깨의 반대 기울기는 약한 콘트라포스토 계열 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_contrapposto_dynamic",
+      "role": "pose",
+      "component": "pose_variant",
+      "label_ko": "역동적 콘트라포스토",
+      "label_en": "Dynamic Contrapposto",
+      "source_type": "team_card",
+      "query_fragments": [
+        "dynamic contrapposto",
+        "pose reference"
+      ],
+      "look_for": [
+        "콘트라포스토의 지지 구조에 팔·몸통의 큰 움직임이 더해진 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "역동적 콘트라포스토 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_contrapposto"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "contrapposto_variants",
+      "source_answer_draft": "콘트라포스토의 지지 구조에 팔·몸통의 큰 움직임이 더해진 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_contrapposto_s_curve",
+      "role": "pose",
+      "component": "pose_variant",
+      "label_ko": "S자 곡선 콘트라포스토",
+      "label_en": "S-Curve Contrapposto",
+      "source_type": "team_card",
+      "query_fragments": [
+        "s-curve contrapposto",
+        "pose reference"
+      ],
+      "look_for": [
+        "콘트라포스토의 지지 구조와 S자 몸통 흐름이 함께 나타난 자세입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "S자 곡선 콘트라포스토 또는 이에 해당하는 자세의 명시",
+          "지지점·팔다리 방향·몸통 흐름·동세 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": [
+          "성격·감정 묘사만 있음",
+          "카메라 시점만 있음"
+        ]
+      },
+      "requires_all_of": [
+        "pose_contrapposto",
+        "pose_s_curve"
+      ],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "contrapposto_variants",
+      "source_answer_draft": "콘트라포스토의 지지 구조와 S자 몸통 흐름이 함께 나타난 자세입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_hands_on_hips",
+      "role": "pose",
+      "component": "hand_gesture",
+      "label_ko": "허리에 손",
+      "label_en": "hands on hips",
+      "source_type": "team_card",
+      "query_fragments": [
+        "hands on hips pose"
+      ],
+      "look_for": [
+        "양손 또는 한 손이 골반·허리 옆에 놓임",
+        "팔꿈치가 몸통 바깥으로 꺾여 보임"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "손을 허리에 댄다는 묘사",
+          "팔꿈치를 벌리고 선다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "손을 주머니에 넣은 상태",
+          "팔을 몸 옆으로 내린 상태"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-23",
+      "source_category_id": "booru_crosscheck_candidates_reviewed",
+      "source_answer_draft": "팀 작성 초안: '허리에 손' 레퍼런스를 찾을 때 '손이 골반·허리 옆에 놓임', '팔꿈치가 몸통 바깥으로 꺾여 보임' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_arms_crossed",
+      "role": "pose",
+      "component": "upper_body_gesture",
+      "label_ko": "팔짱",
+      "label_en": "arms crossed",
+      "source_type": "team_card",
+      "query_fragments": [
+        "arms crossed pose"
+      ],
+      "look_for": [
+        "두 팔이 몸통 앞에서 서로 교차함",
+        "손 또는 팔꿈치가 반대쪽 팔에 닿음"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "팔짱을 낀다는 묘사",
+          "두 팔을 가슴 앞에서 교차한다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "팔 하나만 몸통 앞에 둔 상태",
+          "물건을 두 팔로 안고 있는 상태"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-23",
+      "source_category_id": "booru_crosscheck_candidates_reviewed",
+      "source_answer_draft": "팀 작성 초안: '팔짱' 레퍼런스를 찾을 때 '두 팔이 몸통 앞에서 서로 교차함', '손 또는 팔꿈치가 반대쪽 팔에 닿음' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_hands_behind_back",
+      "role": "pose",
+      "component": "hand_gesture",
+      "label_ko": "등 뒤로 깍지 낀 손",
+      "label_en": "hands behind back",
+      "source_type": "team_card",
+      "query_fragments": [
+        "hands behind back pose"
+      ],
+      "look_for": [
+        "양손 또는 팔이 골반 뒤쪽으로 향함",
+        "손이 몸통 뒤에서 맞잡히거나 가려짐"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "두 손을 등 뒤로 보낸다는 묘사",
+          "등 뒤에서 손을 잡는다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "인물을 뒤에서 본 시점만 있는 경우",
+          "한 팔이 몸통 뒤로 잠시 가려진 경우"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-23",
+      "source_category_id": "booru_crosscheck_candidates_reviewed",
+      "source_answer_draft": "팀 작성 초안: '등 뒤로 깍지 낀 손' 레퍼런스를 찾을 때 '양손 또는 팔이 골반 뒤쪽으로 향함', '손이 몸통 뒤에서 맞잡히거나 가려짐' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_hand_on_chin",
+      "role": "pose",
+      "component": "hand_gesture",
+      "label_ko": "턱에 손",
+      "label_en": "hand on chin",
+      "source_type": "team_card",
+      "query_fragments": [
+        "hand on chin pose"
+      ],
+      "look_for": [
+        "손가락 또는 손바닥이 턱·턱선에 닿음",
+        "팔이 얼굴 아래쪽을 향함"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "턱을 손으로 받친다는 묘사",
+          "손을 턱에 댄다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "볼이나 이마에 손을 댄 상태",
+          "고개만 아래로 숙인 상태"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-23",
+      "source_category_id": "booru_crosscheck_candidates_reviewed",
+      "source_answer_draft": "팀 작성 초안: '턱에 손' 레퍼런스를 찾을 때 '손가락 또는 손바닥이 턱·턱선에 닿음', '팔이 얼굴 아래쪽을 향함' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_hand_on_chest",
+      "role": "pose",
+      "component": "hand_gesture",
+      "label_ko": "가슴에 손",
+      "label_en": "hand on chest",
+      "source_type": "team_card",
+      "query_fragments": [
+        "hand on chest pose"
+      ],
+      "look_for": [
+        "한 손 또는 양손이 윗가슴·흉골 부근에 닿음",
+        "손가락이 몸통 쪽으로 향함"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "손을 가슴에 얹는다는 묘사",
+          "흉골 부근을 손으로 짚는다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "가슴 높이에서 물건을 든 상태",
+          "팔짱을 낀 상태"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-23",
+      "source_category_id": "booru_crosscheck_candidates_reviewed",
+      "source_answer_draft": "팀 작성 초안: '가슴에 손' 레퍼런스를 찾을 때 '한 손 또는 양손이 윗가슴·흉골 부근에 닿음', '손가락이 몸통 쪽으로 향함' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "pose_salute",
+      "role": "pose",
+      "component": "hand_gesture",
+      "label_ko": "경례",
+      "label_en": "salute",
+      "source_type": "team_card",
+      "query_fragments": [
+        "salute"
+      ],
+      "look_for": [
+        "손가락을 편 손이 관자놀이나 이마 가까이에 놓임",
+        "팔꿈치가 옆이나 바깥으로 향함"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "경례한다는 묘사",
+          "손을 이마 가까이 들어 올린다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "손으로 눈부심을 가리는 상태",
+          "손을 흔드는 상태"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-23",
+      "source_category_id": "booru_crosscheck_candidates_reviewed",
+      "source_answer_draft": "팀 작성 초안: '경례' 레퍼런스를 찾을 때 '편 손이 관자놀이나 이마 가까이에 놓임', '팔꿈치가 옆이나 바깥으로 향함' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    }
+  ]
+}

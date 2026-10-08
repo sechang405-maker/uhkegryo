@@ -1,0 +1,5 @@
+# Reviewed SHA-256 source hashes, not credentials. Preserve metadata and full history scanning.
+# backend/shared/auth.py (metadata source_sha256)
+f709df4d3a0b6d2ac5e957886fabaca838b57baf:evals/runs/20261002-154511-openai-gpt-4.1-mini/metadata.json:generic-api-key:98
+# backend/tests/test_session_cookie_token.py (metadata source_sha256)
+f709df4d3a0b6d2ac5e957886fabaca838b57baf:evals/runs/20261002-154511-openai-gpt-4.1-mini/metadata.json:generic-api-key:127

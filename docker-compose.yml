@@ -1,0 +1,180 @@
+x-langfuse-env: &langfuse-env
+  DATABASE_URL: postgresql://postgres:${LANGFUSE_POSTGRES_PASSWORD:?Set LANGFUSE_POSTGRES_PASSWORD in .env}@postgres:5432/postgres
+  NEXTAUTH_URL: http://localhost:3000
+  SALT: ${LANGFUSE_SALT:?Set LANGFUSE_SALT in .env}
+  ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:?Set LANGFUSE_ENCRYPTION_KEY in .env}
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+  CLICKHOUSE_URL: http://clickhouse:8123
+  CLICKHOUSE_USER: langfuse
+  CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:?Set LANGFUSE_CLICKHOUSE_PASSWORD in .env}
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  REDIS_AUTH: ${LANGFUSE_REDIS_AUTH:?Set LANGFUSE_REDIS_AUTH in .env}
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_ROOT_PASSWORD:?Set LANGFUSE_MINIO_ROOT_PASSWORD in .env}
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+
+services:
+  searxng:
+    image: proj2-4/searxng:local
+    build: ./searxng
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:8080:8080
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET in .env}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:4
+    restart: unless-stopped
+    depends_on: &langfuse-depends-on
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:3000:3000
+    environment:
+      <<: *langfuse-env
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:?Set LANGFUSE_NEXTAUTH_SECRET in .env}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+      LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
+
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    restart: unless-stopped
+    depends_on: *langfuse-depends-on
+    environment: *langfuse-env
+
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:25.12
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:?Set LANGFUSE_CLICKHOUSE_PASSWORD in .env}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: cgr.dev/chainguard/minio
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: langfuse
+      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_ROOT_PASSWORD:?Set LANGFUSE_MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - 127.0.0.1:9090:9000
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: docker.io/redis:7.2
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${LANGFUSE_REDIS_AUTH:?Set LANGFUSE_REDIS_AUTH in .env}", "--maxmemory-policy", "noeviction"]
+    environment:
+      REDISCLI_AUTH: ${LANGFUSE_REDIS_AUTH:?Set LANGFUSE_REDIS_AUTH in .env}
+    volumes:
+      - langfuse_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: docker.io/postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${LANGFUSE_POSTGRES_PASSWORD:?Set LANGFUSE_POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    command:
+      - python
+      - -c
+      - |
+        import os
+        import sys
+        path = os.environ.get("COMPOSE_PROMPT_PATH", "")
+        version = os.environ.get("COMPOSE_PROMPT_VERSION", "")
+        if bool(path) != bool(version):
+            sys.exit("Set both INTERPRETER_PROMPT_PATH and INTERPRETER_PROMPT_VERSION in .env")
+        os.execvp("uvicorn", ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"])
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      COMPOSE_PROMPT_PATH: ${INTERPRETER_PROMPT_PATH:-}
+      COMPOSE_PROMPT_VERSION: ${INTERPRETER_PROMPT_VERSION:-}
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-4.1-mini}
+      INTERPRETER_PROMPT_PATH: ${INTERPRETER_PROMPT_PATH:-/app/prompts/uhkegryo-interpreter-v4.md}
+      INTERPRETER_PROMPT_VERSION: ${INTERPRETER_PROMPT_VERSION:-uhkegryo-interpreter-v4}
+      LANGFUSE_HOST: ${LANGFUSE_APP_URL:-http://langfuse-web:3000}
+      LANGFUSE_BASE_URL: ${LANGFUSE_APP_URL:-http://langfuse-web:3000}
+      SEARXNG_BASE_URL: http://searxng:8080
+      MCP_BASE_URL: http://mcp:8001/mcp
+    depends_on:
+      langfuse-web:
+        condition: service_started
+      searxng:
+        condition: service_started
+      mcp:
+        condition: service_started
+
+  mcp:
+    build: .
+    command: uvicorn mcp_server.server:app --host 0.0.0.0 --port 8001
+    ports:
+      - "127.0.0.1:8001:8001"
+    env_file:
+      - .env
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080
+      MCP_ALLOWED_HOST: mcp:8001
+    depends_on:
+      searxng:
+        condition: service_started
+
+volumes:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_minio_data:
+  langfuse_redis_data:

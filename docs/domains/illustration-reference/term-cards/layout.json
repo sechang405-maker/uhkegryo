@@ -1,0 +1,77 @@
+{
+  "role": "layout",
+  "card_count": 2,
+  "cards": [
+    {
+      "term_id": "composition_rule_of_thirds",
+      "role": "layout",
+      "component": "primary",
+      "label_ko": "삼분할 구도",
+      "label_en": "rule of thirds",
+      "source_type": "team_card",
+      "query_fragments": [
+        "character illustration",
+        "rule of thirds composition",
+        "reference"
+      ],
+      "look_for": [
+        "화면을 가로·세로 3등분함",
+        "중요 요소가 선 또는 교차점 부근에 있음"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "삼분할 구도라는 명시",
+          "3등분 선이나 교차점에 배치한다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "화면을 세 부분으로 나눈다는 표현만 있음",
+          "세 명의 인물이 등장함"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '삼분할 구도' 레퍼런스를 찾을 때 '화면을 가로·세로 3등분함', '중요 요소가 선 또는 교차점 부근에 있음' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "layout_composition",
+      "role": "layout",
+      "component": "primary",
+      "label_ko": "구도",
+      "label_en": "composition",
+      "source_type": "team_card",
+      "query_fragments": [
+        "character illustration",
+        "composition reference"
+      ],
+      "look_for": [
+        "인물·배경·빈 공간이 화면 안에서 이루는 배치",
+        "시선이 향하는 주된 요소와 보조 요소의 관계"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "구도 또는 화면 배치라는 명시",
+          "인물과 배경·여백의 위치 관계를 조정하려는 묘사"
+        ],
+        "do_not_infer_from": [
+          "인물 포즈만 제시됨",
+          "색감이나 화풍만 언급함"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-22",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "team_candidate_enrichment",
+      "source_answer_draft": "팀 작성 초안: '구도' 레퍼런스를 찾을 때 '인물·배경·빈 공간이 화면 안에서 이루는 배치', '시선이 향하는 주된 요소와 보조 요소의 관계' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    }
+  ]
+}

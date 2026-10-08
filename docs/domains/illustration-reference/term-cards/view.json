@@ -1,0 +1,320 @@
+{
+  "role": "view",
+  "card_count": 11,
+  "cards": [
+    {
+      "term_id": "view_front",
+      "role": "view",
+      "component": "primary",
+      "label_ko": "프론트 뷰",
+      "label_en": "front view",
+      "source_type": "team_card",
+      "query_fragments": ["front view"],
+      "look_for": [
+        "얼굴과 몸통이 관찰자 쪽을 향함",
+        "좌우 정보가 비교적 대칭적으로 보임"
+      ],
+      "confidence_gate": {
+        "require_any": ["정면을 본다는 묘사", "앞모습이라는 명시"],
+        "do_not_infer_from": ["배경의 1점 투시", "카메라 높이 정보만 있음"]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '프론트 뷰' 레퍼런스를 찾을 때 '얼굴과 몸통이 관찰자 쪽을 향함', '좌우 정보가 비교적 대칭적으로 보임' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_three_quarter",
+      "role": "view",
+      "component": "primary",
+      "label_ko": "3/4 뷰",
+      "label_en": "three-quarter view",
+      "source_type": "team_card",
+      "query_fragments": ["three quarter view"],
+      "look_for": [
+        "정면과 측면 사이로 보이는 얼굴",
+        "한쪽 면이 더 많이 보이는 몸통"
+      ],
+      "confidence_gate": {
+        "require_any": ["45도 정도 비스듬히 본다는 묘사", "3/4뷰라는 명시"],
+        "do_not_infer_from": [
+          "하이 앵글이나 로우 앵글만 있음",
+          "정면과 측면을 모두 원한다는 모호한 표현"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '3/4 뷰' 레퍼런스를 찾을 때 '정면과 측면 사이로 보이는 얼굴', '한쪽 면이 더 많이 보이는 몸통' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_high_angle",
+      "role": "view",
+      "component": "primary",
+      "label_ko": "하이 앵글",
+      "label_en": "high-angle view",
+      "source_type": "team_card",
+      "query_fragments": ["high angle"],
+      "look_for": [
+        "카메라가 인물보다 높은 위치에 있음",
+        "위에서 아래로 내려다봄"
+      ],
+      "confidence_gate": {
+        "require_any": ["위에서 내려다본다는 묘사", "하이 앵글이라는 명시"],
+        "do_not_infer_from": [
+          "인물이 고개를 숙임",
+          "인물이 작게 보인다는 묘사만 있음"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '하이 앵글' 레퍼런스를 찾을 때 '카메라가 인물보다 높은 위치에 있음', '위에서 아래로 내려다봄' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_low_angle",
+      "role": "view",
+      "component": "primary",
+      "label_ko": "로우 앵글",
+      "label_en": "low-angle view",
+      "source_type": "team_card",
+      "query_fragments": ["low angle"],
+      "look_for": [
+        "카메라가 인물보다 낮은 위치에 있음",
+        "아래에서 위로 올려다봄"
+      ],
+      "confidence_gate": {
+        "require_any": ["아래에서 올려다본다는 묘사", "로우 앵글이라는 명시"],
+        "do_not_infer_from": ["인물이 키가 큼", "배경에 높은 건물이 있음"]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '로우 앵글' 레퍼런스를 찾을 때 '카메라가 인물보다 낮은 위치에 있음', '아래에서 위로 올려다봄' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_profile",
+      "role": "view",
+      "component": "primary",
+      "label_ko": "측면 뷰",
+      "label_en": "Profile",
+      "source_type": "team_card",
+      "query_fragments": ["profile"],
+      "look_for": ["인물을 옆에서 본 시점입니다."],
+      "confidence_gate": {
+        "require_any": [
+          "측면 뷰 또는 이에 해당하는 시점의 명시",
+          "인물을 보는 방향·높이·수평 기울기 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": ["인물 포즈만 제시됨", "배경의 투시 정보만 제시됨"]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "camera_views",
+      "source_answer_draft": "인물을 옆에서 본 시점입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_back",
+      "role": "view",
+      "component": "primary",
+      "label_ko": "뒷면 뷰",
+      "label_en": "Back View",
+      "source_type": "team_card",
+      "query_fragments": ["full back view"],
+      "look_for": ["인물을 뒤에서 본 시점입니다."],
+      "confidence_gate": {
+        "require_any": [
+          "뒷면 뷰 또는 이에 해당하는 시점의 명시",
+          "인물을 보는 방향·높이·수평 기울기 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": ["인물 포즈만 제시됨", "배경의 투시 정보만 제시됨"]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "camera_views",
+      "source_answer_draft": "인물을 뒤에서 본 시점입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_birds_eye",
+      "role": "view",
+      "component": "primary",
+      "label_ko": "조감도",
+      "label_en": "Bird's Eye View",
+      "source_type": "team_card",
+      "query_fragments": ["bird's eye view"],
+      "look_for": [
+        "높은 곳에서 장면 전체를 내려다보는 시점입니다. 단순 하이 앵글보다 위쪽에 가깝습니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "조감도 또는 이에 해당하는 시점의 명시",
+          "인물을 보는 방향·높이·수평 기울기 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": ["인물 포즈만 제시됨", "배경의 투시 정보만 제시됨"]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "camera_views",
+      "source_answer_draft": "높은 곳에서 장면 전체를 내려다보는 시점입니다. 단순 하이 앵글보다 위쪽에 가깝습니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_worms_eye",
+      "role": "view",
+      "component": "primary",
+      "label_ko": "개미 눈높이",
+      "label_en": "Worm's Eye View",
+      "source_type": "team_card",
+      "query_fragments": ["worm's eye view"],
+      "look_for": [
+        "아주 낮은 위치에서 위로 올려다보는 시점입니다. 단순 로우 앵글보다 아래쪽에 가깝습니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "개미 눈높이 또는 이에 해당하는 시점의 명시",
+          "인물을 보는 방향·높이·수평 기울기 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": ["인물 포즈만 제시됨", "배경의 투시 정보만 제시됨"]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "camera_views",
+      "source_answer_draft": "아주 낮은 위치에서 위로 올려다보는 시점입니다. 단순 로우 앵글보다 아래쪽에 가깝습니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_dutch_angle",
+      "role": "view",
+      "component": "primary",
+      "label_ko": "더치 앵글",
+      "label_en": "Dutch Angle",
+      "source_type": "team_card",
+      "query_fragments": ["dutch angle"],
+      "look_for": [
+        "카메라의 수평선을 기울여 불안정하거나 긴장된 느낌을 만드는 시점입니다."
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "더치 앵글 또는 이에 해당하는 시점의 명시",
+          "인물을 보는 방향·높이·수평 기울기 중 하나 이상의 단서"
+        ],
+        "do_not_infer_from": ["인물 포즈만 제시됨", "배경의 투시 정보만 제시됨"]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-21",
+      "source_category_id": "camera_views",
+      "source_answer_draft": "카메라의 수평선을 기울여 불안정하거나 긴장된 느낌을 만드는 시점입니다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_over_the_shoulder",
+      "role": "view",
+      "component": "framing",
+      "label_ko": "오버더숄더 뷰",
+      "label_en": "over-the-shoulder view",
+      "source_type": "team_card",
+      "query_fragments": [
+        "over the shoulder"
+      ],
+      "look_for": [
+        "앞쪽 인물의 어깨나 머리 일부가 화면 전경에 놓임",
+        "전경 너머의 대상이나 장면을 향해 시선이 이어짐"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "어깨 너머로 본다는 묘사",
+          "전경의 어깨를 지나 대상을 본다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "인물을 단순히 뒤에서 본 경우",
+          "인물이 고개만 뒤로 돌린 경우"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-23",
+      "source_category_id": "booru_crosscheck_candidates_reviewed",
+      "source_answer_draft": "팀 작성 초안: '오버더숄더 뷰' 레퍼런스를 찾을 때 '앞쪽 인물의 어깨나 머리 일부가 화면 전경에 놓임', '전경 너머의 대상이나 장면을 향해 시선이 이어짐' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "view_full_body",
+      "role": "view",
+      "component": "framing",
+      "label_ko": "전신 뷰",
+      "label_en": "full body view",
+      "source_type": "team_card",
+      "query_fragments": [
+        "full body reference"
+      ],
+      "look_for": [
+        "머리부터 발까지 한 화면 안에 보임",
+        "손발 끝이 화면 바깥으로 잘리지 않음"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "전신이 보인다는 묘사",
+          "머리부터 발까지 나온다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "상반신 또는 반신만 보이는 구도",
+          "발이나 머리가 화면 밖으로 잘린 구도"
+        ]
+      },
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-23",
+      "source_category_id": "booru_crosscheck_candidates_reviewed",
+      "source_answer_draft": "팀 작성 초안: '전신 뷰' 레퍼런스를 찾을 때 '머리부터 발까지 한 화면 안에 보임', '손발 끝이 화면 바깥으로 잘리지 않음' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    }
+  ]
+}

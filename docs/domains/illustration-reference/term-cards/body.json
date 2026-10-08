@@ -1,0 +1,218 @@
+{
+  "role": "body",
+  "card_count": 6,
+  "cards": [
+    {
+      "term_id": "body_hourglass",
+      "role": "body",
+      "component": "primary",
+      "label_ko": "모래시계형",
+      "label_en": "hourglass silhouette",
+      "source_type": "team_card",
+      "query_fragments": [
+        "hourglass body",
+        "proportion reference"
+      ],
+      "look_for": [
+        "어깨와 골반 폭이 비슷함",
+        "허리가 상대적으로 들어감"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "어깨와 골반이 비슷하고 허리가 들어갔다는 묘사",
+          "모래시계 체형이라는 명시"
+        ],
+        "do_not_infer_from": [
+          "의상 허리선만 조여 보인다는 묘사",
+          "코르셋이나 큰 치마"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '모래시계형' 레퍼런스를 찾을 때 '어깨와 골반 폭이 비슷함', '허리가 상대적으로 들어감' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "body_inverted_triangle",
+      "role": "body",
+      "component": "primary",
+      "label_ko": "역삼각형",
+      "label_en": "inverted triangle silhouette",
+      "source_type": "team_card",
+      "query_fragments": [
+        "inverted triangle body",
+        "proportion reference"
+      ],
+      "look_for": [
+        "어깨 또는 상체 폭이 골반보다 넓음",
+        "아래로 갈수록 좁아지는 전체 실루엣"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "넓은 어깨와 좁은 골반이라는 묘사",
+          "역삼각형 체형이라는 명시"
+        ],
+        "do_not_infer_from": [
+          "패드",
+          "망토",
+          "퍼프소매처럼 의상만 넓어 보이는 경우"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '역삼각형' 레퍼런스를 찾을 때 '어깨 또는 상체 폭이 골반보다 넓음', '아래로 갈수록 좁아지는 전체 실루엣' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "body_triangle",
+      "role": "body",
+      "component": "primary",
+      "label_ko": "삼각형",
+      "label_en": "triangle silhouette",
+      "source_type": "team_card",
+      "query_fragments": [
+        "triangle body reference"
+      ],
+      "look_for": [
+        "골반 또는 하체 폭이 상체보다 넓음",
+        "아래로 무게감이 모이는 실루엣"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "좁은 상체와 넓은 골반이라는 묘사",
+          "삼각형 체형이라는 명시"
+        ],
+        "do_not_infer_from": [
+          "넓은 치마",
+          "통이 큰 바지",
+          "소품의 부피"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '삼각형' 레퍼런스를 찾을 때 '골반 또는 하체 폭이 상체보다 넓음', '아래로 무게감이 모이는 실루엣' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "body_slim",
+      "role": "body",
+      "component": "primary",
+      "label_ko": "슬림",
+      "label_en": "slim proportion",
+      "source_type": "team_card",
+      "query_fragments": [
+        "slim body reference"
+      ],
+      "look_for": [
+        "전체 체적이 가늘다는 단서",
+        "팔다리가 길거나 가늘다는 단서"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "마른 체형 또는 가는 팔다리라는 묘사",
+          "슬림 비율이라는 명시"
+        ],
+        "do_not_infer_from": [
+          "헐렁한 옷",
+          "큰 코트",
+          "가려진 신체"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '슬림' 레퍼런스를 찾을 때 '전체 체적이 가늘다는 단서', '팔다리가 길거나 가늘다는 단서' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "body_childlike",
+      "role": "body",
+      "component": "primary",
+      "label_ko": "유아형",
+      "label_en": "childlike proportion",
+      "source_type": "team_card",
+      "query_fragments": [
+        "childlike proportion",
+        "character body reference"
+      ],
+      "look_for": [
+        "머리 대비 몸이 작음",
+        "팔다리가 짧은 비례"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "큰 머리와 짧은 팔다리라는 묘사",
+          "유아 비례라는 명시"
+        ],
+        "do_not_infer_from": [
+          "귀여운 표정",
+          "귀여운 성격",
+          "작은 소품"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '유아형' 레퍼런스를 찾을 때 '머리 대비 몸이 작음', '팔다리가 짧은 비례' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "body_human_proportion",
+      "role": "body",
+      "component": "primary",
+      "label_ko": "인체 비례",
+      "label_en": "human proportion",
+      "source_type": "team_card",
+      "query_fragments": [
+        "human proportion",
+        "figure reference"
+      ],
+      "look_for": [
+        "머리·몸통·팔다리의 길이와 폭이 전신에서 이루는 관계",
+        "의상 외곽선이 아니라 인물 기본 골격의 비례"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "전신 비례 또는 머리 대비 신체 길이라는 명시",
+          "머리·몸통·팔다리의 상대 길이를 맞추려는 묘사"
+        ],
+        "do_not_infer_from": [
+          "헐렁한 옷이나 과장된 소매",
+          "특정 부위의 크기만 언급함"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-22",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "team_candidate_enrichment",
+      "source_answer_draft": "팀 작성 초안: '인체 비례' 레퍼런스를 찾을 때 '머리·몸통·팔다리의 길이와 폭이 전신에서 이루는 관계', '의상 외곽선이 아니라 인물 기본 골격의 비례' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    }
+  ]
+}

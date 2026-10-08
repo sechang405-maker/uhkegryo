@@ -1,0 +1,182 @@
+{
+  "role": "perspective",
+  "card_count": 5,
+  "cards": [
+    {
+      "term_id": "perspective_three_point",
+      "role": "perspective",
+      "component": "primary",
+      "label_ko": "3점 투시",
+      "label_en": "three-point perspective",
+      "source_type": "team_card",
+      "query_fragments": [
+        "character",
+        "three point perspective",
+        "reference"
+      ],
+      "look_for": [
+        "수직선도 위 또는 아래 방향으로 향하는 공간감",
+        "높이감이나 낙차가 강조된 배경"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "3점 투시라는 명시",
+          "위·아래 소실점까지 필요하다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "인물을 아래에서 본다는 묘사만 있음",
+          "3/4뷰 인물이라는 묘사"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '3점 투시' 레퍼런스를 찾을 때 '수직선도 위 또는 아래 방향으로 향하는 공간감', '높이감이나 낙차가 강조된 배경' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "perspective_foreshortening",
+      "role": "perspective",
+      "component": "primary",
+      "label_ko": "과투시/단축법",
+      "label_en": "foreshortening",
+      "source_type": "team_card",
+      "query_fragments": [
+        "character",
+        "foreshortening pose reference"
+      ],
+      "look_for": [
+        "가까운 손·발·팔다리가 크게 보임",
+        "먼 신체 부위가 작고 짧게 보임"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "손이나 발을 카메라 쪽으로 내민다는 묘사",
+          "과투시 또는 단축법이라는 명시"
+        ],
+        "do_not_infer_from": [
+          "광각 느낌만 언급함",
+          "단순히 하이 앵글 또는 로우 앵글임"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '과투시/단축법' 레퍼런스를 찾을 때 '가까운 손·발·팔다리가 크게 보임', '먼 신체 부위가 작고 짧게 보임' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "perspective_vanishing_point",
+      "role": "perspective",
+      "component": "primary",
+      "label_ko": "소실점",
+      "label_en": "vanishing point",
+      "source_type": "team_card",
+      "query_fragments": [
+        "vanishing point",
+        "character background reference"
+      ],
+      "look_for": [
+        "평행선이 멀리 갈수록 한 지점 또는 여러 지점으로 모임",
+        "바닥·건물선이 깊이 방향을 가리킴"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "선이 한 점으로 모인다는 묘사",
+          "소실점이라는 명시"
+        ],
+        "do_not_infer_from": [
+          "인물의 시선이 한곳을 향함",
+          "포즈 이름으로 소실점을 사용함"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-18",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "initial_term_cards",
+      "source_answer_draft": "팀 작성 초안: '소실점' 레퍼런스를 찾을 때 '평행선이 멀리 갈수록 한 지점 또는 여러 지점으로 모임', '바닥·건물선이 깊이 방향을 가리킴' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "perspective_one_point",
+      "role": "perspective",
+      "component": "primary",
+      "label_ko": "1점 투시",
+      "label_en": "one-point perspective",
+      "source_type": "team_card",
+      "query_fragments": [
+        "one point perspective",
+        "character background reference"
+      ],
+      "look_for": [
+        "깊이 방향의 평행선이 한 소실점으로 모임",
+        "정면을 향한 복도·방·도로처럼 수직선이 평행하게 유지되는 공간"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "1점 투시 또는 하나의 소실점이라는 명시",
+          "정면 공간의 깊이선이 한 점으로 모인다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "인물 한 명을 정면에서 본다는 묘사만 있음",
+          "배경 원근선 없이 정면 뷰만 제시됨"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-22",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "team_candidate_enrichment",
+      "source_answer_draft": "팀 작성 초안: '1점 투시' 레퍼런스를 찾을 때 '깊이 방향의 평행선이 한 소실점으로 모임', '정면을 향한 복도·방·도로처럼 수직선이 평행하게 유지되는 공간' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    },
+    {
+      "term_id": "perspective_two_point",
+      "role": "perspective",
+      "component": "primary",
+      "label_ko": "2점 투시",
+      "label_en": "two-point perspective",
+      "source_type": "team_card",
+      "query_fragments": [
+        "two point perspective",
+        "character reference"
+      ],
+      "look_for": [
+        "좌우 깊이 방향 선이 서로 다른 두 소실점으로 모임",
+        "모서리가 화면을 향하고 수직선은 평행하게 유지되는 공간"
+      ],
+      "confidence_gate": {
+        "require_any": [
+          "2점 투시 또는 두 소실점이라는 명시",
+          "건물 모서리 양쪽 선이 좌우의 서로 다른 점으로 모인다는 묘사"
+        ],
+        "do_not_infer_from": [
+          "인물이 3/4 뷰라는 묘사만 있음",
+          "수직선까지 수렴하는 3점 투시 묘사"
+        ]
+      },
+      "mvp_status": "active_in_current_contract",
+      "reviewed_by": "오세창",
+      "reviewed_at": "2026-09-22",
+      "requires_all_of": [],
+      "requires_any_of": [],
+      "source_category_id": "team_candidate_enrichment",
+      "source_answer_draft": "팀 작성 초안: '2점 투시' 레퍼런스를 찾을 때 '좌우 깊이 방향 선이 서로 다른 두 소실점으로 모임', '모서리가 화면을 향하고 수직선은 평행하게 유지되는 공간' 단서를 우선 확인한다.",
+      "review_status": "reviewed",
+      "runtime_eligible": true
+    }
+  ]
+}

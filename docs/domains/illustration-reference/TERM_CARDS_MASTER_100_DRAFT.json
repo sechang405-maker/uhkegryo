@@ -1,0 +1,7 @@
+{
+  "artifact_type": "deprecated_term_card_store_pointer",
+  "deprecated": true,
+  "migrated_to": "docs/domains/illustration-reference/term-cards/index.json",
+  "do_not_load": true,
+  "note": "카드 데이터는 역할별 파일로 분리되었습니다. 이 파일은 과거 100개 초안의 경로 호환성만 위한 포인터이며, 카드 저장소로 직접 로드하거나 index에 추가하지 마십시오."
+}

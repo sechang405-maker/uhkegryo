@@ -1,0 +1,212 @@
+# Cloud Build 설정: backend/ 변경 시 Docker 빌드 → Artifact Registry → Cloud Run 배포
+# 트리거: GitHub main 브랜치 push, backend/**·searxng/** 경로 변경 감지
+# 팀 운영: API 내부 worker를 위해 최소 인스턴스 1개·상시 CPU 할당 (유휴 과금)
+# Neon: 0.5GB 스토리지, 5분 유휴 시 자동 일시정지, 브랜칭 기능 포함
+# 배포: API + SearXNG sidecar, 별도 MCP 서비스
+steps:
+  - name: "python:3.12-slim"
+    id: "check-team-operation"
+    entrypoint: "python"
+    args: ["scripts/check-team-operation.py"]
+    env:
+      - "TEAM_OPERATION_APPROVED=${_TEAM_OPERATION_APPROVED}"
+      - "TEAM_OPERATION_START=${_TEAM_OPERATION_START}"
+      - "TEAM_OPERATION_END=${_TEAM_OPERATION_END}"
+      - "TEAM_OPERATION_BUDGET=${_TEAM_OPERATION_BUDGET}"
+      - "TEAM_OPERATION_BILLING_OWNER=${_TEAM_OPERATION_BILLING_OWNER}"
+      - "TEAM_OPERATION_BILLING_ACCOUNT=${_TEAM_OPERATION_BILLING_ACCOUNT}"
+      - "TEAM_OPERATION_SHUTDOWN_OWNER=${_TEAM_OPERATION_SHUTDOWN_OWNER}"
+      - "TEAM_OPERATION_SHUTDOWN_PROCEDURE=${_TEAM_OPERATION_SHUTDOWN_PROCEDURE}"
+  # 1. Docker 이미지 빌드
+  - name: "gcr.io/cloud-builders/docker"
+    id: "build-image"
+    args:
+      - "build"
+      - "--tag=${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/${_API_SERVICE_NAME}:${SHORT_SHA}"
+      - "--tag=${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/${_API_SERVICE_NAME}:latest"
+      - "."
+
+  # 2. Artifact Registry에 푸시
+  - name: "gcr.io/cloud-builders/docker"
+    id: "push-image"
+    args:
+      - "push"
+      - "--all-tags"
+      - "${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/${_API_SERVICE_NAME}"
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: "build-searxng-image"
+    args:
+      - "build"
+      - "--tag=${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/searxng:${SHORT_SHA}"
+      - "--file=searxng/Dockerfile"
+      - "searxng"
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: "push-searxng-image"
+    args:
+      - "push"
+      - "${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/searxng:${SHORT_SHA}"
+
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: "get-api-ingress-container"
+    entrypoint: "bash"
+    args:
+      - "-ceu"
+      - |
+        if gcloud run services describe "${_API_SERVICE_NAME}" --region="${_REGION}" --project="${PROJECT_ID}" --format=json > /workspace/api-service.json 2>/dev/null; then
+          python -c 'import json,sys; service=json.load(open(sys.argv[1])); template=service.get("spec",{}).get("template",{}).get("spec",{}); containers=template.get("containers",[]); ingress=next((c for c in containers if c.get("ports")), None); name=ingress.get("name") if ingress else None; print(name) if name else sys.exit("Cloud Run service has no ingress container with a configured port")' /workspace/api-service.json > /workspace/api-ingress-container
+        else
+          printf 'api' > /workspace/api-ingress-container
+        fi
+
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: "get-mcp-ingress-container"
+    entrypoint: "bash"
+    args:
+      - "-ceu"
+      - |
+        if gcloud run services describe "${_MCP_SERVICE_NAME}" --region="${_REGION}" --project="${PROJECT_ID}" --format=json > /workspace/mcp-service.json 2>/dev/null; then
+          python scripts/cloud_run_mcp_ingress.py /workspace/mcp-service.json > /workspace/mcp-ingress-container
+        else
+          python scripts/cloud_run_mcp_ingress.py > /workspace/mcp-ingress-container
+        fi
+
+  # 3. 내부 MCP Cloud Run 서비스 배포 (인증 필요, IAM으로 보호)
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: "deploy-mcp"
+    waitFor: ["push-image", "push-searxng-image", "get-mcp-ingress-container"]
+    entrypoint: "bash"
+    args:
+      - "-ceu"
+      - |
+        ingress_container="$(cat /workspace/mcp-ingress-container)"
+        if [ "${ingress_container}" = "__default__" ]; then
+          python scripts/cloud_run_mcp_ingress.py configure /workspace/mcp-service.json \
+            "${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/${_API_SERVICE_NAME}:${SHORT_SHA}" \
+            "${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/searxng:${SHORT_SHA}" \
+            > /workspace/mcp-deploy.json
+          gcloud run services replace /workspace/mcp-deploy.json --region="${_REGION}" --project="${PROJECT_ID}" --dry-run
+          gcloud run services replace /workspace/mcp-deploy.json --region="${_REGION}" --project="${PROJECT_ID}"
+          printf 'mcp' > /workspace/mcp-ingress-container
+          exit 0
+        fi
+        set -- run deploy "${_MCP_SERVICE_NAME}" \
+          "--region=${_REGION}" --platform=managed --no-allow-unauthenticated \
+          --min-instances=0 --max-instances=3 --concurrency=80 --timeout=300 \
+          --container=searxng \
+          "--image=${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/searxng:${SHORT_SHA}" \
+          --cpu=1 --memory=512Mi \
+          --set-secrets=SEARXNG_SECRET=SEARXNG_SECRET:latest \
+          --startup-probe=tcpSocket.port=8080,periodSeconds=2,timeoutSeconds=2,failureThreshold=30
+        if [ "${ingress_container}" != "__default__" ]; then
+          set -- "$@" "--container=${ingress_container}"
+        fi
+        set -- "$@" \
+          "--image=${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/${_API_SERVICE_NAME}:${SHORT_SHA}" \
+          --port=8000 --cpu=1 --memory=512Mi --depends-on=searxng \
+          --command=uvicorn --args=mcp_server.server:app,--host,0.0.0.0,--port,8000 \
+          --set-env-vars=ENVIRONMENT=production,SEARXNG_BASE_URL=http://localhost:8080 \
+          --set-secrets=OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest \
+          --set-secrets=LANGFUSE_PUBLIC_KEY=LANGFUSE_PUBLIC_KEY:latest \
+          --set-secrets=LANGFUSE_SECRET_KEY=LANGFUSE_SECRET_KEY:latest \
+          --set-secrets=DATABASE_URL=DATABASE_URL:latest \
+          --set-secrets=SESSION_SECRET=SESSION_SECRET:latest
+        gcloud "$@"
+
+  # 4. 공개 API Cloud Run 서비스 배포 (인증 불필요)
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: "deploy-api"
+    waitFor: ["push-image", "push-searxng-image", "get-api-ingress-container", "deploy-mcp"]
+    entrypoint: "bash"
+    args:
+      - "-ceu"
+      - |
+        ingress_container="$(cat /workspace/api-ingress-container)"
+        gcloud run deploy "${_API_SERVICE_NAME}" \
+          "--region=${_REGION}" \
+          --platform=managed \
+          --allow-unauthenticated \
+          --min=1 --max=1 \
+          --min-instances=default --max-instances=default \
+          --no-cpu-throttling \
+          --concurrency=80 \
+          --timeout=300 \
+          --service-account=${_MCP_CALLER_SA}@${PROJECT_ID}.iam.gserviceaccount.com \
+          --container=searxng \
+          --image=${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/searxng:${SHORT_SHA} \
+          --cpu=1 \
+          --memory=512Mi \
+          --set-secrets=SEARXNG_SECRET=SEARXNG_SECRET:latest \
+          --startup-probe=tcpSocket.port=8080,periodSeconds=2,timeoutSeconds=2,failureThreshold=30 \
+          "--container=${ingress_container}" \
+          --depends-on=searxng \
+          "--image=${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_ARTIFACT_REPO}/${_API_SERVICE_NAME}:${SHORT_SHA}" \
+          --port=8000 \
+          --cpu=1 \
+          --memory=512Mi \
+          --update-env-vars=ENVIRONMENT=production,INTERPRETER_PROMPT_PATH=/app/prompts/uhkegryo-interpreter-v4.md,INTERPRETER_PROMPT_VERSION=uhkegryo-interpreter-v4,STRUCTURED_OUTPUT_SKILL_PATH=/app/skills/structured-output/SKILL.md,TERM_CARDS_PATH=/app/term-cards,LLM_MODEL=openai/gpt-4.1-mini,LLM_TIMEOUT_SECONDS=180,LLM_MAX_TOKENS=2048,SEARXNG_BASE_URL=http://localhost:8080,MCP_ENABLED=true,WORKER_CONCURRENCY=5 \
+          --set-secrets=OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest \
+          --set-secrets=LANGFUSE_PUBLIC_KEY=LANGFUSE_PUBLIC_KEY:latest \
+          --set-secrets=LANGFUSE_SECRET_KEY=LANGFUSE_SECRET_KEY:latest \
+          --set-secrets=DATABASE_URL=DATABASE_URL:latest \
+          --set-secrets=SESSION_SECRET=SESSION_SECRET:latest
+
+  # FastMCP의 Host 허용 목록에 Cloud Run 서비스 주소를 등록
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: "allow-mcp-cloud-run-host"
+    waitFor: ["deploy-mcp", "deploy-api"]
+    entrypoint: "bash"
+    args:
+      - "-ceu"
+      - |
+        mcp_url="$(gcloud run services describe "${_MCP_SERVICE_NAME}" --region="${_REGION}" --project="${PROJECT_ID}" --format='value(status.url)')"
+        mcp_host="${mcp_url#https://}"
+        ingress_container="$(cat /workspace/mcp-ingress-container)"
+        if [ "${ingress_container}" = "__default__" ]; then
+          gcloud run services update "${_MCP_SERVICE_NAME}" --region="${_REGION}" --project="${PROJECT_ID}" --update-env-vars="MCP_ALLOWED_HOST=${mcp_host}"
+        else
+          gcloud run services update "${_MCP_SERVICE_NAME}" --region="${_REGION}" --project="${PROJECT_ID}" --container="${ingress_container}" --update-env-vars="MCP_ALLOWED_HOST=${mcp_host}"
+        fi
+        ingress_container="$(cat /workspace/api-ingress-container)"
+        gcloud run services update "${_API_SERVICE_NAME}" --region="${_REGION}" --project="${PROJECT_ID}" --container="${ingress_container}" --update-env-vars="MCP_BASE_URL=${mcp_url}/mcp"
+
+  # 5. MCP 서비스에 호출자 서비스 계정 권한 부여 (mcp-caller)
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: "bind-mcp-invoker"
+    entrypoint: "gcloud"
+    args:
+      - "run"
+      - "services"
+      - "add-iam-policy-binding"
+      - "${_MCP_SERVICE_NAME}"
+      - "--region=${_REGION}"
+      - "--platform=managed"
+      - "--member=serviceAccount:${_MCP_CALLER_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
+      - "--role=roles/run.invoker"
+      - "--project=${PROJECT_ID}"
+
+substitutions:
+  _TEAM_OPERATION_APPROVED: "false"
+  _TEAM_OPERATION_START: ""
+  _TEAM_OPERATION_END: ""
+  _TEAM_OPERATION_BUDGET: ""
+  _TEAM_OPERATION_BILLING_OWNER: ""
+  _TEAM_OPERATION_BILLING_ACCOUNT: ""
+  _TEAM_OPERATION_SHUTDOWN_OWNER: ""
+  _TEAM_OPERATION_SHUTDOWN_PROCEDURE: ""
+  _REGION: "asia-northeast3"
+  _ARTIFACT_REGISTRY: "asia-northeast3-docker.pkg.dev"
+  _ARTIFACT_REPO: "docker-repo"
+  _API_SERVICE_NAME: "api"
+  _MCP_SERVICE_NAME: "mcp"
+  _MCP_CALLER_SA: "mcp-caller"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: "E2_STANDARD_4"
+
+# 트리거 조건 (GitHub 웹훅에서 설정):
+# - 브랜치: ^main$
+# - 포함된 파일 경로: backend/**, searxng/**, Dockerfile, cloudbuild.yaml, .env.example
+# - 저장소: aihuman-7th/proj2-4

@@ -1,0 +1,31 @@
+# Run only proxy and its dependencies; do not run the project's api on this VM.
+services:
+  langfuse-web:
+    environment:
+      NEXTAUTH_URL: https://${LANGFUSE_DOMAIN:?Set LANGFUSE_DOMAIN}
+      LANGFUSE_INIT_ORG_ID: portfolio-team
+      LANGFUSE_INIT_ORG_NAME: Portfolio Team
+      LANGFUSE_INIT_PROJECT_ID: portfolio-traces
+      LANGFUSE_INIT_PROJECT_NAME: Portfolio Traces
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?Set project public key}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:?Set project secret key}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_ADMIN_EMAIL:?Set admin email}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_ADMIN_PASSWORD:?Set admin password}
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      LANGFUSE_DOMAIN: ${LANGFUSE_DOMAIN:?Set LANGFUSE_DOMAIN}
+    volumes:
+      - ./deploy/langfuse/Caddyfile:/etc/caddy/Caddyfile:ro
+      - langfuse_caddy_data:/data
+      - langfuse_caddy_config:/config
+    depends_on:
+      - langfuse-web
+      - langfuse-worker
+volumes:
+  langfuse_caddy_data:
+  langfuse_caddy_config:

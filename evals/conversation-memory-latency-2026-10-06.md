@@ -1,0 +1,12 @@
+# 대화 기억 지연 개선 검증 — 2026-10-06
+- 기준: origin/main ffa8498. 구현: codex/memory-latency, 별도 worktree.
+- 로컬 PostgreSQL 17의 테스트별 격리 schema 사용. 운영 DB·실제 LLM 호출 없음.
+- 관련 검증: 39 passed, 1 deselected. 제외한 테스트는 아래 기존 실패다.
+- 전체 검증: 587 passed, 10 skipped, 1 failed.
+- 기존 실패: test_eval27_followup_preserves_body_and_pending_question.
+- 원인: 예상 질문 '어떤 포즈인가요?'가 기존 assembler에서 일반 질문으로 치환됨.
+- origin/main의 conversation_context/conversation_memory 원본을 로드해 같은 실패를 재현했다. 이번 범위에서는 수정하지 않았다.
+- 확인: 답변의 summarize 0회, 명백한 새 요청의 classify 0회, 기존 조건 및 pending_question 전달, 원본 회상 유지.
+- 확인: 별도 요약 저장, 동시 worker 중복 차단, 중단/실패 재개, 최신 요약 및 질문 보존, 잘못된 출처 거부, 종료 시 취소 대기.
+- 전체 테스트 명령: MEMORY_TEST_DATABASE_URL을 로컬 DB로 지정하고 py -X utf8 -m pytest backend/tests -q --tb=short.
+- 검증 시점에는 미배포 상태다. 운영 응답 시간 개선량은 아직 측정하지 않았다.
