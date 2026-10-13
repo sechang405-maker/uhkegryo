@@ -249,3 +249,6 @@ button.mind-map-node[aria-pressed="true"] { border-color: #e44b65; background: #
 .composer-submit:focus-visible { outline: 3px solid #967647; outline-offset: 3px; }
 .composer-footer { flex-wrap: wrap; gap: 8px; align-items: center; }
 .result-actions button[aria-pressed="true"] { border-color: currentColor; font-weight: 700; }
+.demo-scenarios { display: grid; gap: 8px; margin: 16px 0; }
+.demo-scenarios button { text-align: left; padding: 10px; border: 1px solid currentColor; border-radius: 12px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.demo-scenarios button:focus-visible { outline: 3px solid currentColor; outline-offset: 2px; }

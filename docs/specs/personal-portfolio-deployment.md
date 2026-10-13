@@ -2,11 +2,33 @@
 
 # 개인 포트폴리오 배포 — 무료 데모 기본·실제 AI 선택
 
+## 개인 저장소 구현 기준 (2026-10-13)
+
+명시적 `NEXT_PUBLIC_UI_DEMO=1`은 development와 production에서 독립 샘플 데모를 선택한다. `0` 또는 미설정은 기존 live 모드를 유지한다. 그 외 값은 설정 오류로 실패한다. 이는 기존 기본값을 유지하라는 개인 개발 요청에 따른 아래 과거 모드 정책의 정정이다. 실제 배포·개인 리소스 소유권 확인·비용 통제는 이번 구현에 포함하지 않는다.
+
+대표 입력 3개만 고정 답변과 검수 카탈로그로 처리하며 이미지·실시간 검색은 제공하지 않는다. 자유 입력은 샘플 선택 안내만 표시하고 저장하지 않는다. 이전 개발용 Pinterest 썸네일은 제거했다. 새 외부 이미지나 재게시 자산은 추가하지 않았으며 카탈로그의 [출처 기록](../domains/illustration-reference/term-cards/SOURCE_PROVENANCE.md)은 유지한다.
+
+새로운 데모 전용 localStorage 키 `uh-studio-portfolio-sessions-v1`에 로컬 `demo-` 식별자·생성 시각·fixture ID·고정 입력/답변만 저장한다. 최대 10세션·총 50답변을 보관하며 새 세션·선택 세션을 먼저 유지한다. 복원 시 알려진 fixture로 갤러리를 재구성한다. 기존 개발 데모 저장 키는 가져오지 않는다. 손상/거부된 저장소는 안내와 함께 메모리 상태로 복구하며 서버 저장으로 전환하지 않는다. 브라우저 사이트 데이터 삭제로 데모 이력을 지울 수 있다.
+
+### 로컬 production 실행 (PowerShell)
+
+```powershell
+cd frontend
+npm ci
+$env:NEXT_PUBLIC_UI_DEMO = '1'
+npm run build
+npm run start -- -p 3112 -H 127.0.0.1
+```
+
+별도 backend·DB·API 키가 필요하지 않다. 이 모드에는 `AGENT_API_ORIGIN`이나 backend 비밀값을 설정하지 않는다. 기존 origin이 남아 있어도 demo rewrite는 빈 배열이며 `/api/*`는 외부 전달 없이 404다. 입력은 네트워크로 전송하지 않는다. 브라우저의 HTML·JS·CSS 등 같은 origin 정적 자산 요청과 API 요청은 구분한다.
+
+live 빌드는 `NEXT_PUBLIC_UI_DEMO=0`으로 다시 빌드한다. 기존 API origin 설정과 live 오류 처리를 유지한다. 실행 때 flag만 바꿔 이미 빌드한 모드를 전환하지 않는다. 개인 live 공개 전 소유권·예산·보관 책임 결정은 별도이며 이번 작업으로 활성화하지 않는다.
+
 ## Why
 
 - **페르소나**: 팀 프로젝트 종료 후 개인 포트폴리오를 공개하는 팀원과 채용 평가자.
 - **상황**: 각자 URL에서 제품 흐름과 구현 역량을 보여주되 공용 GCP 소유자에게 비용을 발생시키지 않는다.
-- **문제**: 현재 데모는 development 전용이며 production에서 환경변수만 바꿔 사용할 수 없다. 팀 backend를 공유하면 호출 비용과 유지 책임이 계속 한 사람에게 남는다.
+- **원래 문제**: 개발 전용 데모와 팀 backend 의존 때문에 production 독립 공개가 불가능했다. 위 개인 구현은 명시적인 샘플 빌드로 이를 분리한다.
 - **측정 지표**: 데모 backend/LLM 호출 0건, 비밀값 포함 0건, 개인 배포의 공용 리소스 참조 0건, 샘플 시나리오 성공률 100%.
 
 ## Goal
@@ -31,7 +53,7 @@
 | --- | --- |
 | 대표 입력 외 자유 입력 | 입력 길이는 기존 검증을 적용하고 “샘플에 없는 입력입니다. 대표 예시를 선택해 주세요.”를 표시한다. 임의 해석 결과를 생성하지 않는다. |
 | 데모 모드에서 공용 API origin이 남음 | rewrite를 생성하지 않고 외부 호출을 차단한다. 배포 검사에서 설정 잔존을 지적하고 제거한다. |
-| mode 누락·오타 | production build 검사를 실패시킨다. 명시적 `1` 또는 `0`만 허용한다. 로컬 개발 기존 기본 동작은 유지한다. |
+| mode 누락·오타 | 미설정은 기존 live 모드다. `1`·`0` 외 비어 있지 않은 값은 설정 오류로 실패한다. |
 | localStorage 불가·손상 | 메모리 상태로 계속 동작하며 저장 실패를 안내한다. backend 저장으로 전환하지 않는다. |
 | 새로고침·다른 기기 접속 | 동일 브라우저의 데모 텍스트 이력만 복원한다. 기기 간 동기화·서버 세션을 제공하지 않는다. |
 | 검색·스케치·카테고리 변형 선택 | 준비한 용어 fixture 또는 “데모에서는 실시간 검색을 제공하지 않습니다.” 안내를 표시한다. API를 호출하지 않는다. |
@@ -43,7 +65,7 @@
 ### 모드와 Vercel 설정
 
 - `NEXT_PUBLIC_UI_DEMO`를 유일한 모드 선택자로 유지한다. `1`은 production에서도 데모, `0`은 실제 API 연결이다. build 시 결정하며 변경 시 재배포한다. 방문자가 UI에서 live 모드를 켜는 기능은 만들지 않는다.
-- 현재 `frontend/lib/demo-job.mjs`의 development 제한은 후속 구현에서 변경한다. 기존 더미 Pin 이미지와 답변을 공개 데모에 그대로 사용하지 않는다.
+- `frontend/lib/demo-job.mjs`의 development 제한을 제거했다. 기존 더미 Pin 이미지를 사용하지 않고 명시적인 고정 샘플 답변을 제공한다.
 - Next.js, Root Directory `frontend`, `npm ci`, `npm run build`, Node.js 22.x와 root 외부 파일 포함 설정은 팀 배포 Spec을 따른다.
 - demo 프로젝트에는 `AGENT_API_ORIGIN`과 backend secret을 설정하지 않는다. `NEXT_PUBLIC_API_BASE_URL=/api`는 호환을 위해 유지하되 호출하지 않는다.
 - `frontend/next.config.mjs`는 demo build에서 API rewrite를 반환하지 않는다. live build에서는 팀 Spec의 기존 rewrite를 유지한다. demo에서 `/api/*` 직접 요청은 backend로 전달되지 않고 404로 종료된다.
@@ -56,7 +78,7 @@
 - 검색을 실행하지 않으므로 각 term의 `pins`는 빈 배열이다. 갤러리는 “데모에서는 실시간 이미지 검색을 제공하지 않습니다.”를 표시한다. 썸네일 URL·이미지 바이트·실사용 trace를 fixture에 포함하지 않는다.
 - 대표 입력 매칭은 앞뒤 공백 제거 후 정확히 일치할 때만 수행한다. 등록되지 않은 입력은 안내만 표시하고 성공 답변 이력으로 저장하지 않는다.
 - 데모 배지를 홈·대화·결과에 항상 표시한다. 제출 결과는 즉시 로컬 completed로 표시하며 실제 queue·LLM 진행 단계를 흉내 내지 않는다.
-- 기존 데모 전용 localStorage를 재사용하되 fixture ID, 입력 텍스트와 답변 텍스트만 최대 50개 저장한다. 실제 세션 쿠키를 발급하지 않는다. 손상 데이터는 무시하고 초기 샘플로 복구한다.
+- 위 새 데모 저장 키에 로컬 세션 메타데이터와 fixture ID·고정 입력/답변을 총 50개까지 저장한다. 실제 세션 쿠키를 발급하지 않는다. 손상 데이터는 안내하고 초기 샘플로 복구한다.
 - 방문자 입력은 backend·분석·trace로 전송하지 않는다. 외부 영상·소스 링크를 추가하는 작업은 별도 요청 범위로 둔다.
 
 ### 개인별 실제 AI 선택 배포
@@ -72,7 +94,7 @@
 - 후속 구현은 `frontend/lib/demo-job.mjs`, 새 fixture/adapter, `frontend/app/page.jsx`와 관련 표시 컴포넌트, `frontend/next.config.mjs`, `.env.example`의 모드 설명 및 관련 frontend 테스트로 제한한다. backend 동작은 변경하지 않는다.
 - 같은 기능의 구현과 문서는 함께 갱신하고, 변경 크기와 위험에 맞춰 독립적으로 검토 가능한 범위로 나눈다. 원본 팀의 400줄 제한은 개인 후속 개발의 의무가 아니다.
 - `npm test`, demo/live 각각의 production build, demo production 서버의 전체 사용자 흐름 네트워크 검사로 검증한다. fixture schema·입력 매칭·secret/공용 주소 검사·live 회귀를 포함한다.
-- 아래 AC는 후속 구현의 통과 기준이며 현재 통과 결과가 아니다.
+- 아래 AC는 기능 검증 기준이다. 실제 배포·소유권 승인은 이 로컬 구현 검증과 별개다.
 
 ## AC (Given-When-Then)
 
@@ -82,7 +104,7 @@
 - **AC-04 · 모든 호출 차단** — Given demo production 서버, When 초기 로드·대화·카테고리·검색 변형·이력·새로고침을 수행, Then backend/LLM/MCP/SearXNG/Langfuse 호출은 서버와 브라우저 모두 0건이다. `/api/*` 직접 요청도 외부 전달 없이 404다.
 - **AC-05 · 저장 경계** — Given 샘플 대화 이력, When 저장과 복원을 수행, Then 데모 ID·입력·답변 텍스트 최대 50개만 유지하고 Pin URL/썸네일·실제 세션·secret을 저장하지 않는다.
 - **AC-06 · 저장 장애** — Given localStorage 거부 또는 손상 데이터, When demo를 열고 대표 입력을 제출, Then 메모리 상태로 정상 동작하고 손상 데이터는 복구하며 backend 요청은 없다.
-- **AC-07 · 모드 검사** — Given production 환경의 누락/잘못된 모드 또는 live의 누락된 origin, When build 사전 검사를 실행, Then 실패한다. 유효 demo/live build와 기존 live 회귀 테스트는 통과한다.
+- **AC-07 · 모드 검사** — Given production 환경, When build를 실행, Then `1`은 demo, `0`·미설정은 기존 live로 빌드되며 다른 값은 실패한다. live의 기본 로컬 origin은 유지한다. 개인 live 배포 승인 검사는 별도이며 기본 동작 보존이 운영 배포 승인을 뜻하지 않는다.
 - **AC-08 · 개인 소유권** — Given 개인 live 배포 신청, When 리소스와 결제 계정을 검토, Then 모두 개인 소유이며 공용 리소스 참조·공용 secret이 0건이다. 확인할 수 없으면 live 배포를 승인하지 않는다.
 - **AC-09 · 종료 후 독립성** — Given 팀 backend가 중단된 환경, When 개인 데모의 모든 대표 흐름을 실행, Then 기능이 동작하고 팀 비용을 발생시키는 요청이 0건이다.
 - **AC-10 · 정직한 결과 표시** — Given demo 또는 live 장애, When 결과 화면을 표시, Then demo는 샘플임을 명시하고 live 장애는 실제 오류 안내를 유지하며 샘플 성공으로 대체하지 않는다.

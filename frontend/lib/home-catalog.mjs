@@ -18,7 +18,7 @@ const cardsById = new Map(
 );
 
 // 검수된 홈 탐색 예시이며 LLM 선택·답변·이미지 검색 결과가 아닙니다.
-export const HOME_TERMS = HOME_TERM_IDS.map((termId) => {
+export function catalogTerm(termId) {
   const card = cardsById.get(termId);
   const feedback = catalogIndex.active_term_feedback[termId];
   if (!card?.runtime_eligible || card.mvp_status !== "active_in_current_contract" || !feedback) {
@@ -32,4 +32,7 @@ export const HOME_TERMS = HOME_TERM_IDS.map((termId) => {
     recommended_search_query: [...card.query_fragments, "drawing"].join(" "),
     pins: [],
   };
-});
+}
+
+export const HOME_TERMS = HOME_TERM_IDS.map(catalogTerm);
+

@@ -5,12 +5,14 @@ import { countCharacters, createSubmissionController, validateRequestText, shoul
 import { createGallerySelection } from "../lib/gallery-selection.mjs";
 import { createConversation, listConversations, restoreConversation, resumeConversation, RESTORE_ERROR } from "../lib/server-conversation.mjs";
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
+import { DEMO_SCENARIOS, DEMO_NOTICE, DEMO_INPUT_ERROR, demoTerm } from "../lib/portfolio-demo-fixtures.mjs";
+import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
 import { HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
 import { getRecommendedSearchQuery } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode } from "../lib/term-search.mjs";
 import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail } from "../lib/result-view.mjs";
-import { demoReplyJob, readDemoTurns, saveDemoTurns, stopTurnPolling, upsertTurn, isTurnPending } from "../lib/conversation.mjs";
+import { stopTurnPolling, upsertTurn, isTurnPending } from "../lib/conversation.mjs";
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
@@ -42,6 +44,7 @@ export default function HomePage() {
   const [restoreError, setRestoreError] = useState("");
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [storageFailed, setStorageFailed] = useState(false);
+  const demoStoreRef = useRef(null);
   const chatScrollRef = useRef(null);
   const [activeGalleryRole, setActiveGalleryRole] = useState(null);
   const [failedThumbnails, setFailedThumbnails] = useState({});
@@ -88,11 +91,10 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!uiDemoEnabled) return;
-    try {
-      const restored = readDemoTurns(window.localStorage);
-      if (restored) setTurns(restored);
-    } catch { setStorageFailed(true); }
-    setConversationReady(true);
+    let storage;
+    try { storage = window.localStorage; } catch { storage = null; }
+    demoStoreRef.current = createDemoSessionStore(storage);
+    showDemoSession(demoStoreRef.current.current());
   }, []);
 
   useEffect(() => {
@@ -115,11 +117,16 @@ export default function HomePage() {
     return () => controller.abort();
   }, [restoreAttempt]);
 
-  useEffect(() => {
-    if (!uiDemoEnabled || !conversationReady) return;
-    try { setStorageFailed(!saveDemoTurns(window.localStorage, turns)); }
-    catch { setStorageFailed(true); }
-  }, [turns, conversationReady]);
+  function showDemoSession(session) {
+    sessionIdRef.current = session.session_id;
+    setSessionId(session.session_id);
+    setSessions(demoStoreRef.current.list());
+    setTurns(session.turns);
+    gallerySelectionRef.current.reset(session.session_id);
+    gallerySelectionRef.current.live(session.turns.at(-1)?.job || null, session.session_id);
+    setStorageFailed(demoStoreRef.current.storageFailed);
+    setConversationReady(true);
+  }
 
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
@@ -268,7 +275,7 @@ export default function HomePage() {
     setMobilePanel("conversation");
     try {
       const result = uiDemoEnabled
-        ? DEMO_JOB.result.reference_plan.terms.find((entry) => entry.term_id === term.term_id) || term
+        ? demoTerm(term.term_id)
         : await searchFixedTerm(term, { signal: controller.signal });
       if (!controller.signal.aborted) setTermSearch({ term: result, loading: false });
     } catch (error) {
@@ -286,6 +293,12 @@ export default function HomePage() {
   }
 
   async function searchCategory(term, suffix) {
+    if (uiDemoEnabled) {
+      setSketchSearches((current) => ({ ...current, [term.term_id]: {
+        suffix, error: "데모에서는 실시간 이미지 검색을 제공하지 않습니다.",
+      } }));
+      return;
+    }
     if (sketchControllersRef.current.has(term.term_id)) return;
     const controller = new AbortController();
     sketchControllersRef.current.set(term.term_id, controller);
@@ -322,14 +335,16 @@ export default function HomePage() {
     setTermGuide(null);
 
     if (uiDemoEnabled) {
-      const demoJob = demoReplyJob(text, turns, DEMO_JOB);
-      const id = crypto.randomUUID();
-      setTurns((entries) => upsertTurn(entries, { id, request: text, job: demoJob, demo: true }));
-      setJob(demoJob);
-      setBoardView("results");
-      setRequestText("");
-      setError("");
-      setSelectedTermId(firstSelectableTermId(mindMapSlots));
+      const turn = demoStoreRef.current.submit(text);
+      if (turn) {
+        showDemoSession(demoStoreRef.current.current());
+        setBoardView("results");
+        setRequestText("");
+        setError("");
+      } else {
+        setError(DEMO_INPUT_ERROR);
+        setMobilePanel("conversation");
+      }
       queueMicrotask(() => { submitInFlightRef.current = false; });
       return;
     }
@@ -414,6 +429,15 @@ export default function HomePage() {
 
   async function openSession(session) {
     if (submitInFlightRef.current || isSubmitting || session.session_id === sessionIdRef.current) return;
+    if (uiDemoEnabled) {
+      const selected = demoStoreRef.current.select(session.session_id);
+      if (!selected) return;
+      navigateBoard("results");
+      showDemoSession(selected);
+      setRequestText("");
+      setError("");
+      return;
+    }
     const loadId = ++sessionLoadRef.current;
     gallerySelectionRef.current.reset(session.session_id);
     setTermSearch(null);
@@ -451,6 +475,14 @@ export default function HomePage() {
 
   async function startNewSession() {
     if (submitInFlightRef.current || isSubmitting) return;
+    if (uiDemoEnabled) {
+      navigateBoard("results");
+      showDemoSession(demoStoreRef.current.create());
+      setRequestText("");
+      setError("");
+      setMobilePanel("conversation");
+      return;
+    }
     const loadId = ++sessionLoadRef.current;
     gallerySelectionRef.current.reset(null);
     sessionIdRef.current = null;
@@ -502,6 +534,7 @@ export default function HomePage() {
         <button type="button" aria-expanded={menuOpen} aria-controls="history-sidebar" onClick={toggleMenu}>세션</button>
       </nav>
       <aside id="history-sidebar" className="history-sidebar" data-open={menuOpen} aria-label="세션 목록">
+        {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
         <button className="brand-identity brand-home-button" type="button" aria-label="UH케그려 홈"
           onClick={() => navigateBoard("home")}>
           <span className="brand-mark" aria-hidden="true">UH</span>
@@ -509,13 +542,12 @@ export default function HomePage() {
         </button>
         <nav className="history-sidebar-list" aria-label="세션 목록">
           <button className="history-sidebar-entry" type="button" disabled={!conversationReady || isSubmitting} onClick={startNewSession}>새 세션</button>
-          {uiDemoEnabled ? <button className="history-sidebar-entry" type="button" aria-current="page">미리보기 대화</button>
-            : sessions.map((session) => (
+          {sessions.map((session) => (
               <button className="history-sidebar-entry" type="button" key={session.session_id}
                 disabled={isSubmitting} title={new Date(session.created_at).toLocaleString("ko-KR")}
                 aria-current={sessionId === session.session_id ? "page" : undefined}
                 onClick={() => openSession(session)}>
-                <span className="history-sidebar-title">{new Date(session.created_at).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}</span>
+                <span className="history-sidebar-title">{uiDemoEnabled ? "샘플 · " : ""}{new Date(session.created_at).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "medium" })}</span>
               </button>
             ))}
           {!uiDemoEnabled && !sessions.length && <p className="history-sidebar-empty">아직 대화 세션이 없습니다.</p>}
@@ -525,13 +557,14 @@ export default function HomePage() {
         onClick={() => { setMenuOpen(false); menuButtonRef.current?.focus(); }} />}
       <section id="reference-panel" className="reference-board" aria-label="레퍼런스">
         <header className="board-header">
+          {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
           <button className="brand-identity brand-mobile-home" type="button" aria-label="UH케그려 홈"
             onClick={() => navigateBoard("home")}>
             <span className="brand-mark" aria-hidden="true">UH</span><span className="brand-name">UH케그려</span>
           </button>
           <button className="history-sidebar-toggle" type="button" aria-expanded={menuOpen}
             aria-controls="history-sidebar" onClick={toggleMenu}>세션</button>
-          {recommendedSearchQuery && (
+          {!uiDemoEnabled && recommendedSearchQuery && (
             <div className="recommended-query" aria-label="즉시 검색">
               <div className="query-value">
                 <code tabIndex={0} aria-label="추천 검색어" aria-describedby="full-query-tooltip">{recommendedSearchQuery}</code>
@@ -604,7 +637,7 @@ export default function HomePage() {
                   {roleNotice(term) && <p className="pin-unavailable" role="status">{roleNotice(term)}</p>}
                   {boardView === "term-results" && !termSearch?.loading && (termSearch?.error || roleNotice(term)) &&
                     <button type="button" onClick={() => openTermSearch(term)}>다시 찾기</button>}
-                  {!pins.length && !roleNotice(term) && !(boardView === "term-results" && termSearch?.loading) && <p className="pin-unavailable">표시할 핀이 없습니다.</p>}
+                  {!pins.length && !roleNotice(term) && !(boardView === "term-results" && termSearch?.loading) && <p className="pin-unavailable">{uiDemoEnabled ? "데모에서는 실시간 이미지 검색을 제공하지 않습니다." : "표시할 핀이 없습니다."}</p>}
                   {pins.map((pin, index) => showThumbnail(pin) && !failedThumbnails[`${term.term_id}:${pin.pin_id}`] ? (
                     <button
                       className="pin-gallery-card"
@@ -685,17 +718,22 @@ export default function HomePage() {
 
       <aside id="conversation-panel" className="prompt-panel" aria-labelledby="prompt-title">
         <div className="panel-top" ref={chatScrollRef}>
-          {uiDemoEnabled && <span className="demo-badge">대화 UI 더미 · LLM 미연결</span>}
+          {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
           <h2 id="prompt-title">UH케 그릴 건가요?</h2>
           <p className="conversation-notice">{uiDemoEnabled
-            ? "더미 대화만 이 브라우저에 저장됩니다. 개인·민감 정보는 입력하지 마세요."
+            ? "고정 샘플 대화는 이 브라우저에만 저장됩니다. 최대 10개 세션·총 50개 답변을 보관하며 서버로 보내지 않습니다. 개인·민감 정보는 입력하지 마세요."
             : "같은 브라우저의 쿠키로 최근 대화를 복원합니다. 쿠키 삭제·대화 만료 후에는 복원되지 않습니다."}</p>
           {restoreError && <div role="alert"><p>{restoreError}</p>
             <button type="button" onClick={() => setRestoreAttempt((value) => value + 1)}>대화 다시 불러오기</button></div>}
-          {storageFailed && <p className="form-error" role="status">브라우저 저장을 사용할 수 없어 새로고침 후 더미 대화가 유지되지 않습니다.</p>}
+          {storageFailed && <p className="form-error" role="status">브라우저 기록을 읽거나 쓰지 못했습니다. 일부 기록이 복원되지 않을 수 있지만 현재 대화는 계속 사용할 수 있습니다.</p>}
           <ConversationPanel key={sessionId || "no-session"} turns={turns} onChoice={fillInput} onRetry={fillInput}
             retryDisabled={conversationBusy} onSelect={openTurn} selectedTurnId={historyTurnId} />
           <TermGuide term={termGuide} />
+          {uiDemoEnabled && <div className="demo-scenarios" aria-label="대표 샘플 입력">
+            <p>대표 예시를 선택한 뒤 전송해 보세요.</p>
+            {DEMO_SCENARIOS.map(sample => <button type="button" key={sample.id}
+              onClick={() => fillInput(sample.request)}>{sample.request}</button>)}
+          </div>}
           {((!conversationReady && !restoreError) || isSubmitting) && <div className="receipt"><LoadingIndicator
             label={!conversationReady ? "대화를 불러오는 중…" : "요청을 보내는 중…"} /></div>}
           {pollError && <p className="form-error" role="alert">{pollError}</p>}
@@ -758,3 +796,4 @@ export default function HomePage() {
     </main>
   );
 }
+
