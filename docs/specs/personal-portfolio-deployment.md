@@ -70,7 +70,7 @@
 ### 변경 범위와 검증
 
 - 후속 구현은 `frontend/lib/demo-job.mjs`, 새 fixture/adapter, `frontend/app/page.jsx`와 관련 표시 컴포넌트, `frontend/next.config.mjs`, `.env.example`의 모드 설명 및 관련 frontend 테스트로 제한한다. backend 동작은 변경하지 않는다.
-- 같은 기능의 구현과 문서는 함께 갱신하고 코드 변경 400줄 초과 시 fixture/adapter와 UI 연결을 독립 검토 범위로 나눈다.
+- 같은 기능의 구현과 문서는 함께 갱신하고, 변경 크기와 위험에 맞춰 독립적으로 검토 가능한 범위로 나눈다. 원본 팀의 400줄 제한은 개인 후속 개발의 의무가 아니다.
 - `npm test`, demo/live 각각의 production build, demo production 서버의 전체 사용자 흐름 네트워크 검사로 검증한다. fixture schema·입력 매칭·secret/공용 주소 검사·live 회귀를 포함한다.
 - 아래 AC는 후속 구현의 통과 기준이며 현재 통과 결과가 아니다.
 

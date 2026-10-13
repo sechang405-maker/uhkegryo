@@ -82,7 +82,7 @@ def test_evidence_mismatch_has_specific_diagnostic_stage():
     from backend.schemas.models import InterpretationOutput
     from backend.services.conversation_context import validate
 
-    interpretation = InterpretationOutput(interpretation_state="select_terms", selections=[{
+    interpretation = InterpretationOutput(interpretation_state="select_terms", answer_text="체형을 참고해 보세요.", selections=[{
         "role": "body", "term_id": "body_slim", "evidence": ["원문에 없는 표현"], "confidence": 1}])
     with pytest.raises(LLMInvalidStructuredOutput) as raised:
         asyncio.run(validate(None, {"request_text": "마른 캐릭터"}, interpretation, None))

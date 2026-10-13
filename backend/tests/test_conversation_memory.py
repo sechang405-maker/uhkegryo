@@ -86,6 +86,7 @@ class MemoryAdapter:
     async def interpret(self, text, **kwargs):
         self.contexts.append(kwargs["session_context"])
         return InterpretationOutput(interpretation_state="select_terms",
+            answer_text="서 있는 자세를 참고해 보세요.",
             selections=[InterpretationSelection(role="pose", term_id="pose_standing",
                          evidence=["서 있는"], confidence=0.9)],
             context_updates=[ContextUpdate(role="pose", term_id="pose_standing", evidence="서 있는")])
@@ -155,7 +156,8 @@ def test_invalid_context_cannot_change_memory(snapshot_factory, card_factory, ba
             updates *= 2
         else:
             selection.source_job_id = uuid.uuid4()
-        output = InterpretationOutput(interpretation_state="select_terms", selections=[selection], context_updates=updates)
+        output = InterpretationOutput(interpretation_state="select_terms", selections=[selection], context_updates=updates,
+            answer_text="확인된 자세를 참고해 보세요.")
         with pytest.raises(LLMInvalidStructuredOutput):
             await conversation_context.validate(ConversationMemory(pool), job, output,
                 snapshot_factory([card_factory("pose_standing")]))
@@ -219,6 +221,7 @@ def test_eval27_followup_preserves_body_and_pending_question(snapshot_factory, c
                 if text == "마른 체형 레퍼런스를 찾아줘":
                     return InterpretationOutput(interpretation_state="select_terms", selections=[
                         InterpretationSelection(role="body", term_id="body_slim", evidence=["마른 체형"], confidence=.9)],
+                        answer_text="마른 체형을 참고해 보세요.",
                         context_updates=[ContextUpdate(role="body", term_id="body_slim", evidence="마른 체형")])
                 if text == "마른 체형":
                     return InterpretationOutput(interpretation_state="needs_clarification",
@@ -229,6 +232,7 @@ def test_eval27_followup_preserves_body_and_pending_question(snapshot_factory, c
                 evidence = text if term == "pose_standing" else "한쪽 다리에 힘"
                 return InterpretationOutput(interpretation_state="select_terms", selections=[
                     InterpretationSelection(role="pose", term_id=term, evidence=[evidence], confidence=.9)],
+                    answer_text="확인된 자세를 참고해 보세요.",
                     context_updates=[ContextUpdate(role="pose", term_id=term, evidence=evidence)])
         adapter, jobs = FollowupAdapter(), JobRepository(pool)
         snapshot = snapshot_factory([card_factory("body_slim", role="body"),

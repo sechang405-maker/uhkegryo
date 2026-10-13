@@ -48,7 +48,8 @@ SELECT_JSON = """{
     {"role": "pose", "term_id": "pose_contrapposto", "evidence": ["반동", "허리 꼬임"], "confidence": 0.9}
   ],
   "unresolved_constraints": [],
-  "clarifying_question": null
+  "clarifying_question": null,
+  "answer_text": "반동과 허리 움직임을 참고해 자세를 살펴보세요."
 }"""
 
 CLARIFY_JSON = """{

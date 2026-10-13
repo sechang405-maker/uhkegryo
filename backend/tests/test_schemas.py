@@ -400,6 +400,7 @@ def _interpretation_output(**overrides):
         "unresolved_constraints": [],
         "clarifying_question": None,
         "clarification_type": None,
+        "answer_text": "입력한 체형 단서를 바탕으로 참고할 용어를 설명합니다.",
     }
     base.update(overrides)
     return InterpretationOutput(**base)
@@ -414,6 +415,19 @@ def test_interpretation_output_select_terms_valid():
     )
     assert out.interpretation_state == InterpretationState.SELECT_TERMS
     assert [s.role for s in out.selections] == [Role.BODY, Role.POSE]
+
+
+@pytest.mark.parametrize("answer_text", ["", "   ", "\n\t  "])
+def test_interpretation_output_select_terms_rejects_blank_answer(answer_text):
+    with pytest.raises(ValidationError, match="answer_text"):
+        _interpretation_output(answer_text=answer_text)
+
+
+def test_interpretation_output_select_terms_requires_answer_field():
+    payload = _interpretation_output().model_dump()
+    del payload["answer_text"]
+    with pytest.raises(ValidationError, match="answer_text"):
+        InterpretationOutput(**payload)
 
 
 def test_interpretation_output_needs_clarification_valid():

@@ -70,6 +70,7 @@ class FailingTwiceAdapter:
         ):
             return InterpretationOutput(
                 interpretation_state=InterpretationState.SELECT_TERMS,
+                answer_text="자세를 참고해 보세요.",
                 selections=[InterpretationSelection(
                     role=Role.POSE, term_id="pose_shift", evidence=["자세"], confidence=0.9,
                 )],

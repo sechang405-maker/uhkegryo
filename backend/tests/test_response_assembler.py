@@ -26,6 +26,7 @@ def test_clarification_does_not_expose_model_answer(snapshot_factory):
 def _interpretation(selections):
     return InterpretationOutput(
         interpretation_state=InterpretationState.SELECT_TERMS,
+        answer_text="확인된 용어를 참고해 보세요.",
         selections=selections,
         unresolved_constraints=[],
         clarifying_question=None,

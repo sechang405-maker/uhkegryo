@@ -25,6 +25,7 @@ def test_fake_result_assembles_pin_contract(snapshot_factory, card_factory):
     snapshot = snapshot_factory([card])
     interpretation = InterpretationOutput(
         interpretation_state=InterpretationState.SELECT_TERMS,
+        answer_text="자세 레퍼런스를 참고해 보세요.",
         clarification_type=None,
         selections=[InterpretationSelection(
             role=Role.POSE, term_id="pose_contrapposto", evidence=["한쪽 다리에 체중"], confidence=0.9

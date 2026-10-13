@@ -291,7 +291,7 @@ def test_postgres_reuses_only_same_conversation_preceding_board(snapshot_factory
         assert context["previous_result"]["reference_plan"]["terms"][0]["pins"][0]["pin_id"] == "11"
         snapshot = snapshot_factory([card_factory(term_id, role=role, query_fragments=[term_id])
             for role, term_id in [('body', 'body_slim'), ('pose', 'pose_standing'), ('pose', 'pose_sitting')]])
-        adapter = FakeAdapter(InterpretationOutput(interpretation_state="select_terms", selections=[
+        adapter = FakeAdapter(InterpretationOutput(interpretation_state="select_terms", answer_text="앉은 자세를 참고해 보세요.", selections=[
             {"role": "pose", "term_id": "pose_sitting", "evidence": ["앉은 모습"], "confidence": 1}]),
             tool_calls=[[{"id": "pose", "name": "search_pinterest_pins", "arguments": {
                 "role": "pose", "query_fragments": ["pose_sitting"]}}], []])

@@ -133,6 +133,6 @@ HTTP 오류 본문은 종결 실패의 `Failure`와 같은 형태인 `{failure_c
 AgentResult는 nullable memory_answer(최대 2000자)와 sources 배열(job_id, 서버가 만든 /api/jobs/{id} href)을 추가한다. agent_status=memory_answer는 reference_plan=null, reason_codes=[], clarifying_question=null이다. 출처 없는 응답은 '이 대화 기록에서 해당 내용을 확인할 수 없습니다.' 또는 '관련 기록이 많습니다. 어느 시기 또는 어떤 추천을 말씀하시나요?'로만 제한한다. 일반 해석 결과에도 회상 답과 출처를 함께 담을 수 있다. 상세 계약은 [conversation-recall.md](conversation-recall.md)를 따른다.
 
 회상 전용 job은 validating에서 rendering으로 바로 전이한다. 조건 변경·원문 evidence·출처 검증은 [conversation-context.md](conversation-context.md), 요약 범위는 [conversation-summary.md](conversation-summary.md)를 따른다. source_job_id가 null이면 evidence는 현재 원문, 값이 있으면 해당 대화의 선행 원본 요청/카드 라벨을 인용한다. 상태의 최종 결정은 서버가 한다.
-`answer_text`는 InterpretationOutput와 AgentResult의 최대 4,000자 strict 문자열(기본 빈 문자열)이다. resolver 검증 후 일반/부분 결과에만 모델 통합 설명을 노출하며 term별 정적 피드백·회상 답변은 기존 계약을 유지한다. UI 복원과 상세 계약은 [studio-conversation-connection.md](studio-conversation-connection.md)를 따른다.
+`answer_text`는 InterpretationOutput와 AgentResult의 최대 4,000자 strict 문자열이다. `select_terms` 해석은 공백이 아닌 통합 설명이 필수이며, 누락·빈 문자열·공백만 있는 문자열은 구조화 출력 오류로 처리한다. `needs_clarification`의 기본 빈 문자열과 질문 응답 계약은 유지한다. resolver 검증 후 일반/부분 결과에만 모델 통합 설명을 노출하며 term별 정적 피드백·회상 답변은 기존 계약을 유지한다. UI 복원과 상세 계약은 [studio-conversation-connection.md](studio-conversation-connection.md)를 따른다.
 
 모호·상충 확인 질문은 모델 문장을 직접 전달하지 않는다. resolver가 clarification_type과 현재 요청의 제한된 시각 단서를 이용해 고정된 지지 다리/S자 흐름·체형/의상·어깨/골반 비율·옆모습/정면 질문을 고르며, 해당되지 않으면 기존 공통 질문을 반환한다. v4의 검증 실패 피드백과 답변 안내는 [ambiguity-answer-quality.md](ambiguity-answer-quality.md)를 따른다.

@@ -351,6 +351,8 @@ class InterpretationOutput(BaseModel):
         if self.interpretation_state is InterpretationState.SELECT_TERMS:
             if not self.selections:
                 raise ValueError("select_terms는 selections가 최소 하나 있어야 한다")
+            if not self.answer_text.strip():
+                raise ValueError("select_terms는 비어 있지 않은 answer_text가 필수다")
             seen: set[Role] = set()
             prev_index = -1
             for selection in self.selections:

@@ -36,6 +36,7 @@ JOB = {
 def _selected(term_id="pose_shift"):
     return InterpretationOutput(
         interpretation_state=InterpretationState.SELECT_TERMS,
+        answer_text="한쪽 다리에 체중을 실은 자세를 참고해 보세요.",
         clarification_type=None,
         selections=[InterpretationSelection(
             role=Role.POSE, term_id=term_id, evidence=["한쪽 다리에 체중"], confidence=0.9
@@ -367,6 +368,7 @@ def test_worker_retries_unavailable_but_not_empty_search(monkeypatch, snapshot_f
     ])
     output = InterpretationOutput(
         interpretation_state=InterpretationState.SELECT_TERMS,
+        answer_text="체형과 자세를 나누어 살펴보세요.",
         clarification_type=None,
         selections=[
             InterpretationSelection(role=Role.BODY, term_id="body_average", evidence=["체형"], confidence=0.9),
@@ -412,6 +414,7 @@ def test_worker_keeps_successful_role_when_another_role_search_fails(
     ])
     output = InterpretationOutput(
         interpretation_state=InterpretationState.SELECT_TERMS,
+        answer_text="체형과 자세를 나누어 살펴보세요.",
         clarification_type=None,
         selections=[
             InterpretationSelection(role=Role.BODY, term_id="body_average", evidence=["체형"], confidence=0.9),

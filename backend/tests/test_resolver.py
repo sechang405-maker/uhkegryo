@@ -24,6 +24,7 @@ def _interpretation(
 ):
     return InterpretationOutput(
         interpretation_state=state,
+        answer_text="확인된 용어를 참고해 보세요." if state == InterpretationState.SELECT_TERMS else "",
         selections=selections or [],
         unresolved_constraints=unresolved_constraints or [],
         clarifying_question=clarifying_question,

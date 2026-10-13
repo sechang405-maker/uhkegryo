@@ -86,6 +86,7 @@ def test_context_update_uses_current_english_request_only(snapshot_factory, card
     ])
     output = InterpretationOutput(
         interpretation_state="select_terms",
+        answer_text="높은 시점을 참고해 보세요.",
         selections=[InterpretationSelection(role="view", term_id="view_high_angle",
             evidence=["High Angle"], confidence=0.9, source_job_id=source_id)],
         context_updates=[ContextUpdate(role="view", term_id="view_high_angle", evidence=update_evidence)],
@@ -124,7 +125,7 @@ def _historical_selection_case(snapshot_factory, card_factory, evidence):
         "job_id": source_id, "request_text": "Prior Low Angle",
         "terms": [{"label_ko": "이전 로우 앵글", "label_en": "low angle"}],
     }]
-    output = InterpretationOutput(interpretation_state="select_terms", selections=[
+    output = InterpretationOutput(interpretation_state="select_terms", answer_text="낮은 시점을 참고해 보세요.", selections=[
         InterpretationSelection(role="view", term_id="view_low_angle", evidence=[evidence],
                                 confidence=0.9, source_job_id=source_id),
     ])
