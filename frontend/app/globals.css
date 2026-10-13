@@ -232,3 +232,20 @@ button.mind-map-node[aria-pressed="true"] { border-color: #e44b65; background: #
   .pin-gallery-heading { flex-wrap: wrap; }
   .full-query-tooltip { left: auto; right: 0; transform: none; width: min(300px, calc(100vw - 40px)); }
 }
+
+.composer-submit {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  background: #292522;
+  color: #fffdf8;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.composer-submit:disabled { opacity: .45; cursor: not-allowed; }
+.composer-submit:focus-visible { outline: 3px solid #967647; outline-offset: 3px; }
+.composer-footer { flex-wrap: wrap; gap: 8px; align-items: center; }
+.result-actions button[aria-pressed="true"] { border-color: currentColor; font-weight: 700; }

@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { countCharacters, createSubmissionController, validateRequestText } from "../lib/agent-submit.mjs";
+import { countCharacters, createSubmissionController, validateRequestText, shouldSubmitOnEnter } from "../lib/agent-submit.mjs";
+import { createGallerySelection } from "../lib/gallery-selection.mjs";
 import { createConversation, listConversations, restoreConversation, resumeConversation, RESTORE_ERROR } from "../lib/server-conversation.mjs";
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
 import { HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
 import { getRecommendedSearchQuery } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode } from "../lib/term-search.mjs";
-import { createGalleryRows, renderedResultTerms, roleNotice, showThumbnail } from "../lib/result-view.mjs";
+import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail } from "../lib/result-view.mjs";
 import { demoReplyJob, readDemoTurns, saveDemoTurns, stopTurnPolling, upsertTurn, isTurnPending } from "../lib/conversation.mjs";
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
@@ -19,11 +20,18 @@ const homeSlots = createMindMapSlots(HOME_TERMS);
 export default function HomePage() {
   const [requestText, setRequestText] = useState("");
   const [error, setError] = useState("");
-  const [submission, setSubmission] = useState(null);
   const [job, setJob] = useState(() => (uiDemoEnabled ? DEMO_JOB : null));
   const [selectedTermId, setSelectedTermId] = useState(null);
   const [pollError, setPollError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
+  const composingRef = useRef(false);
+  const [historyTurnId, setHistoryTurnId] = useState(null);
+  const [historyState, setHistoryState] = useState({ loading: false, error: "" });
+  const gallerySelectionRef = useRef(null);
+  if (!gallerySelectionRef.current) gallerySelectionRef.current = createGallerySelection({
+    onJob: setJob, onSelection: setHistoryTurnId, onState: setHistoryState,
+  });
   const [turns, setTurns] = useState(() => uiDemoEnabled
     ? [{ id: "demo-initial", request: DEMO_REQUEST_TEXT, job: DEMO_JOB, demo: true }] : []);
   const [conversationReady, setConversationReady] = useState(false);
@@ -56,8 +64,8 @@ export default function HomePage() {
   const pollerRef = useRef(null);
   const selectedJobRef = useRef(null);
   const mindMapSlots = useMemo(
-    () => createMindMapSlots(renderedResultTerms(job, turns)),
-    [job, turns],
+    () => createMindMapSlots(historyTurnId ? resultTerms(job) : renderedResultTerms(job, turns)),
+    [job, turns, historyTurnId],
   );
   const hasTerms = homeSlots.some((slot) => slot.terms.length > 0);
   const activeTermId = homeSlots.some((slot) => slot.terms.some((term) => term.term_id === selectedTermId))
@@ -90,17 +98,20 @@ export default function HomePage() {
   useEffect(() => {
     if (uiDemoEnabled) return;
     const controller = new AbortController();
+    const loadId = ++sessionLoadRef.current;
+    gallerySelectionRef.current.reset(sessionIdRef.current);
     setRestoreError("");
     setConversationReady(false);
     Promise.all([listConversations({ signal: controller.signal }), restoreConversation({ signal: controller.signal, sessionId: sessionIdRef.current || undefined })]).then(([items, restored]) => {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || loadId !== sessionLoadRef.current) return;
       setSessions(items);
       setSessionId(restored.sessionId);
       sessionIdRef.current = restored.sessionId;
       setTurns(restored.turns);
-      setJob(restored.turns.at(-1)?.job || null);
+      gallerySelectionRef.current.reset(restored.sessionId);
+      gallerySelectionRef.current.live(restored.turns.at(-1)?.job || null, restored.sessionId);
       setConversationReady(true);
-    }).catch(() => { if (!controller.signal.aborted) setRestoreError(RESTORE_ERROR); });
+    }).catch(() => { if (!controller.signal.aborted && loadId === sessionLoadRef.current) setRestoreError(RESTORE_ERROR); });
     return () => controller.abort();
   }, [restoreAttempt]);
 
@@ -109,13 +120,6 @@ export default function HomePage() {
     try { setStorageFailed(!saveDemoTurns(window.localStorage, turns)); }
     catch { setStorageFailed(true); }
   }, [turns, conversationReady]);
-
-  useEffect(() => {
-    if (!submission || !job || (job.job_id && job.job_id !== submission.jobId)) return;
-    setTurns((entries) => upsertTurn(entries, {
-      id: submission.jobId, request: submission.requestText, job, demo: false,
-    }));
-  }, [submission, job]);
 
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
@@ -128,7 +132,7 @@ export default function HomePage() {
     const poller = resumeConversation(turns, { onUpdate: (turn) => {
       if (sessionIdRef.current !== activeSessionId || activeSessionId !== turn.job?.session_id) return;
       setTurns((entries) => upsertTurn(entries, turn));
-      if (turn.id === latestId) setJob(turn.job);
+      if (turn.id === latestId) gallerySelectionRef.current.live(turn.job, activeSessionId);
     }, onError: (id, message) => {
       if (sessionIdRef.current !== activeSessionId) return;
       setPollError(message);
@@ -139,7 +143,16 @@ export default function HomePage() {
       poller.stop();
       if (pollerRef.current === poller) pollerRef.current = null;
     };
-  }, [pendingTurnIds, conversationReady]);
+  }, [pendingTurnIds, conversationReady, sessionId]);
+
+  useEffect(() => {
+    const cancelHistory = () => navigateBoard("home");
+    window.addEventListener("popstate", cancelHistory);
+    return () => {
+      window.removeEventListener("popstate", cancelHistory);
+      gallerySelectionRef.current.dispose();
+    };
+  }, []);
 
   useEffect(() => () => termSearchControllerRef.current?.abort(), []);
   useEffect(() => {
@@ -204,7 +217,21 @@ export default function HomePage() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (composingRef.current) return;
     await submit(requestText);
+  }
+
+  function openTurn(turn) {
+    if (!conversationReady || turn.job?.job_status !== "completed") return;
+    termSearchControllerRef.current?.abort();
+    resetSketchSearches();
+    setTermSearch(null);
+    setTermGuide(null);
+    previewDialogRef.current?.close();
+    setPreviewPin(null);
+    setBoardView("results");
+    setMobilePanel("reference");
+    gallerySelectionRef.current.open(turn);
   }
 
   function fillInput(text) {
@@ -227,6 +254,7 @@ export default function HomePage() {
   }
 
   async function openTermSearch(term) {
+    gallerySelectionRef.current.reset(sessionIdRef.current);
     setTermGuide(term);
     resetSketchSearches();
     termSearchControllerRef.current?.abort();
@@ -279,13 +307,15 @@ export default function HomePage() {
   }
 
   async function submit(text) {
-    if (conversationBusy || submissionRef.current.isPending()) return;
+    if (conversationBusy || submitInFlightRef.current || submissionRef.current.isPending()) return;
 
     const validationError = validateRequestText(text);
     if (validationError) {
       setError(validationError);
       return;
     }
+    submitInFlightRef.current = true;
+    gallerySelectionRef.current.reset(sessionIdRef.current);
     termSearchControllerRef.current?.abort();
     resetSketchSearches();
     setMobilePanel("reference");
@@ -300,6 +330,7 @@ export default function HomePage() {
       setRequestText("");
       setError("");
       setSelectedTermId(firstSelectableTermId(mindMapSlots));
+      queueMicrotask(() => { submitInFlightRef.current = false; });
       return;
     }
 
@@ -308,7 +339,6 @@ export default function HomePage() {
     setIsSubmitting(true);
     setError("");
     setPollError("");
-    setSubmission(null);
     setJob(null);
     setSelectedTermId(null);
     selectedJobRef.current = null;
@@ -321,6 +351,7 @@ export default function HomePage() {
       }
       setSessionId(activeSession);
       sessionIdRef.current = activeSession;
+      gallerySelectionRef.current.reset(activeSession);
       const result = await submissionRef.current.submit(text, { sessionId: activeSession });
       if (result.ok) {
         setSessions((items) => {
@@ -328,8 +359,8 @@ export default function HomePage() {
           return selected ? [selected, ...items.filter((item) => item.session_id !== activeSession)] : items;
         });
         setTurns((entries) => upsertTurn(entries, { id: result.jobId, request: text,
-          job: { job_status: "queued", poll_after_ms: result.pollAfterMs }, demo: false }));
-        setSubmission({ ...result, requestText: text });
+          job: { job_id: result.jobId, session_id: activeSession,
+            job_status: "queued", poll_after_ms: result.pollAfterMs }, demo: false }));
         setRequestText("");
       }
       else {
@@ -340,6 +371,7 @@ export default function HomePage() {
       setError("대화 요청을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요.");
       setMobilePanel("conversation");
     } finally {
+      submitInFlightRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -367,6 +399,10 @@ export default function HomePage() {
   }
 
   function navigateBoard(view) {
+    gallerySelectionRef.current.reset(sessionIdRef.current);
+    previewDialogRef.current?.close();
+    setPreviewPin(null);
+    setTermSearch(null);
     setTermGuide(null);
     resetSketchSearches();
     termSearchControllerRef.current?.abort();
@@ -377,8 +413,12 @@ export default function HomePage() {
   }
 
   async function openSession(session) {
-    if (isSubmitting || session.session_id === sessionIdRef.current) return;
+    if (submitInFlightRef.current || isSubmitting || session.session_id === sessionIdRef.current) return;
     const loadId = ++sessionLoadRef.current;
+    gallerySelectionRef.current.reset(session.session_id);
+    setTermSearch(null);
+    previewDialogRef.current?.close();
+    setPreviewPin(null);
     setTermGuide(null);
     setMenuOpen(false);
     resetSketchSearches();
@@ -386,7 +426,6 @@ export default function HomePage() {
     pollerRef.current?.stop();
     setConversationReady(false);
     setRestoreError("");
-    setSubmission(null);
     setPollError("");
     setSessionId(session.session_id);
     sessionIdRef.current = session.session_id;
@@ -397,7 +436,7 @@ export default function HomePage() {
       const restored = await restoreConversation({ sessionId: session.session_id });
       if (loadId !== sessionLoadRef.current) return;
       setTurns(restored.turns);
-      setJob(restored.turns.at(-1)?.job || null);
+      gallerySelectionRef.current.live(restored.turns.at(-1)?.job || null, restored.sessionId);
       setConversationReady(true);
       setActiveGalleryRole(null);
       setBoardView("results");
@@ -411,8 +450,20 @@ export default function HomePage() {
   }
 
   async function startNewSession() {
-    if (isSubmitting) return;
+    if (submitInFlightRef.current || isSubmitting) return;
     const loadId = ++sessionLoadRef.current;
+    gallerySelectionRef.current.reset(null);
+    sessionIdRef.current = null;
+    setSessionId(null);
+    setTurns([]);
+    setJob(null);
+    setTermSearch(null);
+    setTermGuide(null);
+    setBoardView("results");
+    resetSketchSearches();
+    termSearchControllerRef.current?.abort();
+    previewDialogRef.current?.close();
+    setPreviewPin(null);
     pollerRef.current?.stop();
     setConversationReady(false);
     setRestoreError("");
@@ -422,9 +473,9 @@ export default function HomePage() {
       setSessions((items) => [created, ...items.filter((item) => item.session_id !== created.session_id)]);
       setSessionId(created.session_id);
       sessionIdRef.current = created.session_id;
+      gallerySelectionRef.current.reset(created.session_id);
       setTurns([]);
       setJob(null);
-      setSubmission(null);
       setPollError("");
       setConversationReady(true);
       setRestoreError("");
@@ -497,7 +548,17 @@ export default function HomePage() {
             </div>
           )}
         </header>
-        {boardView === "results" && conversationBusy && conversationReady ? (
+        {boardView === "results" && historyState.loading ? (
+          <div className="board-search-loading"><LoadingIndicator label="이 답변의 레퍼런스를 불러오는 중…" /></div>
+        ) : boardView === "results" && historyState.error ? (
+          <div className="board-empty" role="alert"><p>{historyState.error}</p>
+            <button type="button" onClick={() => {
+              const turn = turns.find((entry) => entry.id === historyTurnId);
+              if (turn) openTurn(turn);
+            }}>다시 불러오기</button>
+            <button type="button" onClick={() => navigateBoard("home")}>용어 둘러보기</button>
+          </div>
+        ) : boardView === "results" && !historyTurnId && conversationBusy && conversationReady ? (
           <div className="board-search-loading"><ImageSearchLoading label="요청을 처리하는 중입니다…" /></div>
         ) : ["results", "term-results"].includes(boardView) && hasGalleryRows ? (
           <div className="pin-gallery" ref={galleryRef} data-single={galleryRows.length === 1}
@@ -570,6 +631,10 @@ export default function HomePage() {
               </section>
             ))}
           </div>
+        ) : boardView === "results" && historyTurnId ? (
+          <div className="board-empty" role="status"><p>이 답변에는 표시할 레퍼런스가 없습니다.</p>
+            <button type="button" onClick={() => navigateBoard("home")}>용어 둘러보기</button>
+          </div>
         ) : hasTerms ? (
           <div className="mind-map-stage" aria-label="예시 용어 관계도">
             <p className="mind-map-guide">검수된 예시 용어 · 용어를 누르면 레퍼런스를 검색해요.</p>
@@ -628,7 +693,8 @@ export default function HomePage() {
           {restoreError && <div role="alert"><p>{restoreError}</p>
             <button type="button" onClick={() => setRestoreAttempt((value) => value + 1)}>대화 다시 불러오기</button></div>}
           {storageFailed && <p className="form-error" role="status">브라우저 저장을 사용할 수 없어 새로고침 후 더미 대화가 유지되지 않습니다.</p>}
-          <ConversationPanel key={sessionId || "no-session"} turns={turns} onChoice={fillInput} onRetry={fillInput} retryDisabled={conversationBusy} />
+          <ConversationPanel key={sessionId || "no-session"} turns={turns} onChoice={fillInput} onRetry={fillInput}
+            retryDisabled={conversationBusy} onSelect={openTurn} selectedTurnId={historyTurnId} />
           <TermGuide term={termGuide} />
           {((!conversationReady && !restoreError) || isSubmitting) && <div className="receipt"><LoadingIndicator
             label={!conversationReady ? "대화를 불러오는 중…" : "요청을 보내는 중…"} /></div>}
@@ -645,12 +711,14 @@ export default function HomePage() {
             rows={5}
             value={requestText}
             disabled={conversationBusy}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
             onChange={(event) => {
               setRequestText(event.target.value);
               if (error) setError("");
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              if (shouldSubmitOnEnter(event, composingRef.current)) {
                 event.preventDefault();
                 event.currentTarget.form?.requestSubmit();
               }
@@ -664,6 +732,10 @@ export default function HomePage() {
           <div className="composer-footer">
             <span id="request-hint" className="input-hint">Enter로 검색 · Shift+Enter로 줄바꿈</span>
             <span id="request-count" className="character-count">{countCharacters(requestText)} / 500</span>
+            <button className="composer-submit" type="submit"
+              disabled={conversationBusy || Boolean(validateRequestText(requestText))}>
+              {isSubmitting ? "전송 중…" : "전송"}
+            </button>
           </div>
         </form>
       </aside>

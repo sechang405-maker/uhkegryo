@@ -15,6 +15,8 @@ async function submitScenario(mode) {
   const noop = () => {};
   const context = {
     conversationBusy: false,
+    submitInFlightRef: { current: false },
+    gallerySelectionRef: { current: { reset: noop } },
     submissionRef: { current: {
       isPending: () => false,
       submit: async () => {

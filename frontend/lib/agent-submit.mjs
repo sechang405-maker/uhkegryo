@@ -1,6 +1,12 @@
 const GENERIC_ERROR = "요청을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
+export function shouldSubmitOnEnter(event, composing = false) {
+  return event.key === "Enter" && !event.shiftKey && !event.repeat && !composing
+    && !event.isComposing && !event.nativeEvent?.isComposing
+    && event.keyCode !== 229 && event.nativeEvent?.keyCode !== 229;
+}
+
 export function countCharacters(value) {
   return Array.from(value).length;
 }
