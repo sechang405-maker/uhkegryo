@@ -51,7 +51,11 @@
 
 용어 해석은 사용자의 의도를 확인하는 제안이며, 신체 비율이나 포즈를 단정하는 판정이 아닙니다.
 
-## MVP 범위
+## 프로젝트 상태와 후속 개발
+
+팀 과제는 종료됐습니다. 아래 MVP·제출·배포 수치는 원본 팀 프로젝트의 당시 범위와 증거입니다. 개인 저장소의 후속 기능과 기술 선택은 작업별로 다시 결정할 수 있으며, 변경 전 현재 API/MCP 계약·데이터 보호·권리 경계를 확인하고 검증 결과를 별도로 기록합니다. 이 설명은 RAG·LangGraph 등 새 기능의 구현 또는 배포 승인을 뜻하지 않습니다.
+
+## 원본 MVP 범위
 
 ### 제공할 것
 
@@ -101,7 +105,7 @@ LLM은 링크를 임의로 만들거나 데이터 출처를 지어내지 않습�
 | TERM_CARD JSON 카탈로그 | `index.json`과 다섯 역할 JSON으로 이루어진 팀 검수 런타임 단일 원본 | term ID, 설명, query fragment, 검수 상태 |
 | Pinterest | 사용자가 원본을 직접 확인할 외부 탐색 대상 | 원본 Pin 링크와 응답 전용 원격 썸네일 미리보기 |
 
-SearXNG 검색 규칙은 [SearXNG Pinterest 검색 Spec](docs/specs/searxng-pinterest-search.md), widget 기반 Pin 미리보기·보관 경계는 [Pinterest 기능 Spec](docs/specs/pinterest-widget-crawler.md)을 단일 기준으로 사용합니다. 서버에는 JSON Search API가 활성화된 SearXNG 주소를 `SEARXNG_BASE_URL`로 설정해야 합니다. 용어 선택·설명·검색 조각은 구현 후 팀이 작성·검수한 TERM_CARD JSON 카탈로그만 사용합니다. 카탈로그는 시작 시 검증해 메모리에 로드하며 요청 중 파일을 다시 읽거나 DB에 적재하지 않습니다. Getty는 용어 조사 시 참고한 자료일 뿐, 서비스 데이터·사용자 화면·LLM 입력·런타임 조회에 포함하지 않습니다. 자체 카드와 권리 검토 기준은 팀 승인을 거쳐야 하며, 승인되지 않은 데이터를 완료된 카탈로그로 주장하지 않습니다.
+SearXNG 검색 규칙은 [SearXNG Pinterest 검색 Spec](docs/specs/searxng-pinterest-search.md), widget 기반 Pin 미리보기·보관 경계는 [Pinterest 기능 Spec](docs/specs/pinterest-widget-crawler.md)을 단일 기준으로 사용합니다. 서버에는 JSON Search API가 활성화된 SearXNG 주소를 `SEARXNG_BASE_URL`로 설정해야 합니다. 용어 선택·설명·검색 조각은 구현 후 팀이 작성·검수한 TERM_CARD JSON 카탈로그만 사용합니다. 카탈로그는 시작 시 검증해 메모리에 로드하며 요청 중 파일을 다시 읽거나 DB에 적재하지 않습니다. Getty는 용어 조사 시 참고한 자료일 뿐, 서비스 데이터·사용자 화면·LLM 입력·런타임 조회에 포함하지 않습니다. 새 카드나 외부 자료는 출처·권리·품질을 사람이 검토하고 계약·평가를 갱신한 뒤에만 활성 데이터로 표시합니다. 검토하지 않은 데이터를 완료된 카탈로그로 주장하지 않습니다.
 
 ## API와 MCP 상태
 
@@ -209,7 +213,7 @@ frontend 개발 서버도 해당 PowerShell 창에서 `Ctrl+C`로 중지합니�
 
 > 아직 새 환경에서 이 전체 절차를 끝까지 실행한 실측은 없습니다. 특히 최종 코드의 실제 LLM·MCP·Pinterest 결과와 브라우저 렌더링은 별도 검증 대상입니다. Langfuse 인프라 기동 확인은 LLM trace 기록 확인과 별개입니다. 원격 Prompt 등록·Dataset 연결·대시보드 측정을 완료한 뒤 새 환경에서 절차를 다시 검증하고 결과를 갱신합니다.
 
-## 제출 기준 설정과 실제 검증
+## 원본 제출 기준과 당시 검증
 
 배포 구성·환경 변수 예시는 `LLM_MODEL=openai/gpt-4.1-mini`, `INTERPRETER_PROMPT_VERSION=uhkegryo-interpreter-v4`, v4 파일 경로를 함께 사용합니다. Cloud Run 이미지 경로는 `/app/prompts/uhkegryo-interpreter-v4.md`, 직접 Python은 `./prompts/uhkegryo-interpreter-v4.md`입니다. 기존 `.env`의 명시적 override도 세 값을 함께 맞춥니다. 구성 변경은 실제 클라우드 배포 완료를 뜻하지 않습니다.
 
@@ -258,25 +262,11 @@ frontend 개발 서버도 해당 PowerShell 창에서 `Ctrl+C`로 중지합니�
 | [작업 티켓](./docs/work-tickets.md) | 역할 분담·의존·일정을 포함한 전체 작업 목록 |
 | [docs/SCAFFOLD.md](./docs/SCAFFOLD.md) | 저장소 폴더별 작성 안내 |
 
-## 팀과 협업
+## 개인 후속 개발
 
-1. `main`에는 직접 push하지 않고, 개인 브랜치에서 PR을 만듭니다.
-2. PR은 팀원 1명 이상의 approve 뒤에 사람이 merge합니다.
-3. 기능 구현 전 `docs/specs/{feature-name}.md`에 Why, Goal, What, How, AC를 작성합니다.
-4. API 키·비밀번호·`.env`는 절대 커밋하지 않습니다.
-5. 강사 확인이 필요한 질문은 Issue에 남기고 강사를 멘션합니다.
+원격 소유자와 기본 브랜치를 확인하고 변경 목적·영향·검증 근거를 남깁니다. 이 개인 저장소에서는 팀원 approve, PR, 강사 확인, 과제 제출 마감, 400줄 상한이 필수 절차가 아닙니다. API/MCP 호환성, 데이터·비밀정보 보호, 외부 자료의 권리와 약관은 계속 확인합니다. 원본 팀의 공로와 기록은 보존합니다. [운영 기준](./AGENTS.md)과 [원본 협업 기록](./docs/github-workflow.md)을 참고하세요.
 
-```powershell
-git switch main
-git pull
-git switch -c feat/<작업내용>
-# 작업 및 검증 후
-git add <변경한-파일>
-git commit -m "feat: <변경 내용>"
-git push -u origin feat/<작업내용>
-```
-
-## 배포와 데모
+## 원본 배포와 데모 기록
 
 | 제출 증거 | 상태 |
 | --- | --- |
