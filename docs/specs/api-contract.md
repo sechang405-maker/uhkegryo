@@ -135,4 +135,6 @@ AgentResult는 nullable memory_answer(최대 2000자)와 sources 배열(job_id, 
 회상 전용 job은 validating에서 rendering으로 바로 전이한다. 조건 변경·원문 evidence·출처 검증은 [conversation-context.md](conversation-context.md), 요약 범위는 [conversation-summary.md](conversation-summary.md)를 따른다. source_job_id가 null이면 evidence는 현재 원문, 값이 있으면 해당 대화의 선행 원본 요청/카드 라벨을 인용한다. 상태의 최종 결정은 서버가 한다.
 `answer_text`는 InterpretationOutput와 AgentResult의 최대 4,000자 strict 문자열이다. `select_terms` 해석은 공백이 아닌 통합 설명이 필수이며, 누락·빈 문자열·공백만 있는 문자열은 구조화 출력 오류로 처리한다. `needs_clarification`의 기본 빈 문자열과 질문 응답 계약은 유지한다. resolver 검증 후 일반/부분 결과에만 모델 통합 설명을 노출하며 term별 정적 피드백·회상 답변은 기존 계약을 유지한다. UI 복원과 상세 계약은 [studio-conversation-connection.md](studio-conversation-connection.md)를 따른다.
 
+개인 개선 2단계: 서버는 근거의 영문 단어 경계, 인접한 명시적 제외·불확실 표현 일부, 근거 전체가 같은 역할의 다른 카드명만인 경우를 추가 검사한다. 자연어 묘사나 부모·자식 카드명만으로 일반적인 의미 정합성을 보장하지 않으며 confidence_gate의 의미 판단은 여전히 해석 모델의 책임이다. 검증된 동일 대화의 원문·카드 라벨 참조는 유지한다. 검색 전 검증에서 일부 선택이 제외되면 기존 통합 설명을 그대로 게시하지 않고 기존 구조화 출력 오류 경로로 처리한다. 기존 카드 재사용을 위한 검색 생략은 이 제외에 해당하지 않는다. 별도 LLM 판정 호출이나 새 재시도 정책은 추가하지 않는다. 자유 설명의 모든 사실·비교·동의어 일치 여부는 이 제한된 검사로 보장하지 않는다.
+
 모호·상충 확인 질문은 모델 문장을 직접 전달하지 않는다. resolver가 clarification_type과 현재 요청의 제한된 시각 단서를 이용해 고정된 지지 다리/S자 흐름·체형/의상·어깨/골반 비율·옆모습/정면 질문을 고르며, 해당되지 않으면 기존 공통 질문을 반환한다. v4의 검증 실패 피드백과 답변 안내는 [ambiguity-answer-quality.md](ambiguity-answer-quality.md)를 따른다.

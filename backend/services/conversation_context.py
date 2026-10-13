@@ -7,7 +7,7 @@ from backend.schemas.models import AgentResult, InterpretationOutput, Interpreta
 from backend.schemas.memory import RecallQuery, RecallAnswer, MemorySource, NO_RECORDS, TOO_MANY
 from backend.services.conversation_memory import evidence_text
 from backend.services.llm import LLMInvalidStructuredOutput
-from backend.services.resolver import resolve, STATUS_ALL_INVALID
+from backend.services.resolver import resolve, STATUS_ALL_INVALID, STATUS_PROCEED
 
 async def prepare(memory, job, adapter, trace):
     return await memory.load(job)
@@ -110,6 +110,11 @@ async def validate(memory, job, interpretation, snapshot):
                          verified_source_texts=verified_source_texts)
     if resolution.status == STATUS_ALL_INVALID or resolution.invalid_candidates:
         raise LLMInvalidStructuredOutput("선택 카드가 현재 카탈로그에서 유효하지 않습니다", stage="conversation_validation",
+                                         feedback=[{"path": [], "code": "selection_card_invalid"}])
+    if resolution.status == STATUS_PROCEED and (
+            {item.term_id for item in interpretation.selections}
+            != {item.selection.term_id for item in resolution.terms}):
+        raise LLMInvalidStructuredOutput("일부 선택이 제외되어 통합 설명을 그대로 사용할 수 없습니다", stage="conversation_validation",
                                          feedback=[{"path": [], "code": "selection_card_invalid"}])
     return resolution
 

@@ -19,6 +19,8 @@ LLM 판단 몫이며 이 모듈은 재판정하지 않는다. 참조 ID의 구�
 
 from __future__ import annotations
 
+# Narrow lexical evidence guards supplement catalog checks; they do not prove semantic equivalence.
+
 import re
 from dataclasses import dataclass, field
 from collections.abc import Mapping, Sequence
@@ -27,6 +29,7 @@ from backend.schemas.enums import ClarificationType, InterpretationState, Reason
 from backend.schemas.models import InterpretationOutput, InterpretationSelection
 from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.input_safety import normalize_input_text
+from backend.services.selection_grounding import has_affirmed_evidence, only_names_other_cards
 
 STATUS_PROCEED = "proceed"
 STATUS_CLARIFY = "clarify"
@@ -127,6 +130,9 @@ def resolve(
         if card is None or str(card.get("role")) != str(selection.role):
             invalid.append(selection)
             continue
+        if only_names_other_cards(selection, snapshot):
+            invalid.append(selection)
+            continue
         if not card.get("query_fragments"):
             invalid.append(selection)
             continue
@@ -164,8 +170,7 @@ def resolve(
 
 def _has_source_evidence(selection: InterpretationSelection, normalized_sources: Sequence[str]) -> bool:
     return all(
-        (normalized_evidence := normalize_input_text(evidence))
-        and any(normalized_evidence in source for source in normalized_sources)
+        has_affirmed_evidence(evidence, normalized_sources)
         for evidence in selection.evidence
     )
 
