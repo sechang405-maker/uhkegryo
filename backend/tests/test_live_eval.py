@@ -57,6 +57,7 @@ def test_execute_completes_postgres_worker_and_measured_request_path(monkeypatch
                     self.calls.append(kwargs)
                     self.response_format = kwargs["response_format"]
                     content = '{"interpretation_state":"select_terms","selections":[{"role":"body","term_id":"body_slim","evidence":["마른 체형"],"confidence":0.9},{"role":"pose","term_id":"pose_standing","evidence":["두 발로 똑바로 서서"],"confidence":0.9},{"role":"view","term_id":"view_front","evidence":["정면"],"confidence":0.9}],"unresolved_constraints":[],"clarifying_question":null,"clarification_type":null,"context_updates":[]}'
+                    content = json.dumps({**json.loads(content), "answer_text": "마른 체형으로 똑바로 선 정면 자세를 참고해 보세요."}, ensure_ascii=False)
                     if duplicate_once and len(self.calls) == 1:
                         payload = json.loads(content)
                         payload["selections"].append(payload["selections"][0].copy())

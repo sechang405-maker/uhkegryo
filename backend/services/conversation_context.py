@@ -99,7 +99,8 @@ async def validate(memory, job, interpretation, snapshot):
                                              feedback=[{"path": [], "code": "context_evidence_invalid"}])
         seen.add(update.role)
         if update.term_id is not None:
-            candidate = InterpretationOutput(interpretation_state="select_terms", selections=[
+            # This internal candidate only checks the catalog; its text is never returned as an answer.
+            candidate = InterpretationOutput(interpretation_state="select_terms", answer_text=update.evidence, selections=[
                 InterpretationSelection(role=update.role, term_id=update.term_id,
                                         evidence=[update.evidence], confidence=1)])
             if resolve(candidate, snapshot, request_text=str(job["request_text"])).status == STATUS_ALL_INVALID:
