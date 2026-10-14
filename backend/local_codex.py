@@ -34,7 +34,10 @@ def main():
         LANGFUSE_PUBLIC_KEY='', LANGFUSE_SECRET_KEY='', MCP_ENABLED='false', MCP_BASE_URL='',
         SEARXNG_BASE_URL='', ALLOWED_ORIGINS='http://127.0.0.1:3100,http://localhost:3100')
     # Validate process env only; never silently import a copied team's .env/DB URL.
-    settings = Settings(_env_file=None)
+    try:
+        settings = Settings(_env_file=None)
+    except ValueError:
+        raise SystemExit('Local Codex configuration invalid; check the local DATABASE_URL and documented settings') from None
     get_settings.cache_clear()
     import backend.shared.config as config
     config.get_settings = lambda: settings
@@ -47,7 +50,10 @@ def main():
                 await migrate(connection)
             finally:
                 await connection.close()
-        asyncio.run(initialize())
+        try:
+            asyncio.run(initialize())
+        except Exception:
+            raise SystemExit('Local DB initialization failed; check the selected local database and schema') from None
         return
     import uvicorn
     uvicorn.run('backend.main:app', host='127.0.0.1', port=8000, workers=1,

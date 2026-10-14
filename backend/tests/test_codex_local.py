@@ -177,3 +177,17 @@ def test_codex_search_outcomes_explicitly_report_unavailable(monkeypatch):
     resolution = SimpleNamespace(terms=[SimpleNamespace(selection=SimpleNamespace(role=Role.BODY))])
     outcomes = asyncio.run(worker._search_outcomes(resolution, request_text='new images'))
     assert outcomes[Role.BODY].code == ReasonCode.PIN_SEARCH_UNAVAILABLE
+
+
+def test_launcher_invalid_database_does_not_print_connection_secret():
+    import os
+    import subprocess
+    import sys
+    from backend.services.codex_runtime import child_environment
+    env = child_environment(os.environ)
+    env['DATABASE_URL'] = 'postgresql://u:do-not-display-password@remote.invalid/uh'
+    result = subprocess.run([sys.executable, '-m', 'backend.local_codex'],
+        env=env, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20)
+    assert result.returncode != 0
+    assert 'do-not-display-password' not in result.stdout + result.stderr
+    assert 'Local Codex configuration invalid' in result.stderr
