@@ -17,6 +17,17 @@ def test_fixed_selection_and_dry_run_do_not_construct_transport(tmp_path, monkey
     assert not (tmp_path/'dry'/'results.jsonl').exists()
 
 
+def test_inactive_expected_card_rejected_before_output_or_transport(tmp_path, monkeypatch):
+    dataset=json.loads(runner.DATASET.read_text(encoding='utf-8'))
+    dataset['cases'][-1]['expected']['required_terms'][0]='body_muscular'
+    path=tmp_path/'bad.json';path.write_text(json.dumps(dataset),encoding='utf-8')
+    monkeypatch.setattr(runner,'DATASET',path)
+    monkeypatch.setattr(runner,'make_adapter',lambda:pytest.fail('transport constructed'))
+    with pytest.raises(ValueError,match='inactive expected term'):
+        asyncio.run(runner.run(tmp_path/'output',runner.CASE_IDS,'a'*40,execute=True))
+    assert not (tmp_path/'output').exists()
+
+
 def test_single_attempt_failures_are_sanitized_and_unknown_usage(tmp_path):
     from backend.services.llm import LLMTimeout
     class Fake:
@@ -81,10 +92,12 @@ def test_real_adapter_with_mock_transport_validates_and_never_uses_db(tmp_path, 
         if len(calls)>1:raise LLMTimeout('synthetic')
         return json.dumps({'interpretation_state':'select_terms','answer_text':'마른 체형으로 똑바로 선 정면 자세입니다.',
             'selections':[{'role':role,'term_id':term,'evidence':[evidence],'confidence':.95}
-                for role,term,evidence in [('body','body_slim','마른 체형'),('pose','pose_standing','두 발로 똑바로 서서'),('view','view_front','정면')]],
+                for role,term,evidence in [('body','body_slim','마른 체형'),('pose','pose_standing','두 발로 똑바로 서서'),('view','view_front','정면'),('layout','layout_composition','자료')]],
             'unresolved_constraints':[],'clarifying_question':None,'clarification_type':None,'context_updates':[]})
     monkeypatch.setattr(codex_runtime,'generate',generate)
     asyncio.run(runner.run(tmp_path/'run',runner.CASE_IDS,'a'*40,execute=True,adapter_factory=runner.make_adapter))
     rows=[json.loads(x) for x in (tmp_path/'run'/'results.jsonl').read_text(encoding='utf-8').splitlines()]
     assert len(calls)==12 and rows[0]['passed_checks'] and rows[0]['verified_model']=='mock'
     assert rows[0]['qualitative_score'] is None
+    assert rows[0]['extra_term_ids']==['layout_composition']
+    assert rows[0]['review_flags']==['extra_terms_require_semantic_review']

@@ -1,6 +1,6 @@
 # Local Luna interpretation evaluation
 
-The separate `scripts.run_luna_eval` path leaves the OpenRouter/DB worker runner unchanged. It uses only the committed `luna-16-v1.json`, v4 prompt and local catalog. It never retrieves existing conversations or initializes a DB, search client, worker or model judge.
+The separate `scripts.run_luna_eval` path leaves the OpenRouter/DB worker runner unchanged. It uses only the committed `luna-16-v2.json`, v4 prompt and local catalog. It never retrieves existing conversations or initializes a DB, search client, worker or model judge. Version 1 is retained with its original results: LUNA-16 incorrectly expected the nonexistent body_muscular card. Version 2 replaces that invalid fixture with an explicit active-card update, and has not been evaluated live. Expected cards and final context roles are now validated before any adapter is constructed.
 
 From repository root, with backend dependencies installed:
 
@@ -15,6 +15,6 @@ Metadata records the caller-supplied source commit (not falsely described as Git
 
 Each result is flushed separately. Exception messages, command lines, environment, auth files and raw malformed outputs are not persisted. Only schema-valid output derived from synthetic input is retained for review, including when deterministic grounding later rejects it. The two context cases use fixed in-memory synthetic sources; they do not assess DB retrieval, recall classification or conversation persistence.
 
-`passed_checks` covers expected state, required/forbidden terms and deterministic grounding. It is not a semantic-quality score: `qualitative_score` stays null until documented review. Review term/evidence consistency, explanation correctness, novice observation guidance and clarification sufficiency with the existing rubric. Keep original results and distinguish model output error, expectation error, catalog limit, resolver defect and evaluator defect. Never change expectations just to raise the score.
+`passed_checks` covers expected state, required/forbidden terms, expected context preservation/updates and deterministic grounding. Extra selected cards are separately recorded in `extra_term_ids` and `review_flags`, not silently credited as semantically appropriate. `adapter_attempts` counts adapter invocations, including failures before generation; it is not a measured subscription counter. This is not a semantic-quality score: `qualitative_score` stays null until documented review. Review term/evidence consistency, explanation correctness, novice observation guidance and clarification sufficiency with the existing rubric. Keep original results and distinguish model output error, expectation error, catalog limit, resolver defect and evaluator defect. Never change expectations just to raise the score.
 
 Tests patch the actual adapter's transport and DB entrypoints; no real model calls belong in CI.

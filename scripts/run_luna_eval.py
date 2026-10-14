@@ -22,7 +22,8 @@ from backend.services.llm import format_active_cards_json, LLMConfigurationError
 
 ROOT = Path(__file__).resolve().parents[1]
 CASE_IDS = tuple(f'LUNA-{i:02}' for i in range(1, 17))
-DATASET = ROOT / 'evals/luna-16-v1.json'
+DATASET_VERSION = 'luna-16-v2'
+DATASET = ROOT / f'evals/{DATASET_VERSION}.json'
 CATALOG = ROOT / 'docs/domains/illustration-reference/term-cards'
 PROMPT = ROOT / 'prompts/uhkegryo-interpreter-v4.md'
 
@@ -35,11 +36,21 @@ def load_cases(ids):
     if tuple(ids) != CASE_IDS:
         raise ValueError('Explicitly select all 16 unique IDs in fixed order')
     dataset = json.loads(DATASET.read_text(encoding='utf-8'))
-    if dataset['version'] != 'luna-16-v1' or dataset.get('synthetic_only') is not True:
+    if dataset['version'] != DATASET_VERSION or dataset.get('synthetic_only') is not True:
         raise ValueError('Only the committed synthetic dataset is supported')
     cases = dataset['cases']
     if tuple(case['id'] for case in cases) != CASE_IDS:
         raise ValueError('Dataset IDs differ from the fixed selection')
+    snapshot = load_catalog(CATALOG)
+    for case in cases:
+        expected = case['expected']
+        for term in expected.get('required_terms', []):
+            if snapshot.get_active(term) is None:
+                raise ValueError(f"{case['id']}: inactive expected term")
+        for role, term in expected.get('final_constraints', {}).items():
+            card = snapshot.get_active(term)
+            if card is None or card['role'] != role:
+                raise ValueError(f"{case['id']}: invalid expected context constraint")
     return cases
 
 
@@ -83,7 +94,7 @@ def metadata(commit, execute, snapshot):
     return {'started_utc': datetime.now(timezone.utc).isoformat(),
         'mode': 'execute' if execute else 'dry_run', 'source_commit': commit,
         'commit_provenance': 'caller supplied; source hashes identify actual files',
-        'dataset_version': 'luna-16-v1', 'dataset_sha256': digest(DATASET),
+        'dataset_version': DATASET_VERSION, 'dataset_sha256': digest(DATASET),
         'selected_case_ids': list(CASE_IDS), 'requested_model': MODEL,
         'provider': 'openai', 'prompt_sha256': digest(PROMPT),
         'prompt_version': 'uhkegryo-interpreter-v4', 'catalog_version': snapshot.dataset_version,
@@ -126,6 +137,9 @@ async def run(directory, ids, commit, *, execute=False, adapter_factory=None):
                     row['verified_model'] = MODEL if adapter_factory is None else 'mock'
                     # Retain schema-valid outputs even if grounding validation fails.
                     row['interpretation'] = interpretation.model_dump(mode='json')
+                    row['extra_term_ids'] = sorted({item.term_id for item in interpretation.selections}
+                        - set(case['expected'].get('required_terms', [])))
+                    row['review_flags'] = ['extra_terms_require_semantic_review'] if row['extra_term_ids'] else []
                     resolution = await validate(SyntheticMemory(case), {'request_text': case['input']}, interpretation, snapshot)
                     row.update(status='completed', checks=check_output(case, interpretation),
                                resolution_status=resolution.status)
