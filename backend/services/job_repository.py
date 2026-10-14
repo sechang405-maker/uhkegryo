@@ -71,7 +71,7 @@ class JobRepository:
                         FROM jobs AS queued
                         WHERE queued.status = 'queued'
                           AND EXISTS (SELECT 1 FROM sessions s WHERE s.session_id=queued.session_id
-                                      AND s.last_activity_at + interval '3 months' > now())
+                                      AND (s.retained OR s.last_activity_at + interval '3 months' > now()))
                           AND queued.attempt < queued.max_attempts
                           AND (queued.next_retry_at IS NULL OR queued.next_retry_at <= now())
                           AND NOT EXISTS (
@@ -159,7 +159,7 @@ class JobRepository:
         )
         live = await connection.fetchval(
             """UPDATE sessions SET last_activity_at=now()
-               WHERE session_id=$1::uuid AND last_activity_at + interval '3 months' > now()
+               WHERE session_id=$1::uuid AND (retained OR last_activity_at + interval '3 months' > now())
                RETURNING session_id""", session_id,
         )
         if live is None:
@@ -279,7 +279,7 @@ class JobRepository:
     async def history(self, session_id: str, limit=20, offset=0) -> list[dict]:
         rows = await self._pool.fetch(
             """SELECT j.* FROM jobs j JOIN sessions s USING(session_id)
-               WHERE j.session_id=$1::uuid AND s.last_activity_at + interval '3 months' > now()
+               WHERE j.session_id=$1::uuid AND (s.retained OR s.last_activity_at + interval '3 months' > now())
                ORDER BY j.created_at,j.job_id LIMIT $2 OFFSET $3""", session_id, limit, offset,
         )
         return [dict(_to_envelope(row).model_dump(mode="json"),

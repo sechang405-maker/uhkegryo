@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     codex_timeout_seconds: float = Field(default=180, ge=10, le=300)
     codex_bin_dir: str = ''
     codex_executable: str = ''
+    local_profile_token: str = Field(default='', repr=False)
     openrouter_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""

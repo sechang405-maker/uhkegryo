@@ -35,7 +35,7 @@ def set_session_cookie(response: Response, token: str, settings: Settings) -> No
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
-        max_age=session_cookie_max_age(),
+        max_age=400 * 86400 if getattr(settings, 'llm_backend', '') == 'codex-cli' and getattr(settings, 'local_profile_token', '') else session_cookie_max_age(),
         httponly=True,
         secure=settings.environment != "development",
         samesite="lax",

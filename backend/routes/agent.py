@@ -11,7 +11,7 @@ import uuid
 from time import perf_counter
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, Query, Request, Response
+from fastapi import APIRouter, Header, Query, Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -33,6 +33,7 @@ from backend.services.job_repository import (
 )
 from backend.services.job_repository import JobRepository
 from backend.services.session_repository import SessionRepository
+from backend.services.session_repository import SessionBusy
 from backend.services.failure_mapping import DATABASE_ERRORS, FAILURE_MESSAGE, classify_failure
 from backend.services.pinterest_widget import PinterestWidgetClient
 from backend.services.job_trace import JobTracer
@@ -68,6 +69,47 @@ async def close_widget_client() -> None:
     client = _widget_clients.pop(asyncio.get_running_loop(), None)
     if client is not None:
         await client.aclose()
+
+
+def require_conversation_action(request: Request, action: str) -> None:
+    settings = get_settings()
+    origin = request.headers.get('origin')
+    allowed = {value.strip() for value in settings.allowed_origins.split(',')}
+    allowed.add(str(request.base_url).rstrip('/'))
+    if (request.headers.get('x-conversation-action') != action
+            or request.headers.get('sec-fetch-site') == 'cross-site'
+            or (origin is not None and origin not in allowed)):
+        raise HTTPException(403, '허용되지 않은 대화 변경 요청입니다.')
+
+
+@router.post('/api/local/profile')
+async def local_profile(request: Request, response: Response):
+    require_conversation_action(request, 'profile')
+    settings = get_settings()
+    token = settings.local_profile_token
+    if settings.llm_backend != 'codex-cli' or not token:
+        return {'persistent': False}
+    from backend.local_codex import local_request_allowed
+    if not local_request_allowed(request.client.host if request.client else '',
+                                 request.headers.get('host',''), request.headers.get('origin')):
+        raise HTTPException(403, '로컬 접속만 허용됩니다.')
+    sessions, _ = await _database_call(get_repositories())
+    await _database_call(sessions.bind_local_profile(token))
+    set_session_cookie(response, token, settings)
+    return {'persistent': True}
+
+
+@router.delete('/api/sessions/{session_id}', status_code=204)
+async def delete_conversation(session_id: uuid.UUID, request: Request, response: Response):
+    require_conversation_action(request, 'delete')
+    sessions, _ = await _database_call(get_repositories())
+    token = await _owner(request, response, sessions)
+    try:
+        await _database_call(sessions.delete_session(token, str(session_id)))
+    except SessionBusy:
+        raise HTTPException(409, '답변 처리 중인 대화는 완료 후 삭제할 수 있습니다.') from None
+    response.status_code = 204
+    return response
 
 
 async def get_repositories() -> tuple[SessionRepository, JobRepository]:

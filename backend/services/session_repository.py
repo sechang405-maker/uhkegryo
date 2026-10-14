@@ -4,7 +4,12 @@ import uuid
 from typing import Any
 from backend.shared.auth import hash_session_token
 
-LIVE = "s.last_activity_at + interval '3 months' > now()"
+LIVE = "(s.retained OR s.last_activity_at + interval '3 months' > now())"
+EXPIRY = "CASE WHEN s.retained THEN NULL ELSE s.last_activity_at + interval '3 months' END"
+
+
+class SessionBusy(Exception):
+    pass
 
 
 class SessionRepository:
@@ -26,20 +31,20 @@ class SessionRepository:
             """INSERT INTO anonymous_owners(owner_id, session_token_hash)
                VALUES ($1::uuid, $2) ON CONFLICT (session_token_hash) DO UPDATE
                SET session_token_hash=EXCLUDED.session_token_hash
-               RETURNING owner_id, default_session_id""",
+               RETURNING owner_id, default_session_id, retained""",
             str(uuid.uuid4()), hash_session_token(token),
         )
         default = owner["default_session_id"]
         if not new and default is not None:
             existing = await connection.fetchval(
-                f"SELECT session_id FROM sessions s WHERE session_id=$1 AND {LIVE}", default,
+                f"SELECT session_id FROM sessions s WHERE session_id=$1 AND owner_id=$2 AND {LIVE}", default, owner["owner_id"],
             )
             if existing is not None:
                 return str(existing)
         session_id = str(uuid.uuid4())
         await connection.execute(
-            "INSERT INTO sessions(session_id, owner_id) VALUES ($1::uuid,$2)",
-            session_id, owner["owner_id"],
+            "INSERT INTO sessions(session_id, owner_id, retained) VALUES ($1::uuid,$2,$3)",
+            session_id, owner["owner_id"], owner.get("retained", False),
         )
         if not new or default is None:
             await connection.execute(
@@ -53,7 +58,7 @@ class SessionRepository:
             raise ValueError("token must not be empty")
         value = await self._pool.fetchval(
             f"""SELECT s.session_id FROM sessions s JOIN anonymous_owners o
-                ON o.default_session_id=s.session_id
+                ON o.default_session_id=s.session_id AND o.owner_id=s.owner_id
                 WHERE o.session_token_hash=$1 AND {LIVE}""", hash_session_token(token),
         )
         return str(value) if value else None
@@ -65,7 +70,7 @@ class SessionRepository:
 
     async def list_sessions(self, token: str, limit=20, offset=0) -> list[dict]:
         rows = await self._pool.fetch(
-            f"""SELECT s.*, s.last_activity_at + interval '3 months' AS expires_at
+            f"""SELECT s.*, {EXPIRY} AS expires_at
                 FROM sessions s JOIN anonymous_owners o USING(owner_id)
                 WHERE o.session_token_hash=$1 AND {LIVE}
                 ORDER BY s.last_activity_at DESC, s.session_id LIMIT $2 OFFSET $3""",
@@ -79,9 +84,9 @@ class SessionRepository:
             query = f"""UPDATE sessions s SET last_activity_at=now()
                         FROM anonymous_owners o WHERE o.owner_id=s.owner_id
                         AND o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}
-                        RETURNING s.*, s.last_activity_at + interval '3 months' AS expires_at"""
+                        RETURNING s.*, {EXPIRY} AS expires_at"""
         else:
-            query = f"""SELECT s.*, s.last_activity_at + interval '3 months' AS expires_at
+            query = f"""SELECT s.*, {EXPIRY} AS expires_at
                         FROM sessions s JOIN anonymous_owners o USING(owner_id)
                         WHERE o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}"""
         row = await self._pool.fetchrow(query, hash_session_token(token), session_id)
@@ -103,9 +108,44 @@ class SessionRepository:
 
     async def delete_expired_sessions(self) -> int:
         result = await self._pool.execute(
-            "DELETE FROM sessions WHERE last_activity_at + interval '3 months' <= now()"
+            "DELETE FROM sessions WHERE NOT retained AND last_activity_at + interval '3 months' <= now()"
         )
         return int(result.rsplit(" ", 1)[-1])
+
+    async def bind_local_profile(self, token: str) -> None:
+        """Adopt this dedicated personal DB without deleting existing records."""
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                await connection.execute('SELECT pg_advisory_xact_lock(73492154)')
+                owner_id = await connection.fetchval(
+                    '''INSERT INTO anonymous_owners(owner_id, session_token_hash, retained)
+                       VALUES ($1,$2,TRUE) ON CONFLICT(session_token_hash) DO UPDATE SET retained=TRUE
+                       RETURNING owner_id''', uuid.uuid4(), hash_session_token(token))
+                await connection.execute('''UPDATE sessions SET owner_id=$1,retained=TRUE
+                    WHERE owner_id<>$1 OR NOT retained''', owner_id)
+                await connection.execute('''UPDATE anonymous_owners SET default_session_id=NULL
+                    WHERE owner_id<>$1 AND default_session_id IS NOT NULL''', owner_id)
+                await connection.execute('''UPDATE anonymous_owners SET default_session_id=(
+                    SELECT session_id FROM sessions WHERE owner_id=$1 ORDER BY last_activity_at DESC LIMIT 1)
+                    WHERE owner_id=$1 AND default_session_id IS NULL''', owner_id)
+
+    async def delete_session(self, token: str, session_id: str) -> None:
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                # Match ensure_session's owner -> session lock order.
+                await connection.fetchval('''SELECT owner_id FROM anonymous_owners
+                    WHERE session_token_hash=$1 FOR UPDATE''', hash_session_token(token))
+                row = await connection.fetchval('''SELECT s.session_id FROM sessions s
+                    JOIN anonymous_owners o USING(owner_id)
+                    WHERE s.session_id=$1::uuid AND o.session_token_hash=$2 FOR UPDATE OF s''',
+                    session_id, hash_session_token(token))
+                if row is None:
+                    return  # Idempotent; never disclose another owner's records.
+                active = await connection.fetchval('''SELECT 1 FROM jobs WHERE session_id=$1
+                    AND status NOT IN ('completed','failed') LIMIT 1''', row)
+                if active:
+                    raise SessionBusy
+                await connection.execute('DELETE FROM sessions WHERE session_id=$1', row)
 
 
 def session_view(row) -> dict:

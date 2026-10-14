@@ -44,7 +44,7 @@ class ConversationMemory:
     async def load(self, job):
         memory = await self.pool.fetchval(
             """SELECT memory_json FROM sessions WHERE session_id=$1
-               AND last_activity_at + interval '3 months' > now()""", job["session_id"],
+               AND (retained OR last_activity_at + interval '3 months' > now())""", job["session_id"],
         )
         if memory is None:
             raise StaleJobAttempt
@@ -115,7 +115,7 @@ class ConversationMemory:
             async with connection.transaction():
                 live = await connection.fetchval(
                     """SELECT session_id FROM sessions WHERE session_id=$1
-                       AND last_activity_at + interval '3 months' > now() FOR UPDATE""",
+                       AND (retained OR last_activity_at + interval '3 months' > now()) FOR UPDATE""",
                     job["session_id"],
                 )
                 if live is None:

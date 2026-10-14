@@ -15,6 +15,7 @@ async function submitScenario(mode) {
   const noop = () => {};
   const context = {
     conversationBusy: false,
+    deleteInFlightRef: { current: false },
     submitInFlightRef: { current: false },
     gallerySelectionRef: { current: { reset: noop } },
     submissionRef: { current: {
@@ -67,3 +68,4 @@ test("successful mobile submission keeps references and clears the input", async
   assert.equal(state.error, "");
   assert.equal(state.submitting, false);
 });
+

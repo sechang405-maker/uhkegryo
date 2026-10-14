@@ -54,6 +54,9 @@ def main():
         settings = Settings(_env_file=None)
     except ValueError:
         raise SystemExit('Local Codex configuration invalid; check the local DATABASE_URL and documented settings') from None
+    if args.local_settings:
+        from backend.local_profile import load_or_create_profile
+        settings.local_profile_token = load_or_create_profile(root / '.env.local-profile')
     get_settings.cache_clear()
     import backend.shared.config as config
     config.get_settings = lambda: settings

@@ -2,6 +2,24 @@ import { upsertTurn, isTurnPending } from "./conversation.mjs";
 import { createJobPoller, STATUS_LABELS } from "./job-polling.mjs";
 
 export const RESTORE_ERROR = "대화를 복원하지 못했습니다. 다시 불러온 뒤 요청해 주세요.";
+export const DELETE_CONFIRM = "이 대화를 영구 삭제할까요? 연결된 입력·답변·참고링크가 함께 삭제되며 복구할 수 없습니다. 다른 대화와 외부 Pinterest 원본은 삭제하지 않습니다.";
+export async function ensureLocalProfile(options = {}) {
+  const response = await (options.fetchImpl || globalThis.fetch)("/api/local/profile", {
+    method: "POST", credentials: "include", cache: "no-store", signal: options.signal,
+    headers: { "X-Conversation-Action": "profile" },
+  });
+  if (!response.ok) throw new Error(RESTORE_ERROR);
+  return (await response.json()).persistent === true;
+}
+export async function deleteConversation(id, options = {}) {
+  sessionId(id);
+  const response = await (options.fetchImpl || globalThis.fetch)(`/api/sessions/${id}`, {
+    method: "DELETE", credentials: "include", cache: "no-store", signal: options.signal,
+    headers: { "X-Conversation-Action": "delete" },
+  });
+  if (response.status === 409) throw new Error("답변 처리 중인 대화는 완료 후 삭제할 수 있습니다.");
+  if (response.status !== 204) throw new Error("대화를 삭제하지 못했습니다. 기록을 유지했으니 다시 시도해 주세요.");
+}
 async function read(path, options, method = "GET") {
   const response = await (options.fetchImpl || globalThis.fetch)(path, {
     method, credentials: "include", cache: "no-store", signal: options.signal,
@@ -22,13 +40,17 @@ function validateSessions(items) {
   });
 }
 export async function listConversations(options = {}) {
-  const response = await (options.fetchImpl || globalThis.fetch)("/api/sessions?limit=100&offset=0", {
-    credentials: "include", cache: "no-store", signal: options.signal,
-  });
-  if (response.status === 401) return [];
-  if (!response.ok) throw new Error(RESTORE_ERROR);
-  const list = await response.json();
-  return validateSessions(list?.items);
+  const sessions = new Map();
+  for (let offset = 0; ; offset += 100) {
+    const response = await (options.fetchImpl || globalThis.fetch)(`/api/sessions?limit=100&offset=${offset}`, {
+      credentials: "include", cache: "no-store", signal: options.signal,
+    });
+    if (response.status === 401 && offset === 0) return [];
+    if (!response.ok) throw new Error(RESTORE_ERROR);
+    const items = validateSessions((await response.json())?.items);
+    for (const item of items) sessions.set(item.session_id, item);
+    if (items.length < 100) return [...sessions.values()];
+  }
 }
 export async function createConversation(options = {}) {
   const created = await read("/api/sessions", options, "POST");
@@ -107,3 +129,4 @@ export function createHistoryLoader(options) {
     }
   } };
 }
+

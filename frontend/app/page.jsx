@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { countCharacters, createSubmissionController, validateRequestText, shouldSubmitOnEnter } from "../lib/agent-submit.mjs";
 import { createGallerySelection } from "../lib/gallery-selection.mjs";
-import { createConversation, listConversations, restoreConversation, resumeConversation, RESTORE_ERROR } from "../lib/server-conversation.mjs";
+import { createConversation, listConversations, restoreConversation, resumeConversation, RESTORE_ERROR, ensureLocalProfile, deleteConversation, DELETE_CONFIRM } from "../lib/server-conversation.mjs";
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
 import { DEMO_SCENARIOS, DEMO_NOTICE, DEMO_INPUT_ERROR, demoTerm } from "../lib/portfolio-demo-fixtures.mjs";
 import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
@@ -41,6 +41,10 @@ export default function HomePage() {
   const sessionIdRef = useRef(null);
   const sessionLoadRef = useRef(0);
   const [sessions, setSessions] = useState([]);
+  const [persistentProfile, setPersistentProfile] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const deleteInFlightRef = useRef(false);
+  const [deleteError, setDeleteError] = useState("");
   const [restoreError, setRestoreError] = useState("");
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [storageFailed, setStorageFailed] = useState(false);
@@ -86,7 +90,7 @@ export default function HomePage() {
   const queryTerm = ["results", "term-results"].includes(boardView) && hasGalleryRows ? galleryTerm : homeTerm;
   const recommendedSearchQuery = getRecommendedSearchQuery(queryTerm);
   const pendingTurnIds = turns.filter(isTurnPending).map((turn) => turn.id).join(",");
-  const conversationBusy = !conversationReady || isSubmitting || Boolean(pendingTurnIds);
+  const conversationBusy = !conversationReady || isSubmitting || Boolean(pendingTurnIds) || Boolean(deletingId);
   if (!submissionRef.current) submissionRef.current = createSubmissionController();
 
   useEffect(() => {
@@ -104,7 +108,13 @@ export default function HomePage() {
     gallerySelectionRef.current.reset(sessionIdRef.current);
     setRestoreError("");
     setConversationReady(false);
-    Promise.all([listConversations({ signal: controller.signal }), restoreConversation({ signal: controller.signal, sessionId: sessionIdRef.current || undefined })]).then(([items, restored]) => {
+    ensureLocalProfile({ signal: controller.signal }).then((persistent) => {
+      if (controller.signal.aborted) return;
+      setPersistentProfile(persistent);
+      return Promise.all([listConversations({ signal: controller.signal }), restoreConversation({ signal: controller.signal, sessionId: sessionIdRef.current || undefined })]);
+    }).then((loaded) => {
+      if (!loaded) return;
+      const [items, restored] = loaded;
       if (controller.signal.aborted || loadId !== sessionLoadRef.current) return;
       setSessions(items);
       setSessionId(restored.sessionId);
@@ -320,7 +330,7 @@ export default function HomePage() {
   }
 
   async function submit(text) {
-    if (conversationBusy || submitInFlightRef.current || submissionRef.current.isPending()) return;
+    if (deleteInFlightRef.current || conversationBusy || submitInFlightRef.current || submissionRef.current.isPending()) return;
 
     const validationError = validateRequestText(text);
     if (validationError) {
@@ -428,7 +438,7 @@ export default function HomePage() {
   }
 
   async function openSession(session) {
-    if (submitInFlightRef.current || isSubmitting || session.session_id === sessionIdRef.current) return;
+    if (deleteInFlightRef.current || submitInFlightRef.current || isSubmitting || session.session_id === sessionIdRef.current) return;
     if (uiDemoEnabled) {
       const selected = demoStoreRef.current.select(session.session_id);
       if (!selected) return;
@@ -474,7 +484,7 @@ export default function HomePage() {
   }
 
   async function startNewSession() {
-    if (submitInFlightRef.current || isSubmitting) return;
+    if (deleteInFlightRef.current || submitInFlightRef.current || isSubmitting) return;
     if (uiDemoEnabled) {
       navigateBoard("results");
       showDemoSession(demoStoreRef.current.create());
@@ -523,6 +533,43 @@ export default function HomePage() {
     }
   }
 
+  async function removeSession(session) {
+    if (deleteInFlightRef.current || submitInFlightRef.current || !conversationReady) return;
+    if (!window.confirm(DELETE_CONFIRM)) return;
+    deleteInFlightRef.current = true;
+    setDeletingId(session.session_id);
+    setDeleteError("");
+    try {
+      if (uiDemoEnabled) {
+        showDemoSession(demoStoreRef.current.remove(session.session_id));
+        navigateBoard("results");
+      } else {
+        await deleteConversation(session.session_id);
+        setSessions(items => items.filter(item => item.session_id !== session.session_id));
+        if (sessionIdRef.current === session.session_id) {
+          ++sessionLoadRef.current;
+          pollerRef.current?.stop();
+          sessionIdRef.current = null;
+          setSessionId(null);
+          setTurns([]);
+          setJob(null);
+          gallerySelectionRef.current.reset(null);
+          navigateBoard("results");
+          setRequestText("");
+          setError("");
+          setPollError("");
+          setRestoreError("");
+          setMobilePanel("conversation");
+        }
+      }
+    } catch (error) {
+      setDeleteError(error.message || "대화를 삭제하지 못했습니다. 다시 시도해 주세요.");
+    } finally {
+      deleteInFlightRef.current = false;
+      setDeletingId(null);
+    }
+  }
+
   return (
     <main className="workspace" data-mobile-panel={mobilePanel}>
       <nav className="mobile-workspace-nav" aria-label="작업 화면">
@@ -541,16 +588,23 @@ export default function HomePage() {
           <span className="brand-name">UH케그려</span>
         </button>
         <nav className="history-sidebar-list" aria-label="세션 목록">
-          <button className="history-sidebar-entry" type="button" disabled={!conversationReady || isSubmitting} onClick={startNewSession}>새 세션</button>
+          <button className="history-sidebar-entry" type="button" disabled={!conversationReady || isSubmitting || Boolean(deletingId)} onClick={startNewSession}>새 세션</button>
           {sessions.map((session) => (
-              <button className="history-sidebar-entry" type="button" key={session.session_id}
-                disabled={isSubmitting} title={new Date(session.created_at).toLocaleString("ko-KR")}
+              <div className="history-sidebar-row" key={session.session_id}>
+              <button className="history-sidebar-entry" type="button"
+                disabled={isSubmitting || Boolean(deletingId)} title={new Date(session.created_at).toLocaleString("ko-KR")}
                 aria-current={sessionId === session.session_id ? "page" : undefined}
                 onClick={() => openSession(session)}>
                 <span className="history-sidebar-title">{uiDemoEnabled ? "샘플 · " : ""}{new Date(session.created_at).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "medium" })}</span>
               </button>
+              <button className="history-delete" type="button"
+                aria-label={`${new Date(session.created_at).toLocaleString("ko-KR")} 대화 삭제`}
+                disabled={!conversationReady || isSubmitting || Boolean(deletingId) || (sessionId === session.session_id && Boolean(pendingTurnIds))}
+                onClick={() => removeSession(session)}>{deletingId === session.session_id ? "삭제 중…" : "삭제"}</button>
+              </div>
             ))}
           {!uiDemoEnabled && !sessions.length && <p className="history-sidebar-empty">아직 대화 세션이 없습니다.</p>}
+          {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
         </nav>
       </aside>
       {menuOpen && <button className="history-sidebar-dismiss" type="button" aria-label="세션 목록 닫기"
@@ -722,7 +776,7 @@ export default function HomePage() {
           <h2 id="prompt-title">UH케 그릴 건가요?</h2>
           <p className="conversation-notice">{uiDemoEnabled
             ? "고정 샘플 대화는 이 브라우저에만 저장됩니다. 최대 10개 세션·총 50개 답변을 보관하며 서버로 보내지 않습니다. 개인·민감 정보는 입력하지 마세요."
-            : "같은 브라우저의 쿠키로 최근 대화를 복원합니다. 쿠키 삭제·대화 만료 후에는 복원되지 않습니다."}</p>
+            : persistentProfile ? "이 PC의 대화는 직접 삭제할 때까지 보관합니다. 로컬 프로필로 기록을 복원합니다." : "같은 브라우저의 쿠키로 최근 대화를 복원합니다. 쿠키 삭제·대화 만료 후에는 복원되지 않습니다."}</p>
           {restoreError && <div role="alert"><p>{restoreError}</p>
             <button type="button" onClick={() => setRestoreAttempt((value) => value + 1)}>대화 다시 불러오기</button></div>}
           {storageFailed && <p className="form-error" role="status">브라우저 기록을 읽거나 쓰지 못했습니다. 일부 기록이 복원되지 않을 수 있지만 현재 대화는 계속 사용할 수 있습니다.</p>}

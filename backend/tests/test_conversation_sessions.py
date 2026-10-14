@@ -80,6 +80,7 @@ def test_existing_cookie_and_jobs_survive_migration():
                            VALUES($1,$2,'original','hash','key',now(),'queued')""", jid, sid)
         migration = Path(__file__).parents[1] / "db/migrations/003_conversation_owners.sql"
         await pool.execute(migration.read_text(encoding="utf-8"))
+        await pool.execute((migration.parent / '006_local_retention.sql').read_text(encoding='utf-8'))
         repository = SessionRepository(pool)
         assert await repository.resolve_session("old-cookie") == str(sid)
         assert await repository.session_for_job("old-cookie", str(jid)) == str(sid)

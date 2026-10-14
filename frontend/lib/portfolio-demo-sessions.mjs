@@ -56,6 +56,12 @@ export function createDemoSessionStore(storage) {
   }
   return {
     current, create,
+    remove(sessionId) {
+      sessions = sessions.filter(s => s.session_id !== sessionId);
+      if (!sessions.length) return create();
+      if (active === sessionId) active = sessions[0].session_id;
+      save(); return current();
+    },
     get storageFailed() { return storageFailed; },
     list: () => sessions.map(({session_id,created_at})=>({session_id,created_at})),
     select(sessionId) {
