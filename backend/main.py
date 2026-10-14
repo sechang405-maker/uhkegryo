@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from backend.routes.agent import ApiContractError, close_result_tracer, router as agent_router
+from backend.routes.agent import ApiContractError, close_result_tracer, close_widget_client, router as agent_router
 from backend.routes.term_search import router as term_search_router
 from backend.shared.auth import set_session_cookie
 from backend.services.catalog_repository import CatalogLoadError, load_catalog
@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
     finally:
         worker_task.cancel()
         await asyncio.gather(worker_task, return_exceptions=True)
+        await close_widget_client()
         await asyncio.to_thread(close_result_tracer)
 
 app = FastAPI(title="2차 프로젝트 API", lifespan=lifespan)

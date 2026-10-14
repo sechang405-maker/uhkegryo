@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import json
+import asyncio
+from weakref import WeakKeyDictionary
 import uuid
 from time import perf_counter
 from typing import Annotated, Any
@@ -38,6 +40,7 @@ from backend.services.job_trace import JobTracer
 router = APIRouter(tags=["agent"])
 _pool: Any | None = None
 _result_tracer: JobTracer | None = None
+_widget_clients: WeakKeyDictionary = WeakKeyDictionary()
 
 
 def get_result_tracer() -> JobTracer:
@@ -55,7 +58,16 @@ def close_result_tracer() -> None:
 
 
 def get_widget_client() -> PinterestWidgetClient:
-    return PinterestWidgetClient()
+    loop = asyncio.get_running_loop()
+    if loop not in _widget_clients:
+        _widget_clients[loop] = PinterestWidgetClient(shared_readers=True)
+    return _widget_clients[loop]
+
+
+async def close_widget_client() -> None:
+    client = _widget_clients.pop(asyncio.get_running_loop(), None)
+    if client is not None:
+        await client.aclose()
 
 
 async def get_repositories() -> tuple[SessionRepository, JobRepository]:

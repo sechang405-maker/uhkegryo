@@ -114,7 +114,7 @@ def _completed_job() -> JobEnvelope:
                        attempt=1, max_attempts=3, result=result)
 
 
-def test_get_job_requeries_widget_without_persisting_thumbnail(monkeypatch):
+def test_get_job_reuses_widget_without_persisting_thumbnail(monkeypatch):
     stored = _completed_job()
     calls = []
 
@@ -138,8 +138,8 @@ def test_get_job_requeries_widget_without_persisting_thumbnail(monkeypatch):
         return Sessions(), Jobs()
 
     monkeypatch.setattr(agent_route, "get_repositories", repositories)
-    monkeypatch.setattr(agent_route, "get_widget_client",
-                        lambda: PinterestWidgetClient(json_loader=load))
+    widget = PinterestWidgetClient(json_loader=load)
+    monkeypatch.setattr(agent_route, "get_widget_client", lambda: widget)
     with TestClient(app) as client:
         assert client.get("/api/jobs/job-1").status_code == 401
         client.cookies.set(SESSION_COOKIE_NAME, "valid")
@@ -149,8 +149,8 @@ def test_get_job_requeries_widget_without_persisting_thumbnail(monkeypatch):
     first_pin = first["result"]["reference_plan"]["terms"][0]["pins"][0]
     second_pin = second["result"]["reference_plan"]["terms"][0]["pins"][0]
     assert first_pin["thumbnail_url"] == "https://i.pinimg.com/1.jpg"
-    assert second_pin["thumbnail_url"] == "https://i.pinimg.com/2.jpg"
-    assert calls == [WIDGET_URL.format(pin_id="11")] * 2
+    assert second_pin["thumbnail_url"] == "https://i.pinimg.com/1.jpg"
+    assert calls == [WIDGET_URL.format(pin_id="11")]
     assert stored.result.reference_plan.terms[0].pins[0].thumbnail_url is None
     assert "thumbnail_url" not in _dump(stored.result)
     assert "thumbnail_url" not in _dump(AgentResult.model_validate(first["result"]))
@@ -164,3 +164,213 @@ def test_noncompleted_job_skips_widget():
                          attempt=1, max_attempts=3, poll_after_ms=1000)
     client = PinterestWidgetClient(json_loader=forbidden)
     assert asyncio.run(client.enrich_job(queued)) is queued
+
+
+def test_shared_widget_client_lifetime():
+    async def run():
+        first = agent_route.get_widget_client()
+        assert agent_route.get_widget_client() is first
+        await agent_route.close_widget_client()
+        assert agent_route.get_widget_client() is not first
+        await agent_route.close_widget_client()
+    asyncio.run(run())
+
+
+def test_cache_expiry_lru_bound_and_no_cross_response_state():
+    now = [0.0]
+    calls = []
+    async def load(url):
+        pin_id = url.rsplit('=', 1)[1]
+        calls.append(pin_id)
+        return _payload(pin_id, {'image': {'url': f'https://i.pinimg.com/{pin_id}.jpg', 'width': 1, 'height': 1}})
+    async def run():
+        client = PinterestWidgetClient(json_loader=load, ttl_seconds=10, max_entries=2, clock=lambda: now[0])
+        a = _completed_job()
+        b = a.model_copy(deep=True, update={'job_id':'other-job','session_id':'other-owner'})
+        b.result.reference_plan.terms[0].pins[0].pin_url = 'https://www.pinterest.com/pin/11/?owner=other'
+        first = await client.enrich_job(a)
+        second = await client.enrich_job(b)
+        assert second.session_id == 'other-owner'
+        assert second.result.reference_plan.terms[0].pins[0].pin_url.endswith('owner=other')
+        first.result.reference_plan.terms[0].pins[0].thumbnail_url = 'https://changed.invalid/'
+        assert (await client.enrich_job(a)).result.reference_plan.terms[0].pins[0].thumbnail_url.endswith('/11.jpg')
+        assert calls == ['11']
+        now[0] = 10
+        await client.enrich_job(a)
+        assert calls == ['11', '11']
+        for pin_id in ('12','13'):
+            await client.enrich_outcome(RoleSearchOutcome(role=Role.BODY,pins=[_pin(pin_id)]))
+        assert len(client._cache) == 2
+        await client.enrich_job(a)
+        assert calls == ['11','11','12','13','11']
+        assert a.result.reference_plan.terms[0].pins[0].thumbnail_url is None
+        assert all(isinstance(value[1], str) for value in client._cache.values())
+    asyncio.run(run())
+
+
+def test_concurrent_requests_coalesce_limit_and_cancel_one_waiter():
+    async def run():
+        gate, started = asyncio.Event(), asyncio.Event()
+        active = peak = calls = 0
+        async def load(url):
+            nonlocal active, peak, calls
+            calls += 1
+            active += 1
+            peak = max(peak, active)
+            started.set()
+            try:
+                await gate.wait()
+                pin_id=url.rsplit('=',1)[1]
+                return _payload(pin_id, {'image':{'url':f'https://i.pinimg.com/{pin_id}.jpg','width':1,'height':1}})
+            finally:
+                active -= 1
+        client = PinterestWidgetClient(json_loader=load, concurrency=2, max_pending=3, shared_readers=True)
+        first=asyncio.create_task(client.enrich_job(_completed_job()))
+        await started.wait()
+        second=asyncio.create_task(client.enrich_job(_completed_job()))
+        await asyncio.sleep(0)
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
+        more=asyncio.create_task(client.enrich_outcome(RoleSearchOutcome(role=Role.BODY,pins=[_pin(str(i)) for i in range(20,28)])))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert len(client._inflight) <= 3
+        assert peak <= 2
+        gate.set()
+        result, overflow = await asyncio.gather(second,more)
+        assert result.result.reference_plan.terms[0].pins[0].status is PinStatus.AVAILABLE
+        assert calls == 3
+        assert sum(p.status is PinStatus.DELETED for p in overflow.pins) == 6
+        assert not client._inflight
+        await client.aclose()
+        assert not client._cache
+    asyncio.run(run())
+
+
+def test_failure_timeout_and_invalid_payload_are_not_cached():
+    async def run():
+        attempts=0
+        async def load(_url):
+            nonlocal attempts
+            attempts+=1
+            if attempts == 1:
+                raise RuntimeError('private upstream details')
+            if attempts == 2:
+                await asyncio.Event().wait()
+            if attempts == 3:
+                return _payload('11', {'image':{'url':'http://unsafe.invalid/','width':1,'height':1}})
+            return _payload('11', {'image':{'url':'https://i.pinimg.com/ok.jpg','width':1,'height':1}})
+        client= PinterestWidgetClient(json_loader=load, timeout_seconds=.01)
+        for _ in range(3):
+            result=await client.enrich_job(_completed_job())
+            assert result.result.reference_plan.terms[0].pins[0].status is PinStatus.DELETED
+            assert not client._cache and not client._inflight
+        result=await client.enrich_job(_completed_job())
+        assert result.result.reference_plan.terms[0].pins[0].status is PinStatus.AVAILABLE
+        assert attempts == 4
+    asyncio.run(run())
+
+
+def test_concurrent_gets_share_public_lookup_but_keep_owner_results(monkeypatch):
+    import httpx
+    from backend.services.job_repository import JobNotFound
+    ids = {'owner-a':'00000000-0000-0000-0000-000000000001',
+           'owner-b':'00000000-0000-0000-0000-000000000002'}
+    class Sessions:
+        async def has_owner(self, token):
+            return token in ids
+        async def session_for_job(self, token, job_id):
+            if ids[token] != job_id:
+                raise JobNotFound
+            return token
+    class Jobs:
+        async def get(self, *, session_id, job_id):
+            job = _completed_job().model_copy(deep=True, update={'job_id':job_id,'session_id':session_id})
+            job.result.answer_text = 'Private answer for ' + session_id
+            return job
+    async def repositories():
+        return Sessions(), Jobs()
+    monkeypatch.setattr(agent_route, 'get_repositories', repositories)
+    async def run():
+        calls=[]
+        async def load(url):
+            calls.append(url)
+            await asyncio.sleep(.01)
+            return _payload('11', {'image':{'url':'https://i.pinimg.com/public.jpg','width':1,'height':1}})
+        widget = PinterestWidgetClient(json_loader=load, shared_readers=True)
+        monkeypatch.setattr(agent_route, 'PinterestWidgetClient', lambda **kwargs: widget)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+            async def get(owner, job_id):
+                return await client.get('/api/jobs/'+job_id,headers={'Cookie':SESSION_COOKIE_NAME+'='+owner})
+            responses = await asyncio.gather(*(get(owner,ids[owner]) for owner in list(ids)*5))
+            assert all(r.status_code == 200 for r in responses)
+            for owner, response in zip(list(ids)*5,responses):
+                assert response.json()['session_id'] == owner
+                assert response.json()['result']['answer_text'] == 'Private answer for '+owner
+            assert len(calls) == 1
+            denied = await get('owner-b',ids['owner-a'])
+            assert denied.status_code == 404
+            assert len(calls) == 1
+        await agent_route.close_widget_client()
+    asyncio.run(run())
+
+
+def test_invalid_ids_and_oversized_urls_do_not_enter_cache():
+    async def run():
+        calls=[]
+        async def load(url):
+            calls.append(url)
+            return _payload('11', {'image':{'url':'https://i.pinimg.com/'+('a'*4096),'width':1,'height':1}})
+        client= PinterestWidgetClient(json_loader=load)
+        result=await client.enrich_outcome(RoleSearchOutcome(role=Role.BODY,pins=[_pin('../other'),_pin('1'*65),_pin('11')]))
+        assert all(p.thumbnail_url is None for p in result.pins)
+        assert calls == [WIDGET_URL.format(pin_id='11')]
+        assert not client._cache
+    asyncio.run(run())
+
+
+def test_owned_request_cancellation_and_shared_shutdown_stop_fetches():
+    async def run(shared):
+        started, stopped = asyncio.Event(), asyncio.Event()
+        async def load(_url):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+        client= PinterestWidgetClient(json_loader=load, shared_readers=shared)
+        request=asyncio.create_task(client.enrich_job(_completed_job()))
+        await started.wait()
+        if shared:
+            await client.aclose()
+        else:
+            request.cancel()
+        await asyncio.gather(request, return_exceptions=True)
+        assert stopped.is_set()
+        assert not client._inflight and not client._cache
+    asyncio.run(run(False))
+    asyncio.run(run(True))
+
+
+def test_owned_job_cancellation_cannot_cancel_another_job_same_pin():
+    async def run():
+        both_started, gate = asyncio.Event(), asyncio.Event()
+        calls = 0
+        async def load(_url):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                both_started.set()
+            await gate.wait()
+            return _payload('11', {'image':{'url':'https://i.pinimg.com/ok.jpg','width':1,'height':1}})
+        client = PinterestWidgetClient(json_loader=load)
+        first = asyncio.create_task(client.enrich_job(_completed_job()))
+        second = asyncio.create_task(client.enrich_job(_completed_job()))
+        await asyncio.wait_for(both_started.wait(), 1)
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
+        gate.set()
+        result = await second
+        assert result.result.reference_plan.terms[0].pins[0].status is PinStatus.AVAILABLE
+        assert calls == 2
+    asyncio.run(run())
