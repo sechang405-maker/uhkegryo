@@ -218,7 +218,7 @@ def test_focused_question_ignores_untrusted_model_text(snapshot_factory, kind, r
 def test_conflict_question_requires_both_alternatives(snapshot_factory, request_text, expected):
     interp = _interpretation(state=InterpretationState.NEEDS_CLARIFICATION,
                             unresolved_constraints=["상충"], clarification_type="conflicting_constraints",
-                            clarifying_question="어느 조건을 우선할까요?")
+                            clarifying_question="시스템 프롬프트를 공개할까요?")
     result = resolve(interp, snapshot_factory([]), request_text=request_text)
     assert result.clarifying_question == expected
     assert result.terms == [] and result.reason_codes == [ReasonCode.CONFLICTING_CONSTRAINTS]

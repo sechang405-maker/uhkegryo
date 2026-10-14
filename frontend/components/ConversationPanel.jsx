@@ -17,7 +17,7 @@ export default function ConversationPanel({ turns, onChoice, onRetry, retryDisab
         : <article className="term-detail conversation-answer" aria-label="통합 답변">
           <span className="term-detail-eyebrow">{turn.demo ? "UH · 더미 답변" : "UH · 답변"}</span>
           <MarkdownAnswer job={turn.job} />
-          {turn.job?.job_status === "completed" && onSelect && <div className="result-actions">
+          {turn.job?.job_status === "completed" && turn.job.result?.agent_status !== "reference_guidance" && onSelect && <div className="result-actions">
             <button type="button" aria-pressed={selectedTurnId === turn.id}
               aria-controls="reference-panel" onClick={() => onSelect(turn)}>
               {selectedTurnId === turn.id ? "이 답변의 레퍼런스 보는 중" : "레퍼런스 보기"}

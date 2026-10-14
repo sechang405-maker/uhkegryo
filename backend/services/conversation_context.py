@@ -2,12 +2,13 @@
 import re
 from copy import deepcopy
 
-from backend.schemas.enums import AgentStatus
+from backend.schemas.enums import AgentStatus, ReasonCode
+from backend.services.clarification_policy import repeated_question, REPEATED_FALLBACK
 from backend.schemas.models import AgentResult, InterpretationOutput, InterpretationSelection
 from backend.schemas.memory import RecallQuery, RecallAnswer, MemorySource, NO_RECORDS, TOO_MANY
 from backend.services.conversation_memory import evidence_text
 from backend.services.llm import LLMInvalidStructuredOutput
-from backend.services.resolver import resolve, STATUS_ALL_INVALID, STATUS_PROCEED
+from backend.services.resolver import resolve, ResolutionResult, STATUS_CLARIFY, STATUS_ALL_INVALID, STATUS_PROCEED
 
 async def prepare(memory, job, adapter, trace):
     return await memory.load(job)
@@ -73,7 +74,7 @@ def is_clear_new_request(text, context):
                 and re.search(r"찾아|그려|보여|검색|\b(find|draw|show|search)\b", text))
 
 
-async def validate(memory, job, interpretation, snapshot):
+async def validate(memory, job, interpretation, snapshot, *, context=None):
     ids = [item.source_job_id for item in interpretation.selections if item.source_job_id]
     originals = await memory.records(job, ids) if ids else []
     by_id = {item["job_id"]: item for item in originals}
@@ -108,6 +109,9 @@ async def validate(memory, job, interpretation, snapshot):
                                                  feedback=[{"path": [], "code": "context_card_invalid"}])
     resolution = resolve(interpretation, snapshot, request_text=str(job["request_text"]),
                          verified_source_texts=verified_source_texts)
+    if resolution.status == STATUS_CLARIFY and repeated_question(resolution.clarifying_question, context):
+        return ResolutionResult(status='guidance', reason_codes=[ReasonCode.CLARIFICATION_REPEATED],
+                                user_message=REPEATED_FALLBACK)
     if resolution.status == STATUS_ALL_INVALID or resolution.invalid_candidates:
         raise LLMInvalidStructuredOutput("선택 카드가 현재 카탈로그에서 유효하지 않습니다", stage="conversation_validation",
                                          feedback=[{"path": [], "code": "selection_card_invalid"}])
@@ -121,6 +125,9 @@ async def validate(memory, job, interpretation, snapshot):
 
 def next_state(context, job, interpretation, result):
     state = deepcopy(context["state"])
+    if result.agent_status is AgentStatus.REFERENCE_GUIDANCE:
+        state['pending_question'] = None
+        return state
     if result.agent_status not in (AgentStatus.SUCCESS, AgentStatus.PARTIAL_RESULT, AgentStatus.NEEDS_CLARIFICATION):
         return state
     constraints = state.setdefault("constraints", {})

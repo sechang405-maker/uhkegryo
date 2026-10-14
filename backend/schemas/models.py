@@ -206,6 +206,11 @@ class AgentResult(BaseModel):
                 )
             if not codes:
                 raise ValueError("needs_clarification은 reason_codes가 최소 하나 있어야 한다")
+        elif self.agent_status is AgentStatus.REFERENCE_GUIDANCE:
+            if (self.reference_plan is not None or self.clarifying_question is not None
+                    or not self.user_message.strip() or len(self.reason_codes) != 1
+                    or not codes <= {ReasonCode.CATALOG_LIMITATION, ReasonCode.CLARIFICATION_REPEATED}):
+                raise ValueError('reference_guidance requires a message and one guidance reason, without a plan or question')
         elif self.agent_status is AgentStatus.MEMORY_ANSWER:
             if not self.memory_answer or self.reference_plan or self.reason_codes or self.clarifying_question:
                 raise ValueError("memory_answer requires text and forbids reference plan")

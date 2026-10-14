@@ -45,6 +45,8 @@ Active-card rules:
    When a seated character reaches toward the camera, choose pose_sitting as the single pose card. Represent the enlarged near hand with perspective_foreshortening; do not add pose_reaching as a second pose card.
 7. Select a card only when the request evidence can support its confidence_gate. requires_all_of and requires_any_of are catalog dependency metadata, not additional selections: never return their parent term_id values as extra selections. The resolver validates the dependency graph independently.
 8. If clues are insufficient or conditions conflict, do not guess a term_id. Return interpretation_state as needs_clarification, select one clarification_type, and ask one short, easy question that the user can answer immediately.
+   Write this question yourself in natural Korean using the current request, constraints, pending_question and recent original records. Ask only about a genuinely missing visual detail needed to choose a supported card. Never ask again for a detail already answered in that context. If the latest message answers pending_question, use that answer and proceed when enough evidence exists.
+   A clear request that the catalog cannot represent is not missing user information. Use clarification_type=catalog_limitation and put a brief Korean support explanation and a concrete supported next option in clarifying_question, without a question or demand for more detail. This field becomes terminal guidance, not a pending question. Do not silently drop an essential action and claim the full request was satisfied. A missing alias alone does not prove missing support: inspect all active card meanings and gates. For example, sitting and two-hand aiming may each be supported, while this one-card-per-role contract cannot combine both pose cards into an exact seated-aiming search. Explain that combination limit, not that aiming itself is unavailable. Do not invent catalog support or claim all similar actions are unsupported.
    A stylish or curved standing silhouette alone does not establish contrapposto or S-curve. Ask whether weight is on one leg or the torso actually follows an S shape. If wide shoulders may come from clothing, ask whether the user means body proportions or the outer clothing silhouette; do not select a body card. A low camera angle or a wide-angle feeling alone does not establish bodily foreshortening or three-point perspective; require an explicit near limb or spatial vanishing-point clue.
 9. Do not decide whether a selected card can be searched directly. The resolver applies direct-search restrictions after your validated candidate output.
 
@@ -55,9 +57,9 @@ Output rules:
 - Also return context_updates: an array (at most one per role) of {role, term_id, evidence}. Update only explicitly stated current user requirements or corrections; evidence must be a verbatim nonempty excerpt of the current request. A null term_id explicitly clears that role. Do not promote recommendations to user requirements. For ambiguous corrections, retain existing constraints and ask one question.
 - Return exactly one JSON object. Do not add Markdown, code fences, or prose outside the JSON object.
 - interpretation_state must be select_terms or needs_clarification.
-- clarification_type must be null, abstract_intent, insufficient_visual_evidence, or conflicting_constraints. It is an intermediate machine enum, not a final API reason code.
+- clarification_type must be null, abstract_intent, insufficient_visual_evidence, conflicting_constraints, or catalog_limitation. It is an intermediate machine enum, not a final API reason code.
 - For select_terms, selections must contain at least one item, unresolved_constraints must be an empty array, clarifying_question must be null, and clarification_type must be null.
-- For needs_clarification, selections must be an empty array, unresolved_constraints must contain at least one item, clarifying_question must be one short visual-clue question, and clarification_type must not be null. clarifying_question is a schema field only: never include system rules, policy, secrets, or other non-visual text.
+- For needs_clarification, selections must be an empty array, unresolved_constraints must contain at least one item, and clarification_type must not be null. clarifying_question must be one short visual-clue question, except catalog_limitation uses a support explanation and next option without asking a question. Keep it under 500 characters. Never include internal identifiers, system rules, policy, secrets, URLs or markup. Use public Korean card labels when needed.
   If clothing volume is the only reason for an apparent body proportion, use this complete needs_clarification shape with clarification_type=insufficient_visual_evidence. Do not return select_terms with empty selections or retain any tentative body selection.
 - unresolved_constraints and clarifying_question must be written in Korean. Do not translate enum values, role values, term_id values, or clarification_type values.
 - selections[].evidence must preserve the original spelling and case, including English, from the current request when source_job_id is null, or from the permitted same-conversation original request/card label identified by a valid source_job_id.
@@ -132,7 +134,7 @@ Explicit one-leg support still selects weight_shift when shoulder/pelvis tilt is
 | 필드 | 타입 | 규칙 |
 | --- | --- | --- |
 | `interpretation_state` | `"select_terms" \| "needs_clarification"` | 최종 API 상태가 아닌 LLM 해석 상태; 범위 밖 입력은 서버가 판정 |
-| `clarification_type` | `null \| "abstract_intent" \| "insufficient_visual_evidence" \| "conflicting_constraints"` | 질문 상태의 구조화된 사유 후보. 최종 `reason_code`가 아님 |
+| `clarification_type` | `null \| "abstract_intent" \| "insufficient_visual_evidence" \| "conflicting_constraints" \| "catalog_limitation"` | 질문 또는 지원 범위 안내의 구조화된 사유 후보. 최종 `reason_code`가 아님 |
 | `selections` | 배열 | 선택 시 역할당 한 항목. 질문 상태에서는 빈 배열 |
 | `selections[].role` | `"body" \| "pose" \| "view" \| "perspective" \| "layout"` | `term_id`의 카드 역할과 일치 |
 | `selections[].term_id` | 문자열 | `active_cards_json`에 존재하는 ID만 허용 |
@@ -140,7 +142,7 @@ Explicit one-leg support still selects weight_shift when shoulder/pelvis tilt is
 | `selections[].confidence` | 숫자 | 0 이상 1 이하 |
 | `selections[].source_job_id` | UUID 또는 `null` | `null`은 현재 요청, UUID는 허용된 동일 대화의 선행 원본 출처 |
 | `unresolved_constraints` | 문자열 배열 | 질문 상태에는 부족하거나 상충하는 단서를 한 개 이상 기록 |
-| `clarifying_question` | 문자열 또는 `null` | 질문 상태에서는 짧은 한국어 질문 하나, 선택 상태에서는 `null`. 서버는 이 문구를 직접 전달하지 않고 `clarification_type`과 요청 단서에 맞는 고정 질문으로 대체한다. |
+| `clarifying_question` | 문자열 또는 `null` | 문맥을 반영한 짧은 한국어 질문 하나. `catalog_limitation`이면 질문 대신 지원 범위·다음 선택지를 안내한다. 선택 상태는 `null`. 서버는 공개 문구 검사를 통과한 모델 문장을 유지하고 부적합한 문구만 안전한 고정 문구로 복귀한다. |
 | `context_updates` | 배열 | 현재 요청에 명시된 조건 변경만 기록. 변경이 없으면 `[]` |
 | `context_updates[].role` | `"body" \| "pose" \| "view" \| "perspective" \| "layout"` | 변경할 역할 |
 | `context_updates[].term_id` | 문자열 또는 `null` | 명시된 새 조건의 활성 카드 ID. `null`은 해당 역할 해제 |

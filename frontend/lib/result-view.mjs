@@ -51,5 +51,6 @@ export function clarificationChoices(result) {
 export function resultUserMessage(job) {
   if (job?.job_status === "failed") return job.failure?.user_message || "요청을 완료하지 못했습니다. 다시 시도해 주세요.";
   const result = job?.job_status === "completed" ? job.result : null;
-  return ["out_of_scope", "unsafe_input"].includes(result?.agent_status) ? result.user_message : null;
+  return ["out_of_scope", "unsafe_input", "reference_guidance"].includes(result?.agent_status) ? result.user_message : null;
 }
+

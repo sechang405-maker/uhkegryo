@@ -246,7 +246,7 @@ def test_eval27_followup_preserves_body_and_pending_question(snapshot_factory, c
         for text in fixture["turns"]:
             new, _ = await jobs.submit(session_id=session, request_text=text, idempotency_key=str(uuid.uuid4()))
             await worker.run_once()
-        assert adapter.contexts[2]["pending_question"] == "캐릭터의 체형·포즈·시점 중 어떤 정보를 더 알려주실 수 있나요?"
+        assert adapter.contexts[2]["pending_question"] == "어떤 포즈인가요?"
         assert adapter.contexts[2]["constraints"]["body"]["term_id"] == "body_slim"
         assert adapter.contexts[3]["constraints"]["body"]["term_id"] == "body_slim"
         result = (await jobs.get(session_id=session, job_id=new.job_id)).result

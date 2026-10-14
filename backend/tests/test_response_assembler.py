@@ -174,6 +174,6 @@ def test_clarify_assembles_state_without_plan(snapshot_factory, card_factory):
     assert result.agent_status == AgentStatus.NEEDS_CLARIFICATION
     assert result.reason_codes == [ReasonCode.INSUFFICIENT_VISUAL_EVIDENCE]
     assert result.clarifying_question == (
-        "캐릭터의 체형·포즈·시점 중 어떤 정보를 더 알려주실 수 있나요?"
+        "어떤 포즈 축인가요?"
     )
     assert result.reference_plan is None

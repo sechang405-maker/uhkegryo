@@ -296,8 +296,23 @@ def test_worker_stores_clarification_as_completed(monkeypatch, snapshot_factory)
     assert jobs.writes[-1][0] is JobStatus.COMPLETED
     assert result.agent_status is AgentStatus.NEEDS_CLARIFICATION
     assert result.clarifying_question == (
-        "원하는 캐릭터의 체형·포즈·시점 중 하나를 구체적으로 설명해 주세요."
+        "어떤 자세를 원하시나요?"
     )
+
+
+def test_worker_guidance_uses_single_interpretation_without_search(monkeypatch, snapshot_factory):
+    output = InterpretationOutput(interpretation_state='needs_clarification',
+        clarification_type='catalog_limitation', unresolved_constraints=['조합 미지원'],
+        clarifying_question='두 자세를 결합한 검색은 지원하지 않아요. 각각 따로 참고할 수 있어요.')
+    adapter, jobs, recovery = FakeAdapter(output), FakeJobs(), FakeRecovery()
+    gateway = FakeMcpGateway([])
+    worker = _worker(monkeypatch, jobs, recovery, snapshot_factory([]), adapter, mcp_gateway=gateway)
+    _run(worker.run_once())
+    result = jobs.writes[-1][1]
+    assert result.agent_status is AgentStatus.REFERENCE_GUIDANCE
+    assert result.clarifying_question is None and result.reference_plan is None
+    assert len(adapter.calls) == 1 and adapter.tool_requests == [] and gateway.calls == []
+    assert recovery.failures == []
 
 
 def test_worker_stores_partial_result_as_completed(

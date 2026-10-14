@@ -156,7 +156,7 @@ class AgentJobWorker:
                             **({"validation_feedback": feedback} if feedback else {}),
                         )
                         resolution = await conversation_context.validate(
-                            self._memory, job, interpretation, self._snapshot)
+                            self._memory, job, interpretation, self._snapshot, context=context)
                         resolution = reference_update.select_searches(resolution, previous)
                 with trace.stage("searching"):
                     with self._tracer.phase("search-status-update"):

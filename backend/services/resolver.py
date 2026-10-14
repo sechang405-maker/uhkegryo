@@ -11,8 +11,9 @@ LLM `InterpretationOutput`은 후보일 뿐이며, resolver가 활성 JSON 카�
 - 역할당 최대 1개 후보로 충족(collapse: confidence 최대, 동률은 선발 우선)
 
 `interpretation_state`는 스키마가 `select_terms`/`needs_clarification`으로 강제하며,
-needs_clarification일 때는 `clarification_type`을 `ReasonCode`와 서버 고정 질문으로 직접 매핑해
-최종 `agent_status`·사유 코드·질문을 만든다 (LLM은 reason_codes나 사용자용 질문을 만들지 않는다).
+needs_clarification일 때는 `clarification_type`을 서버 사유 코드로 매핑한다.
+모델의 문맥 질문은 공개 문구 검사를 통과하면 유지하고, 부적합한 문구만 고정 질문으로 복귀한다.
+명확한 카탈로그 한계는 추가 질문 대신 안내 결과로 조립한다.
 SKILL.md 판단 기준의 `confidence_gate`·`requires_all_of`·`requires_any_of` 의미 충족은
 LLM 판단 몫이며 이 모듈은 재판정하지 않는다. 참조 ID의 구조 무결성은 시작 검증에서 방어한다.
 """
@@ -29,6 +30,7 @@ from backend.schemas.enums import ClarificationType, InterpretationState, Reason
 from backend.schemas.models import InterpretationOutput, InterpretationSelection
 from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.input_safety import normalize_input_text
+from backend.services.clarification_policy import public_wording, CATALOG_FALLBACK
 from backend.services.selection_grounding import has_affirmed_evidence, only_names_other_cards
 
 STATUS_PROCEED = "proceed"
@@ -98,6 +100,7 @@ class ResolutionResult:
     invalid_candidates: list[InterpretationSelection] = field(default_factory=list)
     reason_codes: list[ReasonCode] = field(default_factory=list)
     clarifying_question: str | None = None
+    user_message: str = ''
 
 
 def resolve(
@@ -106,11 +109,15 @@ def resolve(
 ) -> ResolutionResult:
     """LLM 해석 후보를 카탈로그와 대조해 결정론 검증하고 조정 계층에 넘길 결과를 만든다."""
     if interpretation.interpretation_state is InterpretationState.NEEDS_CLARIFICATION:
+        if interpretation.clarification_type is ClarificationType.CATALOG_LIMITATION:
+            return ResolutionResult(status='guidance', reason_codes=[ReasonCode.CATALOG_LIMITATION],
+                user_message=public_wording(interpretation.clarifying_question, CATALOG_FALLBACK))
         code = _CLARIFICATION_TO_REASON.get(interpretation.clarification_type)
         return ResolutionResult(
             status=STATUS_CLARIFY,
             reason_codes=[code or ReasonCode.INSUFFICIENT_VISUAL_EVIDENCE],
-            clarifying_question=clarification_question(interpretation.clarification_type, request_text),
+            clarifying_question=public_wording(interpretation.clarifying_question,
+                clarification_question(interpretation.clarification_type, request_text)),
         )
 
     normalized_request = normalize_input_text(request_text)

@@ -33,7 +33,7 @@ from backend.schemas.models import MAX_PINS_PER_ROLE, PROGRESS_POLL_AFTER_MS
     "enum_cls, expected",
     [
         (JobStatus, ["queued", "running", "validating", "searching", "rendering", "completed", "failed"]),
-        (AgentStatus, ["success", "needs_clarification", "out_of_scope", "unsafe_input", "partial_result", "memory_answer"]),
+        (AgentStatus, ["success", "needs_clarification", "out_of_scope", "unsafe_input", "partial_result", "memory_answer", "reference_guidance"]),
         (PinStatus, ["available", "deleted"]),
         (
             ReasonCode,
@@ -46,6 +46,8 @@ from backend.schemas.models import MAX_PINS_PER_ROLE, PROGRESS_POLL_AFTER_MS
                 "PIN_SEARCH_UNAVAILABLE",
                 "OUT_OF_SCOPE_REQUEST",
                 "UNSAFE_INPUT",
+                "CATALOG_LIMITATION",
+                "CLARIFICATION_REPEATED",
             ],
         ),
         (
@@ -69,7 +71,7 @@ from backend.schemas.models import MAX_PINS_PER_ROLE, PROGRESS_POLL_AFTER_MS
         (InterpretationState, ["select_terms", "needs_clarification"]),
         (
             ClarificationType,
-            ["abstract_intent", "insufficient_visual_evidence", "conflicting_constraints"],
+            ["abstract_intent", "insufficient_visual_evidence", "conflicting_constraints", "catalog_limitation"],
         ),
     ],
 )

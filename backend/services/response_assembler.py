@@ -53,6 +53,9 @@ def assemble(
     *, answer_text: str = "",
 ) -> AgentResult:
     """resolution과 카탈로그·검색 결과를 조합해 최종 `AgentResult`를 만든다."""
+    if resolution.status == 'guidance':
+        return AgentResult(agent_status=AgentStatus.REFERENCE_GUIDANCE,
+            reason_codes=resolution.reason_codes, user_message=resolution.user_message)
     if resolution.status == STATUS_CLARIFY:
         return AgentResult(
             agent_status=AgentStatus.NEEDS_CLARIFICATION,

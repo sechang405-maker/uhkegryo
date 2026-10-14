@@ -76,8 +76,9 @@ test("카테고리당 8개 순서를 보존하고 썸네일이 있는 용어를 
 
 test("실패 안내와 추가 질문은 결과 상태에 맞게 분리한다", () => {
   assert.equal(view.resultUserMessage({ job_status: "failed", failure: { user_message: "실패 안내" } }), "실패 안내");
-  for (const status of ["out_of_scope", "unsafe_input"]) assert.equal(view.resultUserMessage(completed(status, { user_message: "입력 안내" })), "입력 안내");
+  for (const status of ["out_of_scope", "unsafe_input", "reference_guidance"]) assert.equal(view.resultUserMessage(completed(status, { user_message: "입력 안내" })), "입력 안내");
   assert.equal(view.resultUserMessage(completed("needs_clarification")), null);
   assert.deepEqual(view.clarificationChoices({}), []);
   assert.deepEqual(view.clarificationChoices({ clarification_choices: [{ label: "앉기", request_text: "앉은 캐릭터" }] }), [{ label: "앉기", request_text: "앉은 캐릭터" }]);
 });
+

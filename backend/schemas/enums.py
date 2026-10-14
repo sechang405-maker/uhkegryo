@@ -37,6 +37,7 @@ class AgentStatus(StrEnum):
     UNSAFE_INPUT = "unsafe_input"
     PARTIAL_RESULT = "partial_result"
     MEMORY_ANSWER = "memory_answer"
+    REFERENCE_GUIDANCE = "reference_guidance"
 
 
 class ReasonCode(StrEnum):
@@ -50,6 +51,8 @@ class ReasonCode(StrEnum):
     PIN_SEARCH_UNAVAILABLE = "PIN_SEARCH_UNAVAILABLE"
     OUT_OF_SCOPE_REQUEST = "OUT_OF_SCOPE_REQUEST"
     UNSAFE_INPUT = "UNSAFE_INPUT"
+    CATALOG_LIMITATION = "CATALOG_LIMITATION"
+    CLARIFICATION_REPEATED = "CLARIFICATION_REPEATED"
 
 
 class FailureCode(StrEnum):
@@ -113,3 +116,4 @@ class ClarificationType(StrEnum):
     ABSTRACT_INTENT = "abstract_intent"
     INSUFFICIENT_VISUAL_EVIDENCE = "insufficient_visual_evidence"
     CONFLICTING_CONSTRAINTS = "conflicting_constraints"
+    CATALOG_LIMITATION = "catalog_limitation"
