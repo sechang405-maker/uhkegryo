@@ -191,3 +191,19 @@ def test_launcher_invalid_database_does_not_print_connection_secret():
     assert result.returncode != 0
     assert 'do-not-display-password' not in result.stdout + result.stderr
     assert 'Local Codex configuration invalid' in result.stderr
+
+
+def test_local_settings_are_explicit_and_only_load_database(tmp_path, monkeypatch):
+    import os
+    from backend.local_codex import load_local_settings
+    path = tmp_path / '.env.local-codex'
+    path.write_text('LOCAL_POSTGRES_PASSWORD=synthetic\nDATABASE_URL=postgresql://u:synthetic@127.0.0.1:55432/uh\n')
+    monkeypatch.delenv('LOCAL_POSTGRES_PASSWORD', raising=False)
+    monkeypatch.setenv('DATABASE_URL', 'old')
+    load_local_settings(path)
+    assert os.environ['DATABASE_URL'] == 'postgresql://u:synthetic@127.0.0.1:55432/uh'
+    assert 'LOCAL_POSTGRES_PASSWORD' not in os.environ
+    path.write_text('DATABASE_URL=postgresql://u:secret@127.0.0.1/uh\nOPENAI_API_KEY=secret\n')
+    with pytest.raises(SystemExit, match='Local settings invalid') as error:
+        load_local_settings(path)
+    assert 'secret' not in str(error.value)

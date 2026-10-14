@@ -48,6 +48,31 @@ npm run start -- -p 3100 -H 127.0.0.1
 
 ## 실패, 취소, 재시도, 데이터
 
+### 이 PC에 구성한 전용 DB 다시 실행하기
+
+사용자 승인으로 생성한 전용 비밀번호와 연결값은 저장소 루트 `.env.local-codex`에만 있다. 기존 `.gitignore`의 `.env.*` 규칙으로 제외된다. 파일은 평문이므로 읽을 수 있는 로컬 사용자는 DB에 접근할 수 있다. 내용을 채팅·로그·Git에 복사하지 않는다. `--local-settings`를 지정할 때만 이 파일에서 DB 연결값을 읽으며, 다른 설정이나 팀 `.env`는 읽지 않는다. 비밀번호를 새로 생성하여 기존 파일을 덮어쓰지 않는다.
+
+Docker Desktop 엔진 실행 후 저장소 루트에서:
+
+```powershell
+docker compose --env-file .env.local-codex -f compose.local-codex.yml up -d db
+python -m backend.local_codex --local-settings
+```
+
+Python 의존성이 설치된 가상환경에서 실행한다. 이 PC의 새 DB에는 migration 001~005를 이미 적용했다. 향후 migration을 명시적으로 적용할 때만 `python -m backend.local_codex --local-settings --init-db`를 사용한다. 프런트는 위의 live 빌드/3100 포트 명령으로 실행한다.
+
+종료는 API와 프런트 터미널에서 각각 `Ctrl+C`, DB는 다음 명령을 사용한다. 다른 프로젝트나 Docker 엔진 전체를 정지하지 않는다.
+
+```powershell
+docker compose --env-file .env.local-codex -f compose.local-codex.yml stop db
+```
+
+`down -v`, volume 제거, DB 초기화/삭제 명령은 실행하지 않는다. 볼륨 `uhkegryo-local-codex_uhkegryo_codex_data`에 앱 DB `uhkegryo`와 합성 테스트 전용 `uhkegryo_test`를 분리했다. 기존 개인/팀 DB는 사용하지 않았다.
+
+2026-10-14 검증: 새 테스트 DB에서 backend **683 passed, 0 skipped, 0 failed**, 프런트 live production build 통과. 실제 브라우저에서 합성 세션 2개와 각 요청·답변을 저장하고 세션 전환을 확인했다. 전용 DB·API·프런트를 재시작한 뒤 동일 job ID, 완료 상태, 요청, 답변이 복원됐다. 합성 응답은 테스트 프로세스에서만 사용했고 최종 API는 실제 Codex Luna 모드로 다시 실행했다. 추가 실제 모델 호출은 0회이며 앞선 합성 호출 1회 성공을 재사용했다.
+
+저장 범위는 세션 소유권/목록, 요청 원문, job 상태·결과(답변·선정 용어), 제한된 대화 문맥이다. 브라우저 쿠키를 잃으면 기존 대화 접근을 복원할 수 없다. 합성 검증 세션 2개는 삭제하지 않고 남겨 두었다. 보관 기간 변경, 자동 삭제 주기와 실행 주체, 백업/복구 정책은 별도 결정 사항이다.
+
 - 단일 CLI 실행 제한은 adapter당 1개이며 launcher는 단일 API worker만 실행한다. 큐 대기도 `CODEX_TIMEOUT_SECONDS`(기본 180초, 10~300초)에 포함된다.
 - CLI timeout, API 종료 또는 job lease 취소 시 해당 자식 프로세스 트리를 종료하고 임시 응답 파일을 정리한다. 브라우저 창을 닫는 것은 job 취소가 아니다; 기존 job은 종료 상태까지 실행될 수 있다.
 - adapter는 재호출하지 않는다. timeout/잘못된 구조화 출력은 기존 job 정책(최대 3 attempts)으로 재시도할 수 있어 사용량이 추가될 수 있다. 로그인·CLI 실패·모델 불일치는 자동 재시도하지 않는다.
