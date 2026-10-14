@@ -96,3 +96,13 @@ DELETE `/api/sessions/{id}`는 기존 쿠키 소유권과 `X-Conversation-Action
 2026-10-14 로컬 검증: backend 650 passed/31 skipped, frontend 72 passed. 합성 입력 1건이 CLI 실측 `gpt-5.6-luna`/`openai`로 한국어 답변을 생성했고 Pydantic 및 카탈로그 resolver를 통과했다. 실제 DB 통합·Compose 생성·마이그레이션·이미지 검색은 실행하지 않았다. 독립 검토에서 발견한 검색 성공 오표시를 수정했고 최종 차단 결함은 없었다.
 
 참고 구현: [밀리테크 analyze.py](https://github.com/sechang405-maker/militech/blob/master/militech/analyze.py), [runtime.py](https://github.com/sechang405-maker/militech/blob/master/militech/runtime.py). 밀리테크 자체는 변경하지 않았다.
+## Windows에서 창을 닫아도 유지되는 수동 실행
+
+저장소 루트의 PowerShell에서 `./scripts/start-local.ps1 -Python '<기존 가상환경의 python.exe 절대 경로>'`를 실행한다. 의존성 설치와 프런트 production 빌드는 기존 절차대로 먼저 완료해야 한다. 예: 이 PC에서는 `C:\Users\user\Documents\Codex\2026-10-13\task\.venv-stage1-clean\Scripts\python.exe`를 사용한다.
+
+스크립트는 기존 개인 DB 컨테이너만 재사용하고, API와 프런트를 Windows의 별도 숨김 프로세스로 시작한다. 명령이 끝나도 프로세스는 유지되며 `.local-run/`에 시작·오류 로그를 남긴다. 이미 포트를 사용하는 서버는 종료하거나 중복 실행하지 않는다. DB 초기화·마이그레이션·대화 삭제·모델 평가를 수행하지 않지만, 정상 API 워커는 기존 대기 작업과 사용자가 새로 보낸 요청을 처리할 수 있다.
+
+OS 자동시작·예약작업·서비스 등록은 하지 않는다. PC 재부팅이나 프로세스 종료 후에는 이 명령을 다시 실행한다. 종료가 필요하면 `Get-NetTCPConnection -State Listen -LocalPort 3100,8000`으로 PID를 확인하고, `Get-CimInstance Win32_Process`로 해당 앱 명령인지 확인한 뒤 그 PID만 `Stop-Process`로 종료한다. DB 중지는 위의 기존 절차를 따른다.
+
+2026-10-14 접속 거부 조사: DB는 healthy였지만 API/프런트 리스너와 이전 도구 실행 세션이 사라져 있었다. 이전 종료 로그가 없어 정확한 종료 주체는 확정하지 못했다. 도구 세션 수명과 서버 수명을 분리하고 로그를 지속 보관하도록 실행 방식을 보완했다.
+
