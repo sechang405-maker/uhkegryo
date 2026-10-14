@@ -6,3 +6,7 @@ f709df4d3a0b6d2ac5e957886fabaca838b57baf:evals/runs/20261002-154511-openai-gpt-4
 # Private lab's history-free import has a new commit ID for the same source_sha256 values.
 14615809b1a26edf58eff41ba4b7438f44fbafc8:evals/runs/20261002-154511-openai-gpt-4.1-mini/metadata.json:generic-api-key:98
 14615809b1a26edf58eff41ba4b7438f44fbafc8:evals/runs/20261002-154511-openai-gpt-4.1-mini/metadata.json:generic-api-key:127
+# Luna initial-run source_files_sha256: verified against the named source files, not credentials.
+9ad96b203d261c70163d838ede8d02fca4435cf1:evals/runs/20261014-luna-initial-16/metadata.json:generic-api-key:82
+9ad96b203d261c70163d838ede8d02fca4435cf1:evals/runs/20261014-luna-initial-16/metadata.json:generic-api-key:90
+9ad96b203d261c70163d838ede8d02fca4435cf1:evals/runs/20261014-luna-initial-16/metadata.json:generic-api-key:130
