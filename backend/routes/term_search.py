@@ -34,8 +34,9 @@ def get_search_provider(suffix: str) -> PinterestWidgetProvider:
 
 @router.post("/api/term-search", response_model=TermResult)
 async def search_term(payload: TermSearchRequest, request: Request, response: Response) -> TermResult:
-    if get_settings().llm_backend == 'codex-cli':
-        raise HTTPException(503, '로컬 Codex 모드는 답변만 생성하며 이미지 검색은 연결하지 않았습니다.')
+    settings = get_settings()
+    if settings.llm_backend == 'codex-cli' and not settings.searxng_base_url:
+        raise HTTPException(503, '로컬 이미지 검색이 연결되지 않았습니다. SearXNG 실행 설정을 확인해 주세요.')
     snapshot = request.app.state.catalog
     card = snapshot.get_active(payload.term_id)
     if card is None:

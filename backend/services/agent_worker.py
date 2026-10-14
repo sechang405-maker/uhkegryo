@@ -25,6 +25,7 @@ from backend.services.llm import format_active_cards_json
 from backend.services.mcp_pinterest_search import parse_search_result, pop_search_diagnostics
 from backend.services.mcp_tool_gateway import McpToolGateway
 from backend.services.pinterest_widget import PinterestWidgetClient
+from backend.services.searxng_pinterest_search import SearXNGPinterestSearchProvider
 from backend.services.resolver import ResolutionResult
 from backend.services.response_assembler import RoleSearchOutcome, assemble
 from backend.services.failure_mapping import DATABASE_ERRORS, OperationalFailure, classify_failure
@@ -51,6 +52,7 @@ class AgentJobWorker:
         adapter: AgentInterpretationAdapter | None = None,
         mcp_gateway: McpToolGateway | None = None,
         widget_client: PinterestWidgetClient | None = None,
+        local_search_url: str = '',
         heartbeat_interval: float = 10,
         tracer: JobTracer | None = None,
     ) -> None:
@@ -62,6 +64,7 @@ class AgentJobWorker:
         self._adapter = adapter
         self._mcp_gateway = mcp_gateway
         self._widget_client = widget_client
+        self._local_search_url = local_search_url
         self._search_slots = asyncio.Semaphore(SEARCH_CONCURRENCY)
         self._heartbeat_interval = heartbeat_interval
         self._tracer = tracer if tracer is not None else JobTracer.from_settings()
@@ -208,6 +211,8 @@ class AgentJobWorker:
     async def _search_outcomes(
         self, resolution: ResolutionResult, *, request_text: str, exclude_pin_ids=None
     ) -> Mapping[Role, RoleSearchOutcome]:
+        if getattr(self, '_local_search_url', ''):
+            return await self._local_search_outcomes(resolution, exclude_pin_ids or {})
         if not getattr(self._adapter, 'image_search_enabled', True):
             return {term.selection.role: RoleSearchOutcome(role=term.selection.role,
                 code=ReasonCode.PIN_SEARCH_UNAVAILABLE) for term in resolution.terms}
@@ -375,6 +380,27 @@ class AgentJobWorker:
             )
         return outcomes
 
+    async def _local_search_outcomes(self, resolution, exclude_pin_ids):
+        # Search only resolver-approved catalog fragments. No user text or LLM tool selection.
+        async def search(term):
+            role = term.selection.role
+            try:
+                async with asyncio.timeout(25):
+                    async with self._search_slots:
+                        provider = SearXNGPinterestSearchProvider(
+                            base_url=self._local_search_url,
+                            exclude_pin_ids=tuple(exclude_pin_ids.get(role, ())),
+                        )
+                        outcome = await provider.search(role, tuple(term.card['query_fragments']))
+                        if self._widget_client is not None:
+                            outcome = await self._widget_client.enrich_outcome(outcome)
+                        return role, outcome
+            except Exception:
+                return role, RoleSearchOutcome(role=role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
+
+        # gather propagates parent cancellation to each bounded search and widget lookup.
+        return dict(await asyncio.gather(*(search(term) for term in resolution.terms)))
+
     async def _search_backoff(self, role: Role, search_attempt: int, reason: str) -> None:
         delay = SEARCH_RETRY_DELAYS_SECONDS[search_attempt - 1]
         with self._tracer.phase("search-retry-wait", role=role.value, search_attempt=search_attempt) as metrics:
@@ -532,9 +558,10 @@ async def run_worker(snapshot: CatalogSnapshot) -> None:
             pool = await create_pool(settings)
             local_codex = settings.llm_backend == 'codex-cli'
             mcp_gateway = None if local_codex else McpToolGateway(mcp_url=settings.mcp_base_url)
-            widget_client = None if local_codex else PinterestWidgetClient()
+            widget_client = PinterestWidgetClient() if not local_codex or settings.searxng_base_url else None
             await AgentJobWorker(
-                pool, snapshot, mcp_gateway=mcp_gateway, widget_client=widget_client
+                pool, snapshot, mcp_gateway=mcp_gateway, widget_client=widget_client,
+                local_search_url=settings.searxng_base_url if local_codex else '',
             ).run_forever(
                 concurrency=settings.worker_concurrency
             )

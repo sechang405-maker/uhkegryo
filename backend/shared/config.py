@@ -72,8 +72,15 @@ class Settings(BaseSettings):
             raise ValueError('Codex mode requires a loopback PostgreSQL URL without query overrides')
         if self.environment != 'development' or self.worker_concurrency != 1:
             raise ValueError('Codex mode requires development and exactly one worker')
-        if self.langfuse_public_key or self.langfuse_secret_key or self.mcp_enabled or self.mcp_base_url or self.searxng_base_url:
-            raise ValueError('Codex mode does not enable remote tracing or image search')
+        if self.langfuse_public_key or self.langfuse_secret_key or self.mcp_enabled or self.mcp_base_url:
+            raise ValueError('Codex mode does not enable remote tracing or MCP')
+        if self.searxng_base_url:
+            search = urlsplit(self.searxng_base_url)
+            if (search.scheme != 'http' or search.hostname not in ('127.0.0.1', '::1', 'localhost')
+                    or search.username is not None or search.password is not None
+                    or search.path not in ('', '/') or search.query or search.fragment):
+                raise ValueError('Codex image search requires a loopback SearXNG origin')
+            _ = search.port  # Reject malformed ports before any request.
         if self.interpreter_prompt_version != 'uhkegryo-interpreter-v4':
             raise ValueError('Codex mode requires the v4 structured interpreter prompt')
         self.llm_model = 'gpt-5.6-luna'

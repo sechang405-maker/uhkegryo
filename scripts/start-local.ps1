@@ -1,5 +1,7 @@
 param(
-    [string]$Python = 'python'
+    [string]$Python = 'python',
+    [string]$SearchUrl = 'http://127.0.0.1:8080',
+    [string]$SearchContainer = 'pr106-local-searxng-1'
 )
 $ErrorActionPreference = 'Stop'
 $repository = Split-Path -Parent $PSScriptRoot
@@ -44,10 +46,26 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
 }
 if ($dbHealth -ne 'healthy') { throw 'Personal DB did not become healthy; API was not started.' }
 
+# Reuse this PC's existing public-search container; no image pull, configuration or secret changes.
+if ($SearchUrl) {
+    $searchOrigin = [uri]$SearchUrl
+    if ($searchOrigin.Scheme -ne 'http' -or $searchOrigin.Host -notin @('127.0.0.1', 'localhost', '[::1]') -or
+        $searchOrigin.UserInfo -or $searchOrigin.AbsolutePath -ne '/' -or $searchOrigin.Query -or $searchOrigin.Fragment) {
+        throw 'SearchUrl must be a loopback HTTP origin.'
+    }
+    if ($SearchContainer -and -not (Get-Listener $searchOrigin.Port)) {
+        & docker start $SearchContainer | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Existing search container is unavailable. See docs/local-codex.md.' }
+    }
+    Wait-Http $SearchUrl
+}
+
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 if (-not (Get-Listener 8000)) {
     # Windows Start-Process creates a detached process; do not use -Wait or a tool-owned foreground session.
-    $api = Start-Process -FilePath $pythonExe -ArgumentList '-m','backend.local_codex','--local-settings' `
+    $apiArguments = @('-m', 'backend.local_codex', '--local-settings')
+    if ($SearchUrl) { $apiArguments += @('--search-url', $SearchUrl) }
+    $api = Start-Process -FilePath $pythonExe -ArgumentList $apiArguments `
         -WorkingDirectory $repository -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $logs "api-$stamp.out.log") `
         -RedirectStandardError (Join-Path $logs "api-$stamp.err.log")

@@ -39,6 +39,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--init-db', action='store_true', help='Explicitly apply migrations to the selected local DB')
     parser.add_argument('--local-settings', action='store_true', help='Explicitly load the personal .env.local-codex DB settings')
+    parser.add_argument('--search-url', default='', help='Optional loopback SearXNG origin for catalog-only public image searches')
     args = parser.parse_args()
     from backend.shared.config import Settings, get_settings
     root = Path(__file__).resolve().parents[1]
@@ -48,7 +49,7 @@ def main():
         LLM_MODEL='gpt-5.6-luna', INTERPRETER_PROMPT_VERSION='uhkegryo-interpreter-v4',
         INTERPRETER_PROMPT_PATH=str(root / 'prompts/uhkegryo-interpreter-v4.md'),
         LANGFUSE_PUBLIC_KEY='', LANGFUSE_SECRET_KEY='', MCP_ENABLED='false', MCP_BASE_URL='',
-        SEARXNG_BASE_URL='', ALLOWED_ORIGINS='http://127.0.0.1:3100,http://localhost:3100')
+        SEARXNG_BASE_URL=args.search_url, ALLOWED_ORIGINS='http://127.0.0.1:3100,http://localhost:3100')
     # Validate process env only; never silently import a copied team's .env/DB URL.
     try:
         settings = Settings(_env_file=None)
