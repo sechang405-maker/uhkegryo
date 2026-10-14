@@ -1,0 +1,20 @@
+# Optional, separate local database only. Never mounts Codex login or team volumes.
+name: uhkegryo-local-codex
+services:
+  db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:55432:5432"
+    environment:
+      POSTGRES_USER: uhkegryo
+      POSTGRES_DB: uhkegryo
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:?Set a password for your separate local DB}
+    volumes:
+      - uhkegryo_codex_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uhkegryo -d uhkegryo"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  uhkegryo_codex_data:

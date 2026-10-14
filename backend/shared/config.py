@@ -3,7 +3,9 @@ import os
 import warnings
 from functools import lru_cache
 from pathlib import Path
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
+from typing import Literal
+from urllib.parse import urlsplit
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +13,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # LLM
+    llm_backend: Literal['openrouter', 'codex-cli'] = 'openrouter'
+    codex_timeout_seconds: float = Field(default=180, ge=10, le=300)
+    codex_bin_dir: str = ''
+    codex_executable: str = ''
     openrouter_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
@@ -54,6 +60,23 @@ class Settings(BaseSettings):
 
     # Self-hosted SearXNG Search API
     searxng_base_url: str = ""
+
+    @model_validator(mode='after')
+    def local_codex_boundary(self):
+        if self.llm_backend != 'codex-cli':
+            return self
+        db = urlsplit(self.database_url)
+        if (db.scheme not in ('postgresql', 'postgres') or db.hostname not in ('127.0.0.1', '::1', 'localhost')
+                or db.query or db.fragment):
+            raise ValueError('Codex mode requires a loopback PostgreSQL URL without query overrides')
+        if self.environment != 'development' or self.worker_concurrency != 1:
+            raise ValueError('Codex mode requires development and exactly one worker')
+        if self.langfuse_public_key or self.langfuse_secret_key or self.mcp_enabled or self.mcp_base_url or self.searxng_base_url:
+            raise ValueError('Codex mode does not enable remote tracing or image search')
+        if self.interpreter_prompt_version != 'uhkegryo-interpreter-v4':
+            raise ValueError('Codex mode requires the v4 structured interpreter prompt')
+        self.llm_model = 'gpt-5.6-luna'
+        return self
 
 
 @lru_cache

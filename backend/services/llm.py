@@ -505,7 +505,7 @@ class LLMInterpretationAdapter:
         response = await self._request([
             {"role": "system", "content": rules},
             {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
-        ])
+        ], output_format=self._memory_output_format(output_type))
         try:
             payload = json.loads(_extract_content(response))
             if operation == "classify" and isinstance(payload, dict) and payload.get("mode") == "none":
@@ -523,6 +523,9 @@ class LLMInterpretationAdapter:
             request_text=data.get("request_text", ""),
         )
         return output
+
+    def _memory_output_format(self, output_type):
+        return None
 
     def _observe_langfuse(
         self,

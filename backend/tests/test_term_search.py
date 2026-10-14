@@ -166,7 +166,7 @@ def test_invalid_suffix_rejected_before_provider_io():
 
 
 def test_ac04_actual_missing_configuration(search_setup, monkeypatch):
-    monkeypatch.setattr(term_search, "get_settings", lambda: SimpleNamespace(searxng_base_url=""))
+    monkeypatch.setattr(term_search, "get_settings", lambda: SimpleNamespace(searxng_base_url="", llm_backend="openrouter"))
     monkeypatch.setattr(term_search, "get_search_provider", lambda suffix: PinterestWidgetProvider(
         SearXNGPinterestSearchProvider(base_url=term_search.get_settings().searxng_base_url, suffix=suffix),
         PinterestWidgetClient()))

@@ -122,7 +122,12 @@ class AgentJobWorker:
                     trace.stale()
                 return
             if self._adapter is None:
-                self._adapter = LLMInterpretationAdapter()
+                from backend.shared.config import get_settings
+                if get_settings().llm_backend == 'codex-cli':
+                    from backend.services.codex_llm import CodexInterpretationAdapter
+                    self._adapter = CodexInterpretationAdapter()
+                else:
+                    self._adapter = LLMInterpretationAdapter()
             with trace.stage("memory-context"):
                 context = await conversation_context.prepare(self._memory, job, self._adapter, trace)
             recalled, recall_only = await conversation_context.recall(
@@ -203,6 +208,9 @@ class AgentJobWorker:
     async def _search_outcomes(
         self, resolution: ResolutionResult, *, request_text: str, exclude_pin_ids=None
     ) -> Mapping[Role, RoleSearchOutcome]:
+        if not getattr(self._adapter, 'image_search_enabled', True):
+            return {term.selection.role: RoleSearchOutcome(role=term.selection.role,
+                code=ReasonCode.PIN_SEARCH_UNAVAILABLE) for term in resolution.terms}
         if self._mcp_gateway is None or not resolution.terms:
             return {}
         adapter = self._adapter
@@ -522,8 +530,9 @@ async def run_worker(snapshot: CatalogSnapshot) -> None:
             if settings.database_url.startswith("sqlite"):
                 return
             pool = await create_pool(settings)
-            mcp_gateway = McpToolGateway(mcp_url=settings.mcp_base_url)
-            widget_client = PinterestWidgetClient()
+            local_codex = settings.llm_backend == 'codex-cli'
+            mcp_gateway = None if local_codex else McpToolGateway(mcp_url=settings.mcp_base_url)
+            widget_client = None if local_codex else PinterestWidgetClient()
             await AgentJobWorker(
                 pool, snapshot, mcp_gateway=mcp_gateway, widget_client=widget_client
             ).run_forever(

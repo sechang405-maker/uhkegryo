@@ -34,6 +34,8 @@ def get_search_provider(suffix: str) -> PinterestWidgetProvider:
 
 @router.post("/api/term-search", response_model=TermResult)
 async def search_term(payload: TermSearchRequest, request: Request, response: Response) -> TermResult:
+    if get_settings().llm_backend == 'codex-cli':
+        raise HTTPException(503, '로컬 Codex 모드는 답변만 생성하며 이미지 검색은 연결하지 않았습니다.')
     snapshot = request.app.state.catalog
     card = snapshot.get_active(payload.term_id)
     if card is None:

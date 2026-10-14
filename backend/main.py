@@ -40,6 +40,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="2차 프로젝트 API", lifespan=lifespan)
 
+
+@app.middleware('http')
+async def local_codex_guard(request, call_next):
+    if settings.llm_backend == 'codex-cli':
+        from backend.local_codex import local_request_allowed
+        if not local_request_allowed(request.client.host if request.client else '',
+                                     request.headers.get('host', ''), request.headers.get('origin')):
+            return JSONResponse(status_code=403, content={'detail': '로컬 접속만 허용됩니다.'})
+    return await call_next(request)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.allowed_origins.split(",") if o.strip()],
