@@ -1,5 +1,7 @@
 import "./globals.css";
 
+export const viewport = { themeColor: "#18191c", colorScheme: "dark" };
+
 export const metadata = {
   title: "UH케그려",
   description: "캐릭터 드로잉 레퍼런스 탐색",
@@ -12,3 +14,4 @@ export default function RootLayout({ children }) {
     </html>
   );
 }
+
