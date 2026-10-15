@@ -56,7 +56,7 @@ def test_parallel_phases_and_generation_purpose(monkeypatch, snapshot_factory):
             assert {r["metadata"]["role"] for r in records
                     if r["trace_id"] == trace_id and r["name"] == "mcp-search-call"} == {"pose", "view"}
         selection = next(r for r in records if r["name"] == "mcp-tool-selection")
-        assert selection["metadata"] == {"call_round": 1, "purpose": "tool_selection", "pending_roles": ["pose", "view"]}
+        assert selection["metadata"] == {"call_round": 1, "purpose": "tool_selection", "pending_term_ids": ["pose", "view"]}
         assert selection["output"]["selected_roles"] == ["pose", "view"]
         final = next(r for r in records if r["name"] == "mcp-post-search-decision")
         assert final["metadata"]["call_round"] == 2 and final["output"]["call_count"] == 0

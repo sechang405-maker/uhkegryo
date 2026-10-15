@@ -22,7 +22,7 @@ def record(row):
     if safe:
         result["terms"] = [{key: str(term.get(key, ""))[:200]
                             for key in ("role", "term_id", "label_ko", "label_en")}
-                           for term in (payload.get("reference_plan") or {}).get("terms", [])[:5]]
+                           for term in (payload.get("reference_plan") or {}).get("terms", [])[:10]]
         result["question"] = (payload.get("clarifying_question") or "")[:500]
         result["message"] = (payload.get("user_message") or "")[:1000]
     # Retain whole fields: never cut serialized JSON or expose provider payloads.
@@ -35,6 +35,12 @@ def evidence_text(item):
     return "\n".join([item["request_text"], item.get("question") or "",
                       item.get("message") or ""] +
                      [term[key] for term in item["terms"] for key in ("label_ko", "label_en")])
+
+
+def normalize_constraints(constraints):
+    """Read historical role keys and current term keys into one card-indexed map."""
+    return {value["term_id"]: {**value, "role": value.get("role", key)}
+            for key, value in constraints.items()}
 
 
 class ConversationMemory:
@@ -55,7 +61,8 @@ class ConversationMemory:
         )
         stored = decode(memory)
         state = {key: stored[key] for key in ("constraints", "pending_question") if key in stored}
-        pinned = [value["source_job_id"] for value in state.get("constraints", {}).values()]
+        state["constraints"] = normalize_constraints(state.get("constraints", {}))
+        pinned = list(dict.fromkeys(value["source_job_id"] for value in state["constraints"].values()))
         sources = await self.records(job, pinned) if pinned else []
         previous = await self.pool.fetchval(
             """SELECT final_payload_json FROM jobs WHERE session_id=$1

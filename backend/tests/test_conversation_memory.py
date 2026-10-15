@@ -101,7 +101,7 @@ def test_worker_remembers_recent_records_and_recalls(snapshot_factory, card_fact
         for i in range(9):
             await jobs.submit(session_id=session_id, request_text=f"{i} 서 있는 자세", idempotency_key=str(uuid.uuid4()))
             assert await worker.run_once()
-        assert adapter.contexts[1]["constraints"]["pose"]["term_id"] == "pose_standing"
+        assert adapter.contexts[1]["constraints"]["pose_standing"]["term_id"] == "pose_standing"
         assert len(adapter.contexts[-1]["recent"]) == 6
         assert "summarize" not in adapter.memory_operations
         adapter.recall = True
@@ -233,7 +233,8 @@ def test_eval27_followup_preserves_body_and_pending_question(snapshot_factory, c
                 return InterpretationOutput(interpretation_state="select_terms", selections=[
                     InterpretationSelection(role="pose", term_id=term, evidence=[evidence], confidence=.9)],
                     answer_text="확인된 자세를 참고해 보세요.",
-                    context_updates=[ContextUpdate(role="pose", term_id=term, evidence=evidence)])
+                    context_updates=[ContextUpdate(role="pose", term_id=term, evidence=evidence,
+                        remove_term_ids=["pose_standing"] if term == "pose_weight_shift" else [])])
         adapter, jobs = FollowupAdapter(), JobRepository(pool)
         snapshot = snapshot_factory([card_factory("body_slim", role="body"),
                                      card_factory("pose_standing"), card_factory("pose_weight_shift")])
@@ -247,13 +248,13 @@ def test_eval27_followup_preserves_body_and_pending_question(snapshot_factory, c
             new, _ = await jobs.submit(session_id=session, request_text=text, idempotency_key=str(uuid.uuid4()))
             await worker.run_once()
         assert adapter.contexts[2]["pending_question"] == "어떤 포즈인가요?"
-        assert adapter.contexts[2]["constraints"]["body"]["term_id"] == "body_slim"
-        assert adapter.contexts[3]["constraints"]["body"]["term_id"] == "body_slim"
+        assert adapter.contexts[2]["constraints"]["body_slim"]["term_id"] == "body_slim"
+        assert adapter.contexts[3]["constraints"]["body_slim"]["term_id"] == "body_slim"
         result = (await jobs.get(session_id=session, job_id=new.job_id)).result
         assert [term.term_id for term in result.reference_plan.terms] == ["body_slim", "pose_weight_shift"]
         state = json.loads(await pool.fetchval("SELECT memory_json FROM sessions WHERE session_id=$1", uuid.UUID(session)))
-        assert state["constraints"]["body"]["term_id"] == "body_slim"
-        assert state["constraints"]["pose"]["term_id"] == "pose_weight_shift"
+        assert state["constraints"]["body_slim"]["term_id"] == "body_slim"
+        assert state["constraints"]["pose_weight_shift"]["term_id"] == "pose_weight_shift"
     asyncio.run(database_case(case))
 
 

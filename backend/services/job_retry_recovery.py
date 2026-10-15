@@ -59,10 +59,10 @@ def validation_diagnostics(error: Exception) -> str | None:
         for name in definition.get("properties", {})
     }
     codes = set(get_args(ErrorType)) | {
-        "invalid_candidate", "role_duplicate", "role_order", "state_rules",
+        "invalid_candidate", "role_duplicate", "term_duplicate", "role_order", "state_rules",
         "summary_source_invalid", "recall_citation_invalid", "selection_source_invalid",
         "selection_evidence_invalid", "context_evidence_invalid",
-        "context_card_invalid", "selection_card_invalid",
+        "context_card_invalid", "selection_card_invalid", "context_removal_invalid", "context_card_limit",
     }
     stage = error.stage if error.stage in {
         "interpretation_schema", "memory_schema", "conversation_validation"

@@ -39,11 +39,15 @@ def run_worker(monkeypatch, snapshot_factory, card_factory, *, refresh=False, pr
     output = InterpretationOutput(interpretation_state="select_terms", selections=[
         {"role": changed_role, "term_id": selected_id, "evidence": ["옆모습" if changed_role == "view" else "앉은 모습"], "confidence": 1}],
         answer_text="앉은 포즈로 바꿨어요.")
+    if not refresh and refresh_roles is None:
+        output.context_updates = [ContextUpdate(role=changed_role, term_id=selected_id,
+            evidence=request_text,
+            remove_term_ids=[t["term_id"] for t in (previous.get("reference_plan") or {}).get("terms", []) if t["role"] == changed_role])]
     if inherited:
         output.selections.insert(0, output.selections[0].model_copy(update={
             "role": Role.BODY, "term_id": "body_slim", "evidence": ["body_slim"], "source_job_id": uuid4()}))
     if clear:
-        output.context_updates = [ContextUpdate(role="body", term_id=None, evidence="체형 제외")]
+        output.context_updates.append(ContextUpdate(role="body", term_id=None, evidence="체형 제외"))
     if clarification:
         output = InterpretationOutput(interpretation_state="needs_clarification",
             clarification_type="insufficient_visual_evidence", unresolved_constraints=["포즈"],
@@ -99,7 +103,7 @@ def test_body_pose_view_board_updates_only_requested_roles(monkeypatch, snapshot
     result, calls, _ = run_worker(monkeypatch, snapshot_factory, card_factory,
         previous=previous, refresh=refresh, changed_role=changed_role)
     assert [args["role"] for _, args in calls] == (["body", "pose", "view"] if refresh else [changed_role])
-    assert result.reference_update.model_dump(mode="json") == {
+    assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
         "replaced_roles": ["body", "pose", "view"] if refresh else [changed_role],
         "preserved_roles": [] if refresh else [role for role in ["body", "pose", "view"] if role != changed_role],
         "removed_roles": []}
@@ -126,11 +130,11 @@ def test_clear_and_search_failure_do_not_replace_other_roles(monkeypatch, snapsh
 def test_refresh_preserves_cards_overrides_model_exclusions_and_repeats(monkeypatch, snapshot_factory, card_factory):
     result, calls, adapter = run_worker(monkeypatch, snapshot_factory, card_factory, refresh=True)
     assert [t.term_id for t in result.reference_plan.terms] == ["body_slim", "pose_standing"]
-    assert [args["exclude_pin_ids"] for _, args in calls] == [["11", "22"], ["11", "22"]]
+    assert [args["exclude_pin_ids"] for _, args in calls] == [["11"], ["22"]]
     assert not adapter.calls  # No card reinterpretation.
     _, calls, _ = run_worker(monkeypatch, snapshot_factory, card_factory, refresh=True,
         previous=result.model_dump(mode="json"))
-    assert [args["exclude_pin_ids"] for _, args in calls] == [["33", "44"], ["33", "44"]]
+    assert [args["exclude_pin_ids"] for _, args in calls] == [["33"], ["44"]]
 
 
 def test_refresh_without_previous_board_asks_without_search(monkeypatch, snapshot_factory, card_factory):
@@ -186,12 +190,12 @@ def test_remaining_images_refresh_only_view_and_report_decisions(monkeypatch, sn
         previous=previous, refresh_roles=["view"], old_pins=old_pins, failure=failure,
         request_text="체형·포즈 이미지는 그대로 두고 나머지만 다른 레퍼런스로 찾아줘")
     assert [args["role"] for _, args in calls] == ["view"] * (3 if failure else 1)
-    assert all(args["exclude_pin_ids"] == ["11", "22", "55"] for _, args in calls)
+    assert all(args["exclude_pin_ids"] == ["55"] for _, args in calls)
     assert [term.model_dump(mode="json") for term in result.reference_plan.terms[:2]] == previous["reference_plan"]["terms"][:2]
     view = result.reference_plan.terms[2]
     assert view.term_id == "view_front"
     assert [p.pin_id for p in view.pins] == ([] if old_pins or failure else ["44"])
-    assert result.reference_update.model_dump(mode="json") == {
+    assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
         "replaced_roles": ["view"], "preserved_roles": ["body", "pose"], "removed_roles": []}
     assert not adapter.calls
     assert adapter.classification_data["current_reference_roles"] == ["body", "pose", "view"]
@@ -205,7 +209,7 @@ def test_invalid_refresh_scope_preserves_board_without_search(monkeypatch, snaps
         previous=previous, refresh_roles=roles)
     assert calls == [] and result.agent_status.value == "needs_clarification"
     assert result.reference_plan is None and result.answer_text == ""
-    assert result.reference_update.model_dump(mode="json") == {
+    assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
         "replaced_roles": [], "preserved_roles": [] if previous == {} else ["body", "pose"], "removed_roles": []}
 
 
@@ -219,20 +223,20 @@ def test_multiple_image_roles_refresh_preserves_remaining_role(monkeypatch, snap
     assert [args["role"] for _, args in calls] == ["body", "pose"]
     assert [term.term_id for term in result.reference_plan.terms] == ["body_slim", "pose_standing", "view_front"]
     assert result.reference_plan.terms[2].model_dump(mode="json") == original_view
-    assert result.reference_update.model_dump(mode="json") == {
+    assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
         "replaced_roles": ["body", "pose"], "preserved_roles": ["view"], "removed_roles": []}
 
 
 def test_clarification_keeps_board_even_if_model_suggests_clear(monkeypatch, snapshot_factory, card_factory):
     result, calls, _ = run_worker(monkeypatch, snapshot_factory, card_factory, clarification=True, clear=True)
     assert result.reference_plan is None and calls == []
-    assert result.reference_update.model_dump(mode="json") == {
+    assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
         "replaced_roles": [], "preserved_roles": ["body", "pose"], "removed_roles": []}
 
 
 def test_initial_board_and_legacy_payload_metadata(monkeypatch, snapshot_factory, card_factory):
     result, _, _ = run_worker(monkeypatch, snapshot_factory, card_factory, previous={})
-    assert result.reference_update.model_dump(mode="json") == {
+    assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
         "replaced_roles": ["pose"], "preserved_roles": [], "removed_roles": []}
     assert AgentResult.model_validate(result.model_dump()).reference_update == result.reference_update
     assert AgentResult.model_validate(prior()).reference_update is None
@@ -295,6 +299,7 @@ def test_postgres_reuses_only_same_conversation_preceding_board(snapshot_factory
             {"role": "pose", "term_id": "pose_sitting", "evidence": ["앉은 모습"], "confidence": 1}]),
             tool_calls=[[{"id": "pose", "name": "search_pinterest_pins", "arguments": {
                 "role": "pose", "query_fragments": ["pose_sitting"]}}], []])
+        adapter.output.context_updates = [ContextUpdate(role="pose", term_id="pose_sitting", evidence=adapter.output.selections[0].evidence[0], remove_term_ids=["pose_standing"])]
         gateway = FakeMcpGateway([{"role": "pose", "pins": [pin("44").model_dump(mode="json")], "code": None}])
         worker = AgentJobWorker(pool, snapshot, adapter=adapter, mcp_gateway=gateway, tracer=JobTracer())
         with worker._tracer.attempt(claimed) as trace:
@@ -303,9 +308,9 @@ def test_postgres_reuses_only_same_conversation_preceding_board(snapshot_factory
         assert [t.pins[0].pin_id for t in result.reference_plan.terms] == ["11", "44"]
         assert [args["role"] for _, args in gateway.calls] == ["pose"]
         expected = {"replaced_roles": ["pose"], "preserved_roles": ["body"], "removed_roles": []}
-        assert result.reference_update.model_dump(mode="json") == expected
+        assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == expected
         saved = json.loads(await pool.fetchval("SELECT final_payload_json FROM jobs WHERE job_id=$1::uuid", submitted.job_id))
-        assert saved["reference_update"] == expected
+        assert {key: saved["reference_update"][key] for key in expected} == expected
         async def refresh_classify(operation, data, output_type, **trace):
             assert data["current_reference_roles"] == ["body", "pose"]
             return RecallQuery(mode="none", reference_action="refresh_roles",
@@ -318,15 +323,15 @@ def test_postgres_reuses_only_same_conversation_preceding_board(snapshot_factory
         await worker.run_once()
         result = (await jobs.get(session_id=a, job_id=refreshed.job_id)).result
         assert [t.pins[0].pin_id for t in result.reference_plan.terms] == ["11", "66"]
-        assert result.reference_update.model_dump(mode="json") == expected
-        assert gateway.calls[-1][1]["exclude_pin_ids"] == ["11", "44"]
+        assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == expected
+        assert gateway.calls[-1][1]["exclude_pin_ids"] == ["44"]
         assert len(adapter.calls) == 1  # Image refresh does not reinterpret cards.
         questioned, _ = await jobs.submit(session_id=a, request_text="다르게 해줘", idempotency_key=str(uuid4()))
         call_count = len(gateway.calls)
         await worker.run_once()
         result = (await jobs.get(session_id=a, job_id=questioned.job_id)).result
         assert result.agent_status.value == "needs_clarification" and result.reference_plan is None
-        assert result.reference_update.model_dump(mode="json") == {
+        assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
             "replaced_roles": [], "preserved_roles": ["body", "pose"], "removed_roles": []}
         assert len(gateway.calls) == call_count
     asyncio.run(database_case(scenario))

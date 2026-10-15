@@ -42,12 +42,9 @@ def response_format(active_cards_json: str = "") -> dict:
             if references:
                 del schema["$defs"][name]
                 field = "selections" if name == "InterpretationSelection" else "context_updates"
-                slots = {role: {"anyOf": [references[role], {"type": "null"}]}
-                    if role in references else {"type": "null"}
-                    for role in ("body", "pose", "view", "perspective", "layout")}
-                schema["properties"][field] = {"type": "object", "properties": slots,
-                    "required": list(slots), "additionalProperties": False,
-                    "description": "One nullable slot per role. Direction takes priority over full-body framing in view."}
+                schema["properties"][field] = {"type": "array", "maxItems": 10,
+                    "items": {"anyOf": list(references.values())},
+                    "description": "Independent cards; roles may repeat. Each selected term_id is unique."}
     return {"type": "json_schema", "json_schema": {
         "name": "interpretation_output", "strict": True, "schema": schema,
     }}
@@ -64,7 +61,7 @@ def validation_feedback(error) -> list[dict]:
         code = item["type"]
         if not item["loc"]:
             message = item["msg"]
-            code = "role_duplicate" if "역할당 최대" in message else "role_order" if "역할 순서" in message else "state_rules"
+            code = "term_duplicate" if "duplicate term_id" in message else "role_order" if "역할 순서" in message else "state_rules"
         path = [part if isinstance(part, int) or part in fields else "unknown_field" for part in item["loc"]]
         feedback.append({"path": path, "code": code})
     return feedback

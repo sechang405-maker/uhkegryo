@@ -22,6 +22,7 @@ from backend.schemas.enums import (
 )
 
 MAX_PINS_PER_ROLE = 8
+MAX_SELECTED_TERMS = 10
 RETRY_COUNT_MAX = 3
 PROGRESS_POLL_AFTER_MS = 1000
 
@@ -67,7 +68,7 @@ class PinResult(BaseModel):
 
 
 class TermResult(BaseModel):
-    """역할당 최대 하나의 활성 TERM_CARD 결과."""
+    """고유 term_id를 가진 독립 TERM_CARD 결과. role은 분류다."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -97,27 +98,27 @@ class TermResult(BaseModel):
 
 
 class ReferencePlan(BaseModel):
-    """검증된 참조 계획 — 역할당 최대 하나의 활성 카드를 역할 순서대로."""
+    """검증된 참조 계획 — 최대 10개 고유 카드, 역할별 안정 정렬."""
 
     model_config = ConfigDict(extra="forbid")
 
-    terms: list[TermResult] = Field(default_factory=list)
+    terms: list[TermResult] = Field(default_factory=list, max_length=MAX_SELECTED_TERMS)
     unresolved_roles: list[Role] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_role_uniqueness_and_order(self) -> "ReferencePlan":
-        seen: set[Role] = set()
+        seen: set[str] = set()
         prev_index = -1
         for term in self.terms:
-            if term.role in seen:
-                raise ValueError(f"역할당 최대 하나의 TERM_CARD만 가진다: role={term.role}")
-            seen.add(term.role)
+            if term.term_id in seen:
+                raise ValueError("duplicate term_id in reference plan")
+            seen.add(term.term_id)
             role_index = list(Role).index(term.role)
             if role_index < prev_index:
                 raise ValueError("terms는 역할 순서(body→pose→view→perspective→layout)를 지켜야 한다")
             prev_index = role_index
         for role in self.unresolved_roles:
-            if role in seen:
+            if role in {term.role for term in self.terms}:
                 raise ValueError(f"unresolved_roles에 있는 역할은 terms와 겹칠 수 없다: role={role}")
         return self
 
@@ -129,8 +130,15 @@ class ReferenceUpdate(BaseModel):
     preserved_roles: list[Role] = Field(default_factory=list, max_length=5)
     removed_roles: list[Role] = Field(default_factory=list, max_length=5)
 
+    replaced_term_ids: list[str] = Field(default_factory=list, max_length=10)
+    preserved_term_ids: list[str] = Field(default_factory=list, max_length=10)
+    removed_term_ids: list[str] = Field(default_factory=list, max_length=10)
+
     @model_validator(mode="after")
     def disjoint_roles(self):
+        ids = self.replaced_term_ids + self.preserved_term_ids + self.removed_term_ids
+        if len(ids) != len(set(ids)) or any(not value.strip() for value in ids):
+            raise ValueError("reference update term IDs must be unique and disjoint")
         roles = self.replaced_roles + self.preserved_roles + self.removed_roles
         if len(roles) != len(set(roles)):
             raise ValueError("reference update roles must be unique and disjoint")
@@ -164,6 +172,13 @@ class AgentResult(BaseModel):
     def _validate_state_rules(self) -> "AgentResult":
         codes = set(self.reason_codes)
         if update := self.reference_update:
+            if update.replaced_term_ids or update.preserved_term_ids or update.removed_term_ids:
+                if self.agent_status in (AgentStatus.SUCCESS, AgentStatus.PARTIAL_RESULT):
+                    final_ids = {term.term_id for term in self.reference_plan.terms} if self.reference_plan else set()
+                    if final_ids != set(update.replaced_term_ids + update.preserved_term_ids):
+                        raise ValueError("reference update must cover every final card")
+                elif update.replaced_term_ids or update.removed_term_ids:
+                    raise ValueError("clarification cannot replace or remove cards")
             if self.agent_status in (AgentStatus.SUCCESS, AgentStatus.PARTIAL_RESULT):
                 final = {term.role for term in self.reference_plan.terms} if self.reference_plan else set()
                 if final != set(update.replaced_roles + update.preserved_roles):
@@ -328,7 +343,7 @@ class InterpretationOutput(BaseModel):
     LLM은 agent_status, reason_codes, 검색 URL을 만들지 않는다.
 
     상태별 불변 규칙:
-    - select_terms: selections 1개 이상·역할 중복 없음·순서 준수, unresolved_constraints=[],
+    - select_terms: selections 1~10개·term_id 중복 없음·역할 순서 준수, unresolved_constraints=[],
       clarifying_question=null, clarification_type=null
     - needs_clarification: selections=[], unresolved_constraints 1개 이상,
       비어 있지 않은 clarifying_question 필수, clarification_type 필수
@@ -337,11 +352,11 @@ class InterpretationOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     interpretation_state: InterpretationState
-    selections: list[InterpretationSelection] = Field(default_factory=list)
+    selections: list[InterpretationSelection] = Field(default_factory=list, max_length=MAX_SELECTED_TERMS)
     unresolved_constraints: list[str] = Field(default_factory=list)
     clarifying_question: str | None = None
     clarification_type: ClarificationType | None = None
-    context_updates: list[ContextUpdate] = Field(default_factory=list, max_length=5)
+    context_updates: list[ContextUpdate] = Field(default_factory=list, max_length=MAX_SELECTED_TERMS)
     answer_text: Annotated[str, Field(strict=True, max_length=4000)] = ""
 
     @model_validator(mode="after")
@@ -358,12 +373,12 @@ class InterpretationOutput(BaseModel):
                 raise ValueError("select_terms는 selections가 최소 하나 있어야 한다")
             if not self.answer_text.strip():
                 raise ValueError("select_terms는 비어 있지 않은 answer_text가 필수다")
-            seen: set[Role] = set()
+            seen: set[str] = set()
             prev_index = -1
             for selection in self.selections:
-                if selection.role in seen:
-                    raise ValueError(f"역할당 최대 하나의 selection만 가진다: role={selection.role}")
-                seen.add(selection.role)
+                if selection.term_id in seen:
+                    raise ValueError("duplicate term_id in selections")
+                seen.add(selection.term_id)
                 role_index = list(Role).index(selection.role)
                 if role_index < prev_index:
                     raise ValueError(

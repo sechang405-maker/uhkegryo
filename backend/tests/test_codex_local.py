@@ -174,9 +174,9 @@ def test_codex_search_outcomes_explicitly_report_unavailable(monkeypatch):
     worker = object.__new__(AgentJobWorker)
     worker._adapter = object.__new__(CodexInterpretationAdapter)
     worker._mcp_gateway = None
-    resolution = SimpleNamespace(terms=[SimpleNamespace(selection=SimpleNamespace(role=Role.BODY))])
+    resolution = SimpleNamespace(terms=[SimpleNamespace(selection=SimpleNamespace(role=Role.BODY, term_id='body_slim'))])
     outcomes = asyncio.run(worker._search_outcomes(resolution, request_text='new images'))
-    assert outcomes[Role.BODY].code == ReasonCode.PIN_SEARCH_UNAVAILABLE
+    assert outcomes['body_slim'].code == ReasonCode.PIN_SEARCH_UNAVAILABLE
 
 
 def test_launcher_invalid_database_does_not_print_connection_secret():

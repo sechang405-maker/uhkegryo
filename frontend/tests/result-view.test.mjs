@@ -67,11 +67,12 @@ test("실패와 빈 카테고리 및 접근 불가 Pin을 순서대로 보존한
   assert.equal(view.showThumbnail({ status: "available", thumbnail_url: null }), false);
 });
 
-test("카테고리당 8개 순서를 보존하고 썸네일이 있는 용어를 우선한다", () => {
+test("each card keeps its own gallery and eight-pin limit, including empty siblings", () => {
   const pins = Array.from({ length: 10 }, (_, index) => ({ pin_id: String(index), status: "available", thumbnail_url: "image" }));
   const rows = view.createGalleryRows(createMindMapSlots([term("pose"), term("pose", { term_id: "second", pins })]));
-  assert.equal(rows[0].term.term_id, "second");
-  assert.deepEqual(rows[0].pins.map((pin) => pin.pin_id), ["0", "1", "2", "3", "4", "5", "6", "7"]);
+  assert.deepEqual(rows.map((row) => row.term.term_id), ["pose", "second"]);
+  assert.deepEqual(rows[0].pins, []);
+  assert.deepEqual(rows[1].pins.map((pin) => pin.pin_id), ["0", "1", "2", "3", "4", "5", "6", "7"]);
 });
 
 test("실패 안내와 추가 질문은 결과 상태에 맞게 분리한다", () => {
@@ -82,3 +83,30 @@ test("실패 안내와 추가 질문은 결과 상태에 맞게 분리한다", (
   assert.deepEqual(view.clarificationChoices({ clarification_choices: [{ label: "앉기", request_text: "앉은 캐릭터" }] }), [{ label: "앉기", request_text: "앉은 캐릭터" }]);
 });
 
+
+
+test("term updates preserve a sibling in the same category with its own gallery", () => {
+  const first = term("pose", { term_id: "pose-a", pins: [{ pin_id: "a" }] });
+  const second = term("pose", { term_id: "pose-b", pins: [{ pin_id: "b" }] });
+  const replacement = term("pose", { term_id: "pose-c", pins: [{ pin_id: "c" }] });
+  const previous = { job_id: "old", ...completed("success", { reference_plan: { terms: [first, second] } }) };
+  const current = { job_id: "new", ...completed("success", {
+    reference_plan: { terms: [replacement] },
+    reference_update: { preserved_term_ids: ["pose-b"], replaced_term_ids: ["pose-c"], removed_term_ids: ["pose-a"],
+      preserved_roles: [], replaced_roles: ["pose"], removed_roles: [] },
+  }) };
+  assert.deepEqual(view.renderedResultTerms(current, [{ job: previous }, { job: current }]), [second, replacement]);
+});
+
+test("legacy category updates keep every preserved and replaced card", () => {
+  const bodyA = term("body", { term_id: "body-a" });
+  const bodyB = term("body", { term_id: "body-b" });
+  const poseA = term("pose", { term_id: "pose-a" });
+  const poseB = term("pose", { term_id: "pose-b" });
+  const previous = { job_id: "old", ...completed("success", { reference_plan: { terms: [bodyA, bodyB] } }) };
+  const current = { job_id: "new", ...completed("success", {
+    reference_plan: { terms: [poseA, poseB] },
+    reference_update: { preserved_roles: ["body"], replaced_roles: ["pose"], removed_roles: [] },
+  }) };
+  assert.deepEqual(view.renderedResultTerms(current, [{ job: previous }, { job: current }]), [bodyA, bodyB, poseA, poseB]);
+});

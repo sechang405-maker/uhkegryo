@@ -7,26 +7,28 @@ import pytest
 
 from backend.services.catalog_repository import load_catalog, CatalogLoadError
 from backend.services.llm import format_active_cards_json
-from backend.services.resolver import resolve
+from backend.services.resolver import resolve, ResolutionResult, ValidatedTerm
 from backend.services.response_assembler import assemble
 from backend.schemas.models import InterpretationOutput, AgentResult
 
 CATALOG = Path(__file__).parents[2] / 'docs/domains/illustration-reference/term-cards'
 
 
-def test_seated_aiming_remains_combined_from_candidate_to_saved_result():
+def legacy_result(output, snapshot):
+    return assemble(ResolutionResult(status='proceed', terms=[ValidatedTerm(selection=s,
+        card=snapshot.get_active(s.term_id)) for s in output.selections]), snapshot)
+
+
+def test_historical_combined_result_remains_readable_but_is_not_candidate():
     snapshot = load_catalog(CATALOG)
     before = deepcopy(snapshot.get_active('pose_sitting'))
     card = snapshot.get_active('pose_seated_two_hand_aiming')
     assert card is not None
     assert card['component_term_ids'] == ['pose_sitting', 'pose_action_two_hand_aiming']
-    candidate = next(c for c in json.loads(format_active_cards_json(snapshot))['active_cards']
-                     if c['term_id'] == card['term_id'])
-    assert '앉아쏴' in candidate['aliases_ko']
-    assert len(candidate['components']) == 2
+    assert card['term_id'] not in {c['term_id'] for c in json.loads(format_active_cards_json(snapshot))['active_cards']}
     output = InterpretationOutput(interpretation_state='select_terms', answer_text='앉아서 양손으로 조준하는 자세입니다.',
         selections=[dict(role='pose',term_id=card['term_id'],confidence=.95,evidence=['앉아쏴'])])
-    result = assemble(resolve(output,snapshot,request_text='앉아쏴 자세 레퍼런스'),snapshot,answer_text=output.answer_text)
+    result = legacy_result(output, snapshot)
     restored = AgentResult.model_validate_json(result.model_dump_json())
     term = restored.reference_plan.terms[0]
     query = parse_qs(urlparse(term.search_url).query)['q'][0]
@@ -64,10 +66,10 @@ def test_composite_condition_survives_followup_and_refresh():
     output=InterpretationOutput(interpretation_state='select_terms',answer_text='앉아서 조준',
         selections=[dict(role='pose',term_id='pose_seated_two_hand_aiming',confidence=.9,evidence=['앉아쏴'])],
         context_updates=[dict(role='pose',term_id='pose_seated_two_hand_aiming',evidence='앉아쏴')])
-    result=assemble(resolve(output,snapshot,request_text='앉아쏴'),snapshot)
+    result=legacy_result(output,snapshot)
     context={'state':{'constraints':{},'pending_question':None},'recent':[],'sources':[]}
     state=conversation_context.next_state(context,{'job_id':'00000000-0000-4000-8000-000000000001'},output,result)
-    assert state['constraints']['pose']['term_id']=='pose_seated_two_hand_aiming'
+    assert state['constraints']['pose_seated_two_hand_aiming']['term_id']=='pose_seated_two_hand_aiming'
     context.update(state=state,previous_result=result.model_dump(mode='json'),reference_action='refresh_all')
     previous=reference_update.previous_terms(context,snapshot)
     refresh=reference_update.refresh_resolution(previous,snapshot,context)

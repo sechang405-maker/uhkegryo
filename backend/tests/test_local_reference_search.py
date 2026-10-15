@@ -38,10 +38,10 @@ def test_codex_worker_searches_catalog_without_llm_and_excludes_old_pins(monkeyp
                             tracer=SimpleNamespace())
     worker._local_search_url = 'http://127.0.0.1:8080'
     worker._widget_client = pinterest_widget.PinterestWidgetClient()
-    resolution = SimpleNamespace(terms=[SimpleNamespace(selection=SimpleNamespace(role=Role.POSE),
+    resolution = SimpleNamespace(terms=[SimpleNamespace(selection=SimpleNamespace(role=Role.POSE, term_id='pose_contrapposto'),
         card={'query_fragments': ['contrapposto']})])
     outcome = asyncio.run(worker._search_outcomes(resolution, request_text='PRIVATE NEVER SENT',
-                                                 exclude_pin_ids={Role.POSE: ['1']}))[Role.POSE]
+                                                 exclude_pin_ids={'pose_contrapposto': ['1']}))['pose_contrapposto']
     assert outcome.code is None
     assert [pin.pin_id for pin in outcome.pins] == ['2']
     assert outcome.pins[0].thumbnail_url == 'https://i.pinimg.com/2.jpg'
@@ -67,13 +67,13 @@ def test_local_search_failure_and_cancellation_release_slots(monkeypatch):
     async def run():
         worker = AgentJobWorker(None, None, tracer=SimpleNamespace(),
                                 local_search_url='http://127.0.0.1:8080')
-        resolution = SimpleNamespace(terms=[SimpleNamespace(selection=SimpleNamespace(role=Role.POSE),
+        resolution = SimpleNamespace(terms=[SimpleNamespace(selection=SimpleNamespace(role=Role.POSE, term_id='pose_contrapposto'),
             card={'query_fragments': ['contrapposto']})])
         async def unavailable(url, params):
             raise TimeoutError()
         monkeypatch.setattr(searxng_pinterest_search, '_load_search_json', unavailable)
         result = await worker._search_outcomes(resolution, request_text='not sent')
-        assert result[Role.POSE].code == ReasonCode.PIN_SEARCH_UNAVAILABLE
+        assert result['pose_contrapposto'].code == ReasonCode.PIN_SEARCH_UNAVAILABLE
         started = asyncio.Event()
         finished = asyncio.Event()
         async def pending(url, params):

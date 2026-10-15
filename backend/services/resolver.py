@@ -8,7 +8,7 @@ LLM `InterpretationOutput`은 후보일 뿐이며, resolver가 활성 JSON 카�
 - 카드 role과 선택 role이 일치하는지
 - 활성 카드 query_fragments가 비어 있지 않은지
 - 직접 검색 금지(direct_search_disabled) 카드는 URL·provider 호출 금지
-- 역할당 최대 1개 후보로 충족(collapse: confidence 최대, 동률은 선발 우선)
+- 카테고리와 무관하게 고유 카드 후보를 모두 유지 (전체 최대 10개)
 
 `interpretation_state`는 스키마가 `select_terms`/`needs_clarification`으로 강제하며,
 needs_clarification일 때는 `clarification_type`을 서버 사유 코드로 매핑한다.
@@ -134,7 +134,7 @@ def resolve(
             invalid.append(selection)
             continue
         card = snapshot.get_active(selection.term_id)
-        if card is None or str(card.get("role")) != str(selection.role):
+        if card is None or str(card.get("role")) != str(selection.role) or card.get('component') == 'composite':
             invalid.append(selection)
             continue
         if only_names_other_cards(selection, snapshot):
@@ -150,10 +150,10 @@ def resolve(
             continue
         valid.append(ValidatedTerm(selection=selection, card=card))
 
-    by_role = collapse_by_role(valid)
     roles_order = snapshot.roles_order or tuple(Role)
-    terms = [by_role[role] for role in roles_order if role in by_role]
-    unresolved = [role for role in roles_order if role not in by_role]
+    by_id = {term.selection.term_id: term for term in valid}
+    terms = [term for role in roles_order for term in by_id.values() if term.selection.role == role]
+    unresolved = [role for role in roles_order if not any(term.selection.role == role for term in terms)]
 
     if not terms:
         if direct_disabled:

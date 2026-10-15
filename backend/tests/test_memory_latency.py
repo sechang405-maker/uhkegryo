@@ -62,7 +62,7 @@ def test_worker_fast_path_and_pending_question_keep_context(snapshot_factory, ca
         for _ in range(2):
             await jobs.submit(session_id=session, request_text="캐릭터가 서 있는 자세를 찾아줘", idempotency_key=str(uuid.uuid4()))
             assert await worker.run_once()
-        assert operations == [] and adapter.contexts[1]["constraints"]["pose"]["term_id"] == "pose_standing"
+        assert operations == [] and adapter.contexts[1]["constraints"]["pose_standing"]["term_id"] == "pose_standing"
         await pool.execute("UPDATE sessions SET memory_json=memory_json || $2::jsonb WHERE session_id=$1",
                            uuid.UUID(session), json.dumps({"pending_question": "어떤 자세를 원하시나요?"}))
         await jobs.submit(session_id=session, request_text="서 있는 자세", idempotency_key=str(uuid.uuid4()))

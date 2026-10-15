@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections import Counter
 from typing import Mapping
 
 from backend.schemas.enums import AgentStatus, ReasonCode, Role
@@ -49,7 +50,7 @@ class RoleSearchOutcome:
 def assemble(
     resolution: ResolutionResult,
     snapshot: CatalogSnapshot,
-    search_outcomes: Mapping[Role, RoleSearchOutcome] | None = None,
+    search_outcomes: Mapping[str | Role, RoleSearchOutcome] | None = None,
     *, answer_text: str = "",
 ) -> AgentResult:
     """resolution과 카탈로그·검색 결과를 조합해 최종 `AgentResult`를 만든다."""
@@ -70,8 +71,12 @@ def assemble(
 
     outcomes = search_outcomes or {}
     terms: list[TermResult] = []
+    role_counts = Counter(vt.selection.role for vt in resolution.terms)
     for vt in resolution.terms:
-        terms.append(_build_term(vt, snapshot, outcomes.get(vt.selection.role)))
+        outcome = outcomes.get(vt.selection.term_id)
+        if outcome is None and role_counts[vt.selection.role] == 1:
+            outcome = outcomes.get(vt.selection.role)
+        terms.append(_build_term(vt, snapshot, outcome))
 
     agent_codes = _aggregate_codes(terms)
     agent_status = (

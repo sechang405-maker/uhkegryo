@@ -6,7 +6,7 @@ from backend.schemas.enums import AgentStatus, ReasonCode
 from backend.services.clarification_policy import repeated_question, REPEATED_FALLBACK
 from backend.schemas.models import AgentResult, InterpretationOutput, InterpretationSelection
 from backend.schemas.memory import RecallQuery, RecallAnswer, MemorySource, NO_RECORDS, TOO_MANY
-from backend.services.conversation_memory import evidence_text
+from backend.services.conversation_memory import evidence_text, normalize_constraints
 from backend.services.llm import LLMInvalidStructuredOutput
 from backend.services.resolver import resolve, ResolutionResult, STATUS_CLARIFY, STATUS_ALL_INVALID, STATUS_PROCEED
 
@@ -16,7 +16,7 @@ async def prepare(memory, job, adapter, trace):
 
 def prompt_context(context):
     state = context["state"]
-    return {"constraints": state.get("constraints", {}), "pending_question": state.get("pending_question"),
+    return {"constraints": normalize_constraints(state.get("constraints", {})), "pending_question": state.get("pending_question"),
             "recent": context["recent"], "sources": context["sources"]}
 
 
@@ -31,11 +31,14 @@ async def recall(memory, job, context, adapter, trace):
     with trace.stage("memory-recall"):
         query = await adapter.memory("classify", {
             "request_text": job["request_text"], "session_context": prompt_context(context),
+            "current_reference_terms": [{key: term[key] for key in ("role", "term_id", "label_ko", "label_en")} for term in
+                ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])],
             "current_reference_roles": [term["role"] for term in
                 ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])],
         }, RecallQuery, **trace_args(job))
         context["reference_action"] = query.reference_action if query.mode != "recall" else "update"
         context["refresh_roles"] = query.refresh_roles if query.mode != "recall" else []
+        context["refresh_term_ids"] = query.refresh_term_ids if query.mode != "recall" else []
         if query.mode == "none":
             return None, False
         records = await memory.search(job, query)
@@ -93,12 +96,27 @@ async def validate(memory, job, interpretation, snapshot, *, context=None):
                                              feedback=[{"path": [], "code": "selection_evidence_invalid"}])
         if selection.source_job_id:
             verified_source_texts[str(selection.source_job_id)] = tuple(allowed)
+    known = {term['term_id']: term['role'] for term in
+             (((context or {}).get('previous_result') or {}).get('reference_plan') or {}).get('terms', [])}
+    known.update({key: value['role'] for key, value in normalize_constraints(
+        (context or {}).get('state', {}).get('constraints', {})).items()})
+    resulting = dict(known)
     seen = set()
     for update in interpretation.context_updates:
-        if update.role in seen or not update.evidence.strip() or update.evidence not in job["request_text"]:
+        if any(known.get(term_id) != update.role.value for term_id in update.remove_term_ids):
+            raise LLMInvalidStructuredOutput('Removal must identify an existing card of the same role',
+                stage='conversation_validation', feedback=[{'path': [], 'code': 'context_removal_invalid'}])
+        for term_id in update.remove_term_ids:
+            resulting.pop(term_id, None)
+        if update.term_id is None and not update.remove_term_ids:
+            resulting = {key: role for key, role in resulting.items() if role != update.role.value}
+        elif update.term_id is not None:
+            resulting[update.term_id] = update.role.value
+        identity = (update.role, update.term_id, tuple(update.remove_term_ids))
+        if identity in seen or not update.evidence.strip() or update.evidence not in job["request_text"]:
             raise LLMInvalidStructuredOutput("조건 변경에 현재 요청의 명시적 근거가 필요합니다", stage="conversation_validation",
                                              feedback=[{"path": [], "code": "context_evidence_invalid"}])
-        seen.add(update.role)
+        seen.add(identity)
         if update.term_id is not None:
             # This internal candidate only checks the catalog; its text is never returned as an answer.
             candidate = InterpretationOutput(interpretation_state="select_terms", answer_text=update.evidence, selections=[
@@ -107,6 +125,10 @@ async def validate(memory, job, interpretation, snapshot, *, context=None):
             if resolve(candidate, snapshot, request_text=str(job["request_text"])).status == STATUS_ALL_INVALID:
                 raise LLMInvalidStructuredOutput("기억할 조건의 카드가 유효하지 않습니다", stage="conversation_validation",
                                                  feedback=[{"path": [], "code": "context_card_invalid"}])
+    resulting.update({item.term_id: item.role.value for item in interpretation.selections})
+    if len(resulting) > 10:
+        raise LLMInvalidStructuredOutput('Conversation cannot contain more than ten cards',
+            stage='conversation_validation', feedback=[{'path': [], 'code': 'context_card_limit'}])
     resolution = resolve(interpretation, snapshot, request_text=str(job["request_text"]),
                          verified_source_texts=verified_source_texts)
     if resolution.status == STATUS_CLARIFY and repeated_question(resolution.clarifying_question, context):
@@ -130,12 +152,21 @@ def next_state(context, job, interpretation, result):
         return state
     if result.agent_status not in (AgentStatus.SUCCESS, AgentStatus.PARTIAL_RESULT, AgentStatus.NEEDS_CLARIFICATION):
         return state
-    constraints = state.setdefault("constraints", {})
+    if result.agent_status is AgentStatus.NEEDS_CLARIFICATION:
+        state['pending_question'] = result.clarifying_question
+        return state
+    constraints = normalize_constraints(state.get("constraints", {}))
     for update in interpretation.context_updates if result.agent_status is not AgentStatus.NEEDS_CLARIFICATION else []:
-        if update.term_id is None:
-            constraints.pop(update.role.value, None)
-        else:
-            constraints[update.role.value] = {"term_id": update.term_id, "evidence": update.evidence,
-                                              "source_job_id": str(job["job_id"])}
+        for term_id in update.remove_term_ids:
+            constraints.pop(term_id, None)
+        if update.term_id is None and not update.remove_term_ids:
+            constraints = {key: value for key, value in constraints.items() if value["role"] != update.role.value}
+        elif update.term_id is not None:
+            constraints[update.term_id] = {"role": update.role.value, "term_id": update.term_id,
+                "evidence": update.evidence, "source_job_id": str(job["job_id"])}
+    if len(constraints) > 10:
+        raise LLMInvalidStructuredOutput('Conversation cannot contain more than ten cards',
+            stage='conversation_validation', feedback=[{'path': [], 'code': 'context_card_limit'}])
+    state["constraints"] = constraints
     state["pending_question"] = result.clarifying_question
     return state

@@ -108,7 +108,7 @@ def test_schema_preserves_code_types_and_requires_nullable_fields():
 
 
 @pytest.mark.parametrize("version", ["uhkegryo-interpreter-v1", "uhkegryo-interpreter-v4"])
-def test_duplicate_role_feedback_is_used_on_next_single_call(version):
+def test_duplicate_term_feedback_is_used_on_next_single_call(version):
     payload = json.loads(SELECT_JSON)
     payload["selections"].append(payload["selections"][0].copy())
     completions = _FakeCompletions(responses=[_FakeResponse(json.dumps(payload)), _FakeResponse(SELECT_JSON)])
@@ -118,7 +118,7 @@ def test_duplicate_role_feedback_is_used_on_next_single_call(version):
     kwargs = dict(job_id="job-1", session_id="session-1", max_attempts=3)
     with pytest.raises(llm.LLMInvalidStructuredOutput) as raised:
         asyncio.run(adapter.interpret("반동", attempt=1, **kwargs))
-    assert raised.value.feedback == [{"path": [], "code": "role_duplicate"}]
+    assert raised.value.feedback == [{"path": [], "code": "term_duplicate"}]
     output = asyncio.run(adapter.interpret("반동", attempt=2, validation_feedback=raised.value.feedback, **kwargs))
     assert len(output.selections) == 1 and len(completions.calls) == 2
     sent = completions.calls[1]["messages"]
@@ -126,7 +126,7 @@ def test_duplicate_role_feedback_is_used_on_next_single_call(version):
     repair = json.loads(sent[-1]["content"])
     assert repair["validation_feedback"] == raised.value.feedback
     if version == "uhkegryo-interpreter-v4":
-        assert "pose_sitting" in repair["repair_rules"] and "pose_gesture" in repair["repair_rules"]
+        assert "unique term IDs" in repair["repair_rules"] and "same role are allowed" in repair["repair_rules"]
     else:
         assert repair == {"validation_feedback": raised.value.feedback}
 
@@ -161,7 +161,7 @@ def test_v1_call_combines_interpreter_and_output_instructions():
     system = messages[0]["content"]
     assert sum(item["role"] == "system" for item in messages) == 1
     assert system.startswith(llm.load_interpreter_prompt(PROMPT)[0])
-    assert "role_duplicate" in system
+    assert "term_duplicate" in system
     assert call["response_format"] == response_format()
     assert call["extra_body"] == {"provider": {"require_parameters": True}}
     assert adapter.prompt_version == "uhkegryo-interpreter-v1"

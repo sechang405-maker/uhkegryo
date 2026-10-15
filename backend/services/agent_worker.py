@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import logging
 from typing import Any, Mapping
@@ -72,7 +73,7 @@ class AgentJobWorker:
     async def run_once(
         self,
         *,
-        search_outcomes: Mapping[Role, RoleSearchOutcome] | None = None,
+        search_outcomes: Mapping[str | Role, RoleSearchOutcome] | None = None,
     ) -> bool:
         job = await self._jobs.claim_next()
         if job is None:
@@ -140,7 +141,7 @@ class AgentJobWorker:
                 result = recalled
             else:
                 previous = reference_update.previous_terms(context, self._snapshot)
-                refresh = context.get("reference_action") in ("refresh_all", "refresh_roles")
+                refresh = context.get("reference_action") in ("refresh_all", "refresh_roles", "refresh_terms")
                 interpretation = None
                 with trace.stage("validating"):
                     feedback = job.get("validation_feedback_json")
@@ -166,19 +167,21 @@ class AgentJobWorker:
                     if search_outcomes is None:
                         search_outcomes = await self._search_outcomes(
                             resolution, request_text=str(job["request_text"]),
-                            **({"exclude_pin_ids": {role: list(dict.fromkeys(pin.pin_id
-                                for term in previous.values() for pin in term.pins))
-                                for role in previous}} if refresh else {}),
+                            **({"exclude_pin_ids": {term_id: list(dict.fromkeys(
+                                pin.pin_id for pin in term.pins))
+                                for term_id, term in previous.items()}} if refresh else {}),
                         )
                 with self._tracer.phase("search-result-assembly") as metrics:
                     result = assemble(resolution, self._snapshot, search_outcomes,
-                        answer_text=("기존 조건은 유지하고 요청한 역할의 레퍼런스를 다시 찾았어요."
+                        answer_text=("기존 조건을 유지하고 요청한 카드의 레퍼런스만 다시 찾았어요."
+                            if context.get("reference_action") == "refresh_terms"
+                            else "기존 조건은 유지하고 요청한 역할의 레퍼런스를 다시 찾았어요."
                             if context.get("reference_action") == "refresh_roles"
                             else "기존 조건은 유지하고 전체 레퍼런스를 다시 찾았어요.") if refresh else interpretation.answer_text)
                     if refresh and result.reference_plan is not None and result.reason_codes:
                         result.answer_text = "기존 조건은 유지했지만 일부 새 레퍼런스를 찾지 못했어요. 검색 결과 안내를 확인해 주세요."
                     result = reference_update.merge_preserved(result, previous, interpretation)
-                    result = reference_update.annotate(result, context, [term.selection.role for term in resolution.terms])
+                    result = reference_update.annotate(result, context, [term.selection.term_id for term in resolution.terms])
                     metrics.update(
                         role_count=len(search_outcomes),
                         pin_count=sum(len(outcome.pins) for outcome in search_outcomes.values()),
@@ -210,11 +213,12 @@ class AgentJobWorker:
 
     async def _search_outcomes(
         self, resolution: ResolutionResult, *, request_text: str, exclude_pin_ids=None
-    ) -> Mapping[Role, RoleSearchOutcome]:
+    ) -> Mapping[str | Role, RoleSearchOutcome]:
+        excluded_board_pins = {pin_id for pins in (exclude_pin_ids or {}).values() for pin_id in pins}
         if getattr(self, '_local_search_url', ''):
             return await self._local_search_outcomes(resolution, exclude_pin_ids or {})
         if not getattr(self._adapter, 'image_search_enabled', True):
-            return {term.selection.role: RoleSearchOutcome(role=term.selection.role,
+            return {term.selection.term_id: RoleSearchOutcome(role=term.selection.role,
                 code=ReasonCode.PIN_SEARCH_UNAVAILABLE) for term in resolution.terms}
         if self._mcp_gateway is None or not resolution.terms:
             return {}
@@ -224,20 +228,28 @@ class AgentJobWorker:
         with self._tracer.phase("mcp-tools-list"):
             tools = await self._mcp_gateway.list_tools()
         approved = {
-            term.selection.role: tuple(term.card["query_fragments"])
+            term.selection.term_id: tuple(term.card["query_fragments"])
             for term in resolution.terms
         }
-        outcomes: dict[Role, RoleSearchOutcome] = {}
-        attempts: dict[Role, int] = {role: 0 for role in approved}
+        roles = {term.selection.term_id: term.selection.role for term in resolution.terms}
+        # term_id belongs to orchestration; the provider transport still takes role/fragments.
+        tools = deepcopy(tools)
+        for tool in tools:
+            if tool['name'] == PINTEREST_SEARCH_TOOL:
+                schema = tool['inputSchema']
+                schema.setdefault('properties', {})['term_id'] = {'type': 'string', 'enum': list(approved)}
+                schema['required'] = list(dict.fromkeys([*schema.get('required', []), 'term_id']))
+        outcomes: dict[str, RoleSearchOutcome] = {}
+        attempts: dict[str, int] = {term_id: 0 for term_id in approved}
         tool_call_count = 0
         messages = [
             {"role": "system", "content": (
                 "Use the registered MCP tools to fulfill the request. For Pinterest searches, "
-                "call search_pinterest_pins only with an approved role and that role's exact "
+                "call search_pinterest_pins only with an approved term_id, its role, and its exact "
                 "query_fragments. Never invent or alter fragments. Use other listed tools "
-                "when needed. Select independent searches for all unfinished approved roles "
-                "together in one response, at most once per role. After tool results, retry "
-                "only unfinished roles; do not search completed roles again. "
+                "when needed. Select independent searches for all unfinished approved term IDs "
+                "together in one response, at most once per term ID. After tool results, retry "
+                "only unfinished term IDs; do not search completed term IDs again. "
                 "After a tool result, decide whether another tool call is needed."
             )},
             {"role": "user", "content": json.dumps({
@@ -257,14 +269,14 @@ class AgentJobWorker:
             purpose = "tool_selection" if pending else "post_search_decision"
             with self._tracer.phase(
                 "mcp-tool-selection" if pending else "mcp-post-search-decision",
-                call_round=call_round, purpose=purpose, pending_roles=[role.value for role in pending],
+                call_round=call_round, purpose=purpose, pending_term_ids=pending,
             ) as metrics:
                 calls = await adapter.request_mcp_tool_calls(messages, tools, required=bool(pending))
                 metrics.update(call_count=len(calls), selected_roles=sorted({
                     call["arguments"].get("role") for call in calls
                     if call["name"] == PINTEREST_SEARCH_TOOL
                     and isinstance(call["arguments"].get("role"), str)
-                    and call["arguments"].get("role") in {role.value for role in approved}
+                    and call["arguments"].get("role") in {role.value for role in roles.values()}
                 }))
             if not calls:
                 break
@@ -276,7 +288,7 @@ class AgentJobWorker:
                     "function": {"name": name, "arguments": json.dumps(arguments)},
                 })
             messages.append({"role": "assistant", "content": None, "tool_calls": assistant_calls})
-            batch_roles: set[Role] = set()
+            batch_terms: set[str] = set()
 
             async def execute(call):
                 nonlocal tool_call_count
@@ -290,39 +302,44 @@ class AgentJobWorker:
                 result: dict
                 search_attempted = False
                 role = None
+                term_id = None
                 try:
                     if name == PINTEREST_SEARCH_TOOL:
                         role = Role(arguments.get("role"))
+                        term_id = arguments.get("term_id")
+                        if term_id is None:
+                            matches = [key for key, value in roles.items() if value == role]
+                            term_id = matches[0] if len(matches) == 1 else None
                         fragments = arguments.get("query_fragments")
-                        if role not in approved or role in outcomes:
+                        if term_id not in approved or term_id in outcomes or roles[term_id] != role:
                             raise ValueError("Pinterest search arguments are outside approved terms")
-                        if fragments != list(approved[role]):
+                        if fragments != list(approved[term_id]):
                             raise ValueError("Pinterest search arguments are outside approved terms")
-                        if role in batch_roles:
-                            raise ValueError("Duplicate Pinterest role in one response")
-                        if attempts[role] >= 3:
+                        if term_id in batch_terms:
+                            raise ValueError("Duplicate Pinterest term in one response")
+                        if attempts[term_id] >= 3:
                             raise ValueError("Pinterest search retry limit exceeded")
-                        batch_roles.add(role)
-                        attempts[role] += 1
+                        batch_terms.add(term_id)
+                        attempts[term_id] += 1
                         search_attempted = True
                     if search_attempted:
-                        trace_fields = {"role": role.value, "search_attempt": attempts[role]}
+                        trace_fields = {"role": role.value, "term_id": term_id, "search_attempt": attempts[term_id]}
                         with self._tracer.phase("search-slot-wait", **trace_fields):
                             await self._search_slots.acquire()
                         try:
-                            with self._tracer.search(role.value, list(approved[role]),
-                                                     search_attempt=attempts[role]) as search_span:
+                            with self._tracer.search(role.value, list(approved[term_id]),
+                                                     search_attempt=attempts[term_id]) as search_span:
                                 with self._tracer.phase("mcp-search-call", **trace_fields):
-                                    actual_arguments = {"role": role.value, "query_fragments": list(approved[role])}
-                                    excluded = (exclude_pin_ids or {}).get(role, [])
+                                    actual_arguments = {"role": role.value, "query_fragments": list(approved[term_id])}
+                                    excluded = (exclude_pin_ids or {}).get(term_id, [])
                                     if excluded:
                                         actual_arguments["exclude_pin_ids"] = excluded
                                     result = await self._mcp_gateway.call_tool(name, actual_arguments)
                                 diagnostics = pop_search_diagnostics(result)
                                 self._tracer.search_result(search_span, diagnostics)
                                 outcome = parse_search_result(role, result)
-                                if excluded:
-                                    outcome.pins = [pin for pin in outcome.pins if pin.pin_id not in excluded]
+                                if excluded_board_pins:
+                                    outcome.pins = [pin for pin in outcome.pins if pin.pin_id not in excluded_board_pins]
                                     if not outcome.pins and outcome.code is None:
                                         outcome.code = ReasonCode.PIN_RESULTS_EMPTY
                                     result = {"role": role.value, "code": outcome.code.value if outcome.code else None,
@@ -333,10 +350,10 @@ class AgentJobWorker:
                                         metrics.update(self._tracer.pin_counts(outcome.pins))
                         finally:
                             self._search_slots.release()
-                        if outcome.code is not ReasonCode.PIN_SEARCH_UNAVAILABLE or attempts[role] >= 3:
-                            outcomes[role] = outcome
+                        if outcome.code is not ReasonCode.PIN_SEARCH_UNAVAILABLE or attempts[term_id] >= 3:
+                            outcomes[term_id] = outcome
                         else:
-                            await self._search_backoff(role, attempts[role], "pin_search_unavailable")
+                            await self._search_backoff(role, attempts[term_id], "pin_search_unavailable")
                     else:
                         result = await self._mcp_gateway.call_tool(name, arguments)
                 except Exception as error:
@@ -345,12 +362,12 @@ class AgentJobWorker:
                         raise
                     result = {"error": str(error)}
                     if search_attempted and role is not None:
-                        if attempts[role] >= 3:
-                            outcomes[role] = RoleSearchOutcome(
+                        if attempts[term_id] >= 3:
+                            outcomes[term_id] = RoleSearchOutcome(
                                 role=role, pins=[], code=ReasonCode.PIN_SEARCH_UNAVAILABLE
                             )
                         else:
-                            await self._search_backoff(role, attempts[role], "tool_error")
+                            await self._search_backoff(role, attempts[term_id], "tool_error")
                 return {
                     "role": "tool", "tool_call_id": call_id,
                     "content": json.dumps(result, ensure_ascii=False),
@@ -381,22 +398,29 @@ class AgentJobWorker:
         return outcomes
 
     async def _local_search_outcomes(self, resolution, exclude_pin_ids):
+        # Bound provider exclusions per card, but never reuse any previous board image.
+        excluded_board_pins = {pin_id for pins in exclude_pin_ids.values() for pin_id in pins}
         # Search only resolver-approved catalog fragments. No user text or LLM tool selection.
         async def search(term):
             role = term.selection.role
+            term_id = term.selection.term_id
             try:
                 async with asyncio.timeout(25):
                     async with self._search_slots:
                         provider = SearXNGPinterestSearchProvider(
                             base_url=self._local_search_url,
-                            exclude_pin_ids=tuple(exclude_pin_ids.get(role, ())),
+                            exclude_pin_ids=tuple(exclude_pin_ids.get(term_id, ())),
                         )
                         outcome = await provider.search(role, tuple(term.card['query_fragments']))
+                        if excluded_board_pins:
+                            outcome.pins = [pin for pin in outcome.pins if pin.pin_id not in excluded_board_pins]
+                            if not outcome.pins and outcome.code is None:
+                                outcome.code = ReasonCode.PIN_RESULTS_EMPTY
                         if self._widget_client is not None:
                             outcome = await self._widget_client.enrich_outcome(outcome)
-                        return role, outcome
+                        return term_id, outcome
             except Exception:
-                return role, RoleSearchOutcome(role=role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
+                return term_id, RoleSearchOutcome(role=role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
 
         # gather propagates parent cancellation to each bounded search and widget lookup.
         return dict(await asyncio.gather(*(search(term) for term in resolution.terms)))

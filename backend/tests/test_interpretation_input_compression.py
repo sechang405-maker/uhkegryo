@@ -55,43 +55,35 @@ def test_every_role_definition_preserves_all_original_constraints(catalog):
     for field, name in TYPES.items():
         assert name not in schema["$defs"]
         slots = schema["properties"][field]
-        assert slots["required"] == list(ROLES)
-        assert slots["additionalProperties"] is False
-        for role in ROLES:
+        assert slots['type'] == 'array' and slots['maxItems'] == 10
+        for index, role in enumerate(ROLES):
             expected = deepcopy(original["$defs"][name])
             expected["properties"]["role"] = {"type": "string", "enum": [role]}
             term = {"type": "string", "enum": [c["term_id"] for c in cards if c["role"] == role]}
             expected["properties"]["term_id"] = (
                 {"anyOf": [term, {"type": "null"}]} if field == "context_updates" else term)
-            assert _expand(slots["properties"][role], schema["$defs"]) == {
-                "anyOf": [expected, {"type": "null"}]}
+            assert _expand(slots['items']['anyOf'][index], schema["$defs"]) == expected
     # Non-slot properties and their state/length constraints are unchanged.
     for key, value in original["properties"].items():
         if key not in TYPES:
             assert schema["properties"][key] == value
 
 
-def test_schema_is_at_least_thirty_percent_smaller(catalog):
+def test_schema_reuses_definitions_without_losing_constraints(catalog):
     compact = response_format(format_active_cards_json(catalog))
     legacy = deepcopy(compact)
     schema = legacy["json_schema"]["schema"]
     for field, name in TYPES.items():
-        variants = []
-        for role in ROLES:
-            schema["properties"][field]["properties"][role] = _expand(
-                schema["properties"][field]["properties"][role], schema["$defs"])
-            variants.append(schema["$defs"].pop(f"{name}_{role}"))
-        schema["$defs"][name] = {"anyOf": variants}
-    size = lambda value: len(json.dumps(value, ensure_ascii=False).encode())
-    assert size(compact) <= size(legacy) * 0.7
+        expanded = _expand(schema['properties'][field]['items'], schema['$defs'])
+        assert len(expanded['anyOf']) == len(ROLES)
+        assert all(item['additionalProperties'] is False for item in expanded['anyOf'])
 
 
-def test_missing_role_allows_only_null_and_empty_catalog_keeps_array_contract():
+def test_missing_role_has_no_candidate_and_empty_catalog_keeps_array_contract():
     schema = response_format(json.dumps({"active_cards": [
         {"role": "pose", "term_id": "pose_standing"}]}))["json_schema"]["schema"]
     for field in TYPES:
-        assert schema["properties"][field]["properties"]["body"] == {"type": "null"}
-        assert schema["properties"][field]["properties"]["pose"]["anyOf"][1] == {"type": "null"}
+        assert schema['properties'][field]['items']['anyOf'] == [{'$ref': '#/$defs/'+TYPES[field]+'_pose'}]
     assert response_format('{"active_cards":[]}') == response_format()
 
 
@@ -101,7 +93,8 @@ def test_compact_catalog_preserves_every_card_field_and_order(catalog):
     assert compact == json.dumps(restored, ensure_ascii=False, separators=(",", ":"))
     assert len(compact.encode()) < len(json.dumps(restored, ensure_ascii=False).encode())
     assert [c["term_id"] for c in restored["active_cards"]] == [
-        term_id for role in catalog.roles_order for term_id in catalog.role_terms[role]]
+        term_id for role in catalog.roles_order for term_id in catalog.role_terms[role]
+        if catalog.active_cards[term_id].get('component') != 'composite']
     for card in restored["active_cards"]:
         source = catalog.active_cards[card["term_id"]]
         feedback = catalog.feedback.get(card["term_id"], {})

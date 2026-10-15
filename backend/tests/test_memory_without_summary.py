@@ -71,12 +71,12 @@ def test_pose_followup_preserves_body_question_and_legacy_data(snapshot_factory,
         assert await worker.run_once()
         assert (await jobs.get(session_id=str(session), job_id=request.job_id)).job_status == "completed"
         context = adapter.contexts[0]
-        assert context["constraints"]["body"] == body
+        assert context["constraints"]["body_slim"] == {**body, "role": "body"}
         assert context["pending_question"] == "어떤 포즈인가요?" and len(context["recent"]) == 6
         assert set(context) == {"constraints", "pending_question", "recent", "sources"}
         assert adapter.memory_operations == ["classify"]
         state = json.loads(await pool.fetchval("SELECT memory_json FROM sessions WHERE session_id=$1", session))
-        assert state["constraints"]["body"] == body and state["constraints"]["pose"]["term_id"] == "pose_standing"
+        assert state["constraints"]["body_slim"] == {**body, "role": "body"} and state["constraints"]["pose_standing"]["term_id"] == "pose_standing"
         assert state["pending_question"] is None
         assert {key: state[key] for key in LEGACY} == LEGACY
     asyncio.run(database_case(case))

@@ -17,12 +17,14 @@ class ContextUpdate(MemoryModel):
     role: Role
     term_id: str | None = None
     evidence: str = Field(min_length=1, max_length=500)
+    remove_term_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class RecallQuery(MemoryModel):
     mode: Literal["none", "recall", "mixed"]
-    reference_action: Literal["update", "refresh_all", "refresh_roles"] = "update"
+    reference_action: Literal["update", "refresh_all", "refresh_roles", "refresh_terms"] = "update"
     refresh_roles: list[Role] = Field(default_factory=list, max_length=5)
+    refresh_term_ids: list[str] = Field(default_factory=list, max_length=10)
     role: Role | None = None
     term_id: str | None = Field(default=None, max_length=200)
     keywords: list[str] = Field(default_factory=list, max_length=5)
@@ -33,6 +35,10 @@ class RecallQuery(MemoryModel):
 
     @model_validator(mode="after")
     def bounds(self):
+        if len(set(self.refresh_term_ids)) != len(self.refresh_term_ids) or any(not value.strip() for value in self.refresh_term_ids):
+            raise ValueError("invalid refresh term IDs")
+        if self.reference_action != "refresh_terms" and self.refresh_term_ids:
+            raise ValueError("refresh term IDs require refresh_terms action")
         if len(set(self.refresh_roles)) != len(self.refresh_roles):
             raise ValueError("duplicate refresh role")
         if self.reference_action != "refresh_roles" and self.refresh_roles:

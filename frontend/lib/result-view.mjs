@@ -14,17 +14,28 @@ export function renderedResultTerms(job, turns = []) {
     .reverse()
     .find((turn) => resultTerms(turn.job).length)?.job;
   const previousTerms = resultTerms(previousJob);
-  const previousByRole = new Map(previousTerms.map((term) => [term.role, term]));
   const currentTerms = result?.reference_plan?.terms || [];
-  const currentByRole = new Map(currentTerms.map((term) => [term.role, term]));
-
-  return [...new Set([...update.preserved_roles, ...update.replaced_roles])]
-    .flatMap((role) => {
-      const term = update.replaced_roles.includes(role)
-        ? currentByRole.get(role)
-        : previousByRole.get(role) || currentByRole.get(role);
+  const preservedIds = update.preserved_term_ids || [];
+  const replacedIds = update.replaced_term_ids || [];
+  if (preservedIds.length || replacedIds.length || update.removed_term_ids?.length) {
+    const previousById = new Map(previousTerms.map((term) => [term.term_id, term]));
+    const currentById = new Map(currentTerms.map((term) => [term.term_id, term]));
+    return [...new Set([...preservedIds, ...replacedIds])].flatMap((id) => {
+      const term = replacedIds.includes(id)
+        ? currentById.get(id)
+        : previousById.get(id) || currentById.get(id);
       return term ? [term] : [];
     });
+  }
+
+  // Older saved results express updates by category. Keep all cards in each group.
+  const preservedRoles = update.preserved_roles || [];
+  const replacedRoles = update.replaced_roles || [];
+  return [...new Set([...preservedRoles, ...replacedRoles])].flatMap((role) => {
+    const previous = previousTerms.filter((term) => term.role === role);
+    const current = currentTerms.filter((term) => term.role === role);
+    return replacedRoles.includes(role) ? current : previous.length ? previous : current;
+  });
 }
 
 export function roleNotice(term) {
@@ -38,10 +49,9 @@ export function showThumbnail(pin) {
 }
 
 export function createGalleryRows(slots) {
-  return slots.filter((slot) => slot.terms.length).map((slot) => {
-    const term = slot.terms.find((candidate) => candidate.pins?.some(showThumbnail)) || slot.terms[0];
-    return { ...slot, term, pins: (term.pins || []).slice(0, 8) };
-  });
+  return slots.flatMap((slot) => slot.terms.map((term) => ({
+    ...slot, term, pins: (term.pins || []).slice(0, 8),
+  })));
 }
 
 export function clarificationChoices(result) {

@@ -50,7 +50,7 @@ export default function HomePage() {
   const [storageFailed, setStorageFailed] = useState(false);
   const demoStoreRef = useRef(null);
   const chatScrollRef = useRef(null);
-  const [activeGalleryRole, setActiveGalleryRole] = useState(null);
+  const [activeGalleryTermId, setActiveGalleryTermId] = useState(null);
   const [failedThumbnails, setFailedThumbnails] = useState({});
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState("reference");
@@ -86,7 +86,7 @@ export default function HomePage() {
     return replacement ? { ...row, term: replacement, pins: replacement.pins.slice(0, 8) } : row;
   }), [mindMapSlots, boardView, termSearch, sketchSearches]);
   const hasGalleryRows = galleryRows.length > 0;
-  const galleryTerm = galleryRows.find((row) => row.role === activeGalleryRole)?.term || galleryRows[0]?.term || null;
+  const galleryTerm = galleryRows.find((row) => row.term.term_id === activeGalleryTermId)?.term || galleryRows[0]?.term || null;
   const queryTerm = ["results", "term-results"].includes(boardView) && hasGalleryRows ? galleryTerm : homeTerm;
   const recommendedSearchQuery = getRecommendedSearchQuery(queryTerm);
   const pendingTurnIds = turns.filter(isTurnPending).map((turn) => turn.id).join(",");
@@ -199,8 +199,8 @@ export default function HomePage() {
   }, [job, mindMapSlots]);
 
   useEffect(() => {
-    setActiveGalleryRole((current) => (
-      galleryRows.some((row) => row.role === current) ? current : galleryRows[0]?.role || null
+    setActiveGalleryTermId((current) => (
+      galleryRows.some((row) => row.term.term_id === current) ? current : galleryRows[0]?.term.term_id || null
     ));
   }, [galleryRows]);
 
@@ -208,7 +208,7 @@ export default function HomePage() {
     if (!["results", "term-results"].includes(boardView)) return;
     const syncMobileGallery = () => {
       if (window.matchMedia("(max-width: 760px)").matches && galleryRef.current) {
-        syncGalleryRole(galleryRef.current);
+        syncGalleryTerm(galleryRef.current);
       }
     };
     window.addEventListener("scroll", syncMobileGallery, { passive: true });
@@ -278,7 +278,7 @@ export default function HomePage() {
     const controller = new AbortController();
     termSearchControllerRef.current = controller;
     setSelectedTermId(term.term_id);
-    setActiveGalleryRole(term.role);
+    setActiveGalleryTermId(term.term_id);
     setFailedThumbnails({});
     setTermSearch({ term: { ...term, pins: [], reason_codes: [] }, loading: true });
     setBoardView("term-results");
@@ -402,24 +402,24 @@ export default function HomePage() {
   }
 
   function handleGalleryScroll(event) {
-    syncGalleryRole(event.currentTarget);
+    syncGalleryTerm(event.currentTarget);
   }
 
-  function syncGalleryRole(gallery) {
+  function syncGalleryTerm(gallery) {
     const mobile = window.matchMedia("(max-width: 760px)").matches;
     const bounds = gallery.getBoundingClientRect();
     const headerHeight = gallery.closest(".reference-board").querySelector(".board-header").getBoundingClientRect().height;
     if (mobile && (bounds.top > window.innerHeight || bounds.bottom < headerHeight)) return;
     const galleryTop = mobile ? headerHeight : bounds.top;
     const closestRow = galleryRows.reduce((closest, row) => {
-      const element = gallery.querySelector(`[data-gallery-role="${row.role}"]`);
+      const element = Array.from(gallery.querySelectorAll("[data-gallery-term-id]")).find((element) => element.dataset.galleryTermId === row.term.term_id);
       if (!element) return closest;
       const distance = Math.abs(element.getBoundingClientRect().top - galleryTop);
-      return !closest || distance < closest.distance ? { role: row.role, distance } : closest;
+      return !closest || distance < closest.distance ? { termId: row.term.term_id, distance } : closest;
     }, null);
 
     if (closestRow) {
-      setActiveGalleryRole((current) => current === closestRow.role ? current : closestRow.role);
+      setActiveGalleryTermId((current) => current === closestRow.termId ? current : closestRow.termId);
     }
   }
 
@@ -472,7 +472,7 @@ export default function HomePage() {
       setTurns(restored.turns);
       gallerySelectionRef.current.live(restored.turns.at(-1)?.job || null, restored.sessionId);
       setConversationReady(true);
-      setActiveGalleryRole(null);
+      setActiveGalleryTermId(null);
       setBoardView("results");
       setMobilePanel("reference");
     } catch {
@@ -652,12 +652,12 @@ export default function HomePage() {
             aria-label="카테고리별 Pinterest 핀 썸네일" onScroll={handleGalleryScroll}>
             <button className="gallery-back-button" type="button" onClick={() => navigateBoard("home")}>← 용어 둘러보기</button>
             {galleryRows.map(({ role, roleLabel, term, pins }) => (
-              <section className="pin-gallery-row" data-gallery-role={role} key={role} aria-label={`${roleLabel} 검색 결과`}>
+              <section className="pin-gallery-row" data-gallery-role={role} data-gallery-term-id={term.term_id} key={term.term_id} aria-label={`${roleLabel} 검색 결과`}>
                 <div className="pin-gallery-toolbar">
                 <button className="pin-gallery-heading" type="button"
                   aria-pressed={term.term_id === galleryTerm?.term_id}
                   aria-label={`${roleLabel} ${term.label_ko} 검색어 보기`}
-                  onClick={() => { setSelectedTermId(term.term_id); setActiveGalleryRole(role); }}>
+                  onClick={() => { setSelectedTermId(term.term_id); setActiveGalleryTermId(term.term_id); }}>
                   <span>{roleLabel}</span>
                   <strong>{term.label_ko}</strong>
                   {term.term_id === galleryTerm?.term_id && <span className="active-term-badge">보고 있는 용어</span>}

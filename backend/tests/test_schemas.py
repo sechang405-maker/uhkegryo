@@ -210,12 +210,12 @@ def test_reference_plan_valid():
     assert [t.role for t in plan.terms] == [Role.BODY, Role.POSE]
 
 
-def test_reference_plan_rejects_duplicate_role():
+def test_reference_plan_rejects_duplicate_term():
     with pytest.raises(ValidationError):
         _reference_plan(
             terms=[
                 _term_result(role="pose", term_id="pose_contrapposto"),
-                _term_result(role="pose", term_id="pose_s_curve"),
+                _term_result(role="pose", term_id="pose_contrapposto"),
             ]
         )
 
@@ -469,7 +469,7 @@ def test_interpretation_output_rejects_invalid_state_value():
         {
             "selections": [
                 InterpretationSelection(role="pose", term_id="pose_contrapposto", evidence=["a"], confidence=0.8),
-                InterpretationSelection(role="pose", term_id="pose_s_curve", evidence=["b"], confidence=0.7),
+                InterpretationSelection(role="pose", term_id="pose_contrapposto", evidence=["b"], confidence=0.7),
             ]
         },
         {

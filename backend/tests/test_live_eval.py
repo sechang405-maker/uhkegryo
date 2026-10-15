@@ -82,7 +82,7 @@ def test_execute_completes_postgres_worker_and_measured_request_path(monkeypatch
             assert len(completions.calls) == (2 if duplicate_once else 1)
             if duplicate_once:
                 assert json.loads(completions.calls[-1]["messages"][-1]["content"])["validation_feedback"] == [
-                    {"path": [], "code": "role_duplicate"}]
+                    {"path": [], "code": "term_duplicate"}]
         finally:
             if pool: await pool.close()
             await admin.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'); await admin.close()
