@@ -470,7 +470,7 @@ class LLMInterpretationAdapter:
         if operation not in ("classify", "answer"):
             raise PromptConfigurationError("지원하지 않는 메모리 작업입니다")
         rules = self._memory_rules(operation)
-        rules += "\nReturn only JSON matching this schema:\n" + json.dumps(output_type.model_json_schema())
+        rules += self._memory_schema_instruction(output_type)
         response = await self._request([
             {"role": "system", "content": rules},
             {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
@@ -526,6 +526,9 @@ class LLMInterpretationAdapter:
                 "even verbatim repeated in history. '포즈만 앉은 모습으로 바꿔줘' is none. "
                 "'아까 어떤 자세를 추천했지?' is recall. Require an explicit historical question for recall/mixed.")
         return rules
+
+    def _memory_schema_instruction(self, output_type):
+        return "\nReturn only JSON matching this schema:\n" + json.dumps(output_type.model_json_schema())
 
     def _memory_output_format(self, output_type):
         return None
@@ -691,26 +694,11 @@ def format_active_cards_json(snapshot: CatalogSnapshot) -> str:
 
     후보 검증 필드와 통합 답변용 정적 의미·주의점만 포함한다. 검색 데이터는 제외한다.
     """
-    active_cards: list[dict[str, Any]] = []
-    for role in snapshot.roles_order:
-        for term_id in snapshot.role_terms.get(role, []):
-            card = snapshot.active_cards.get(term_id, {})
-            if card.get('component') == 'composite':
-                continue  # Historical results remain readable; new selections use independent cards.
-            feedback = snapshot.feedback.get(term_id, {})
-            active_cards.append(
-                {
-                    "role": card.get("role"),
-                    "term_id": term_id,
-                    "label_ko": card.get("label_ko"),
-                    "confidence_gate": card.get("confidence_gate"),
-                    "requires_all_of": card.get("requires_all_of") or [],
-                    "requires_any_of": card.get("requires_any_of") or [],
-                    "plain_meaning_ko": feedback.get("plain_meaning_ko", card.get("source_answer_draft", "")),
-                    "reference_checkpoints_ko": feedback.get("reference_checkpoints_ko", card.get("look_for", [])),
-                }
-            )
-    return json.dumps({"active_cards": active_cards}, ensure_ascii=False, separators=(",", ":"))
+    from backend.services.catalog_repository import ImmutableCatalogSnapshot
+    from backend.services.catalog_prompt import serialize_catalog
+    if isinstance(snapshot, ImmutableCatalogSnapshot):
+        return snapshot.prompt_json
+    return serialize_catalog(snapshot)
 
 
 def _extract_content(response: Any) -> str:
@@ -760,11 +748,13 @@ def _extract_usage(response: Any) -> dict[str, int]:
     usage = getattr(response, "usage", None)
     if usage is None:
         return {}
-    return {
-        "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
-        "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
-        "total_tokens": getattr(usage, "total_tokens", 0) or 0,
-    }
+    result = {}
+    for target, source in (("input_tokens", "prompt_tokens"),
+                           ("output_tokens", "completion_tokens"), ("total_tokens", "total_tokens")):
+        value = getattr(usage, source, None)
+        if type(value) is int and value >= 0:
+            result[target] = value
+    return result
 
 
 def _validate_output(content: str) -> InterpretationOutput:

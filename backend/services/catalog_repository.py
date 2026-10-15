@@ -18,6 +18,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from collections.abc import Mapping
+from types import MappingProxyType
 
 from backend.schemas.enums import Role
 from backend.services.catalog_composition import pose_compositions
@@ -69,6 +71,65 @@ class CatalogSnapshot:
 
     def is_direct_search_disabled(self, term_id: str) -> bool:
         return term_id in self.direct_search_disabled
+
+
+class FrozenMapping(Mapping):
+    """Recursively frozen catalog values; deepcopy can safely share them."""
+    __slots__ = ('__data',)
+
+    def __init__(self, values):
+        object.__setattr__(self, '_FrozenMapping__data', MappingProxyType(
+            {key: _freeze(value) for key, value in values.items()}))
+
+    def __getitem__(self, key):
+        return self.__data[key]
+
+    def __iter__(self):
+        return iter(self.__data)
+
+    def __len__(self):
+        return len(self.__data)
+
+    def __setattr__(self, name, value):
+        raise TypeError('Catalog mappings are immutable')
+
+    def __deepcopy__(self, memo):
+        return self
+
+
+class FrozenSequence(tuple):
+    """Immutable sequence retaining catalog list value equality."""
+    def __eq__(self, other):
+        if isinstance(other, (list, tuple)):
+            return tuple(self) == tuple(other)
+        return NotImplemented
+
+    def __ne__(self, other):
+        return not self == other
+
+    __hash__ = None
+
+
+def _freeze(value):
+    if isinstance(value, Mapping):
+        return FrozenMapping(value)
+    if isinstance(value, (list, tuple)):
+        return FrozenSequence(_freeze(item) for item in value)
+    return value
+
+
+@dataclass(frozen=True)
+class ImmutableCatalogSnapshot(CatalogSnapshot):
+    """Production boundary: every input is copied and frozen before caching."""
+    prompt_json: str = field(init=False, repr=False)
+
+    def __post_init__(self):
+        from backend.services.catalog_prompt import serialize_catalog
+        for name in ('active_cards', 'role_terms', 'feedback'):
+            object.__setattr__(self, name, _freeze(getattr(self, name)))
+        object.__setattr__(self, 'roles_order', tuple(self.roles_order))
+        object.__setattr__(self, 'direct_search_disabled', frozenset(self.direct_search_disabled))
+        object.__setattr__(self, 'prompt_json', serialize_catalog(self))
 
 
 def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
@@ -189,7 +250,7 @@ def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
     if combined:
         role_terms[Role.POSE].extend(combined)
 
-    return CatalogSnapshot(
+    return ImmutableCatalogSnapshot(
         dataset_version=str(index_data.get("dataset_version", "unknown")),
         active_cards=active_cards,
         role_terms=role_terms,

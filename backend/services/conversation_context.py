@@ -16,8 +16,16 @@ async def prepare(memory, job, adapter, trace):
 
 def prompt_context(context):
     state = context["state"]
+    sources = []
+    seen = list(context["recent"])
+    for source in context["sources"]:
+        job_id = source.get("job_id")
+        if job_id is not None and any(row.get("job_id") == job_id and row == source for row in seen):
+            continue
+        sources.append(source)
+        seen.append(source)
     return {"constraints": normalize_constraints(state.get("constraints", {})), "pending_question": state.get("pending_question"),
-            "recent": context["recent"], "sources": context["sources"]}
+            "recent": context["recent"], "sources": sources}
 
 
 def trace_args(job):

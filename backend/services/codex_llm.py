@@ -11,11 +11,15 @@ from backend.services.structured_output import strict_schema
 class CodexInterpretationAdapter(LLMInterpretationAdapter):
     image_search_enabled = False
 
-    def __init__(self, **kwargs):
+    def __init__(self, transport_observer=None, **kwargs):
         # A non-null sentinel prevents construction of an OpenRouter/API-key client.
         super().__init__(client=object(), **kwargs)
+        self._transport_observer = transport_observer
         self._slot = asyncio.Semaphore(1)
         self._generate = codex_runtime.generate
+
+    def _memory_schema_instruction(self, output_type):
+        return '\nReturn only JSON matching the supplied output schema.'
 
     def _memory_output_format(self, output_type):
         return {'json_schema': {'schema': strict_schema(output_type.model_json_schema())}}
@@ -23,14 +27,36 @@ class CodexInterpretationAdapter(LLMInterpretationAdapter):
     async def _request(self, messages, *, output_format=None, tools=None, tool_choice=None, json_mode=True):
         if tools is not None or not output_format:
             raise LLMConfigurationError('Local Codex requires a response schema; live search tools are disabled')
+        from time import perf_counter
+        from backend.services.transport_observation import emit, observer_context
+        values = {'usage_available': False, 'outcome': 'error', 'stage': 'queue', 'queue_wait_ms': 0.0}
+        started = perf_counter()
+        runtime = []
+        token = observer_context.set(runtime.append)
         try:
             async with asyncio.timeout(self.settings.codex_timeout_seconds):
                 async with self._slot:
+                    values['queue_wait_ms'] = (perf_counter() - started) * 1000
+                    values['stage'] = 'request'
                     content = await self._generate(self.settings, messages, output_format['json_schema']['schema'])
+            values['outcome'] = 'success'
+            return SimpleNamespace(choices=[SimpleNamespace(finish_reason='stop',
+                message=SimpleNamespace(content=content))], usage=None)
+        except asyncio.CancelledError:
+            values['outcome'] = 'cancelled'
+            raise
         except TimeoutError:
             raise LLMTimeout('Codex request timed out') from None
-        return SimpleNamespace(choices=[SimpleNamespace(finish_reason='stop',
-            message=SimpleNamespace(content=content))], usage=None)
+        finally:
+            if values['stage'] == 'queue':
+                values['queue_wait_ms'] = (perf_counter() - started) * 1000
+            values['request_elapsed_ms'] = (perf_counter() - started) * 1000
+            if runtime:
+                values.update(runtime[0])
+            observer_context.reset(token)
+            # Context-local generation; never stored on the shared adapter.
+            emit(self._transport_observer, values)
+            emit(lambda observation: self._update_generation(metadata={'transport': dict(observation)}), values)
 
     async def route_and_interpret(self, request_text, *, active_cards_json='', session_context=None,
                                   current_reference_terms=None, current_reference_roles=None,
