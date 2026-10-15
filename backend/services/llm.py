@@ -469,6 +469,31 @@ class LLMInterpretationAdapter:
     async def memory(self, operation: str, data: dict, output_type, **trace):
         if operation not in ("classify", "answer"):
             raise PromptConfigurationError("지원하지 않는 메모리 작업입니다")
+        rules = self._memory_rules(operation)
+        rules += "\nReturn only JSON matching this schema:\n" + json.dumps(output_type.model_json_schema())
+        response = await self._request([
+            {"role": "system", "content": rules},
+            {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
+        ], output_format=self._memory_output_format(output_type))
+        try:
+            payload = json.loads(_extract_content(response))
+            if operation == "classify" and isinstance(payload, dict) and payload.get("mode") == "none":
+                # New visual requests do not execute recall filters. Normalize only
+                # known irrelevant fields; unknown keys still fail schema validation.
+                payload.update(role=None, term_id=None, keywords=[], start=None, end=None,
+                               source_job_ids=[], latest=False)
+            output = output_type.model_validate(payload)
+        except (ValidationError, ValueError) as error:
+            raise LLMInvalidStructuredOutput("메모리 출력 계약 위반", stage="memory_schema") from error
+        self._observe_langfuse(
+            **trace, usage=_extract_usage(response),
+            output={"operation": operation, "input_chars": len(json.dumps(data, ensure_ascii=False)),
+                    "source_job_ids": [item["job_id"] for item in data.get("records", [])]},
+            request_text=data.get("request_text", ""),
+        )
+        return output
+
+    def _memory_rules(self, operation):
         path = self._resolve_prompt_path()
         source = path.read_text(encoding="utf-8")
         try:
@@ -500,28 +525,7 @@ class LLMInterpretationAdapter:
                 "'마른 캐릭터가 한쪽 다리에 체중을 싣고 서 있는 자세 레퍼런스를 찾아줘' is ALWAYS none, "
                 "even verbatim repeated in history. '포즈만 앉은 모습으로 바꿔줘' is none. "
                 "'아까 어떤 자세를 추천했지?' is recall. Require an explicit historical question for recall/mixed.")
-        rules += "\nReturn only JSON matching this schema:\n" + json.dumps(output_type.model_json_schema())
-        response = await self._request([
-            {"role": "system", "content": rules},
-            {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
-        ], output_format=self._memory_output_format(output_type))
-        try:
-            payload = json.loads(_extract_content(response))
-            if operation == "classify" and isinstance(payload, dict) and payload.get("mode") == "none":
-                # New visual requests do not execute recall filters. Normalize only
-                # known irrelevant fields; unknown keys still fail schema validation.
-                payload.update(role=None, term_id=None, keywords=[], start=None, end=None,
-                               source_job_ids=[], latest=False)
-            output = output_type.model_validate(payload)
-        except (ValidationError, ValueError) as error:
-            raise LLMInvalidStructuredOutput("메모리 출력 계약 위반", stage="memory_schema") from error
-        self._observe_langfuse(
-            **trace, usage=_extract_usage(response),
-            output={"operation": operation, "input_chars": len(json.dumps(data, ensure_ascii=False)),
-                    "source_job_ids": [item["job_id"] for item in data.get("records", [])]},
-            request_text=data.get("request_text", ""),
-        )
-        return output
+        return rules
 
     def _memory_output_format(self, output_type):
         return None

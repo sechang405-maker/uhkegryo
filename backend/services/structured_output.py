@@ -5,22 +5,27 @@ import json
 from backend.schemas.models import InterpretationOutput
 
 
+def strict_schema(schema):
+    schema = json.loads(json.dumps(schema))
+    def visit(node):
+        if isinstance(node, dict):
+            node.pop('default', None)
+            if node.get('type') == 'object':
+                node['required'] = list(node.get('properties', {}))
+                node['additionalProperties'] = False
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+    visit(schema)
+    return schema
+
+
 def response_format(active_cards_json: str = "") -> dict:
     schema = InterpretationOutput.model_json_schema()
 
-    def strict(node):
-        if isinstance(node, dict):
-            node.pop("default", None)
-            if node.get("type") == "object":
-                node["required"] = list(node.get("properties", {}))
-                node["additionalProperties"] = False
-            for value in node.values():
-                strict(value)
-        elif isinstance(node, list):
-            for value in node:
-                strict(value)
-
-    strict(schema)
+    schema = strict_schema(schema)
     if active_cards_json:
         cards = json.loads(active_cards_json).get("active_cards", [])
         for name in ("InterpretationSelection", "ContextUpdate"):
@@ -71,3 +76,14 @@ def load_skill(path: str) -> str:
     from backend.services.llm import _extract_fenced_block
 
     return _extract_fenced_block(Path(path).read_text(encoding="utf-8"), "## Runtime instructions")
+
+
+def routed_response_format(active_cards_json: str = "") -> dict:
+    from backend.schemas.models import RoutedInterpretation
+
+    schema = strict_schema(RoutedInterpretation.model_json_schema())
+    interpretation = response_format(active_cards_json)["json_schema"]["schema"]
+    schema["$defs"].update(interpretation.pop("$defs", {}))
+    schema["$defs"]["InterpretationOutput"] = interpretation
+    return {"type": "json_schema", "json_schema": {
+        "name": "routed_interpretation", "strict": True, "schema": schema}}

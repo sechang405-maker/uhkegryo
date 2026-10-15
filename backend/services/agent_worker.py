@@ -138,8 +138,22 @@ class AgentJobWorker:
                     self._adapter = LLMInterpretationAdapter()
             with trace.stage("memory-context"):
                 context = await conversation_context.prepare(self._memory, job, self._adapter, trace)
+            feedback = job.get("validation_feedback_json")
+            if isinstance(feedback, str):
+                feedback = json.loads(feedback)
+            routed = None
+            combined = getattr(self._adapter, "route_and_interpret", None)
+            if callable(combined) and not conversation_context.is_clear_new_request(job["request_text"], context):
+                terms = ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])
+                routed = await combined(job["request_text"], **conversation_context.trace_args(job),
+                    active_cards_json=format_active_cards_json(self._snapshot),
+                    session_context=conversation_context.prompt_context(context),
+                    current_reference_terms=[{key: term[key] for key in ("role", "term_id", "label_ko", "label_en")} for term in terms],
+                    current_reference_roles=[term["role"] for term in terms],
+                    **({"validation_feedback": feedback} if feedback else {}))
             recalled, recall_only = await conversation_context.recall(
-                self._memory, job, context, self._adapter, trace)
+                self._memory, job, context, self._adapter, trace,
+                **({"query": routed.route} if routed is not None else {}))
             state = context["state"]
             if recall_only:
                 result = recalled
@@ -148,18 +162,17 @@ class AgentJobWorker:
                 refresh = context.get("reference_action") in ("refresh_all", "refresh_roles", "refresh_terms")
                 interpretation = None
                 with trace.stage("validating"):
-                    feedback = job.get("validation_feedback_json")
-                    if isinstance(feedback, str):
-                        feedback = json.loads(feedback)
                     if refresh:
                         resolution = reference_update.refresh_resolution(previous, self._snapshot, context)
                     else:
-                        interpretation = await self._adapter.interpret(
-                            job["request_text"], **conversation_context.trace_args(job),
-                            active_cards_json=format_active_cards_json(self._snapshot),
-                            session_context=conversation_context.prompt_context(context),
-                            **({"validation_feedback": feedback} if feedback else {}),
-                        )
+                        interpretation = routed.interpretation if routed is not None else None
+                        if interpretation is None:
+                            interpretation = await self._adapter.interpret(
+                                job["request_text"], **conversation_context.trace_args(job),
+                                active_cards_json=format_active_cards_json(self._snapshot),
+                                session_context=conversation_context.prompt_context(context),
+                                **({"validation_feedback": feedback} if feedback else {}),
+                            )
                         resolution = await conversation_context.validate(
                             self._memory, job, interpretation, self._snapshot, context=context)
                         resolution = reference_update.select_searches(resolution, previous)

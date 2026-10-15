@@ -25,17 +25,18 @@ def trace_args(job):
             for key in ("job_id", "session_id", "attempt", "max_attempts")}
 
 
-async def recall(memory, job, context, adapter, trace):
-    if is_clear_new_request(job["request_text"], context):
+async def recall(memory, job, context, adapter, trace, query: RecallQuery | None = None):
+    if query is None and is_clear_new_request(job["request_text"], context):
         return None, False
     with trace.stage("memory-recall"):
-        query = await adapter.memory("classify", {
-            "request_text": job["request_text"], "session_context": prompt_context(context),
-            "current_reference_terms": [{key: term[key] for key in ("role", "term_id", "label_ko", "label_en")} for term in
-                ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])],
-            "current_reference_roles": [term["role"] for term in
-                ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])],
-        }, RecallQuery, **trace_args(job))
+        if query is None:
+            query = await adapter.memory("classify", {
+                "request_text": job["request_text"], "session_context": prompt_context(context),
+                "current_reference_terms": [{key: term[key] for key in ("role", "term_id", "label_ko", "label_en")} for term in
+                    ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])],
+                "current_reference_roles": [term["role"] for term in
+                    ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])],
+            }, RecallQuery, **trace_args(job))
         context["reference_action"] = query.reference_action if query.mode != "recall" else "update"
         context["refresh_roles"] = query.refresh_roles if query.mode != "recall" else []
         context["refresh_term_ids"] = query.refresh_term_ids if query.mode != "recall" else []

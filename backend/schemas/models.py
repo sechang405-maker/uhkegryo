@@ -7,7 +7,7 @@
 from typing import Annotated, Literal
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from backend.schemas.memory import ContextUpdate, MemorySource, NO_RECORDS, TOO_MANY
+from backend.schemas.memory import RecallQuery, ContextUpdate, MemorySource, NO_RECORDS, TOO_MANY
 
 from backend.schemas.enums import (
     AgentStatus,
@@ -400,4 +400,18 @@ class InterpretationOutput(BaseModel):
                 raise ValueError("needs_clarification는 비어 있지 않은 clarifying_question이 필수다")
             if self.clarification_type is None:
                 raise ValueError("needs_clarification는 clarification_type이 필수다")
+        return self
+
+
+class RoutedInterpretation(BaseModel):
+    """Internal route decision with interpretation only for an immediate update."""
+    model_config = ConfigDict(extra="forbid")
+    route: RecallQuery
+    interpretation: InterpretationOutput | None
+
+    @model_validator(mode="after")
+    def validate_branch(self):
+        immediate = self.route.mode == "none" and self.route.reference_action == "update"
+        if immediate != (self.interpretation is not None):
+            raise ValueError("interpretation must exist exactly for none/update")
         return self
