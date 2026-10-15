@@ -285,6 +285,45 @@ class JobRepository:
         return [dict(_to_envelope(row).model_dump(mode="json"),
                      request_text=row["request_text"], created_at=row["created_at"]) for row in rows]
 
+    async def history_page(self, session_id: str, limit=20, before_job_id=None) -> dict:
+        # The route has already verified ownership. Resolve cursor in that same session.
+        cursor = None
+        if before_job_id:
+            cursor = await self._pool.fetchrow(
+                "SELECT created_at,job_id FROM jobs WHERE session_id=$1::uuid AND job_id=$2::uuid",
+                session_id, before_job_id,
+            )
+            if cursor is None:
+                raise JobNotFound
+        predicate = " AND (j.created_at,j.job_id) < ($3,$4::uuid)" if cursor else ""
+        args = (session_id, limit + 1, cursor["created_at"], cursor["job_id"]) if cursor else (session_id, limit + 1)
+        rows = await self._pool.fetch(
+            "SELECT j.* FROM jobs j WHERE j.session_id=$1::uuid" + predicate
+            + " ORDER BY j.created_at DESC,j.job_id DESC LIMIT $2", *args,
+        )
+        has_more = len(rows) > limit
+        page_rows = list(reversed(rows[:limit]))
+        pending = await self._pool.fetch(
+            "SELECT j.* FROM jobs j WHERE j.session_id=$1::uuid AND status NOT IN ('completed','failed')"
+            " ORDER BY j.created_at,j.job_id", session_id,
+        )
+        # Current results persist the merged full reference plan. Legacy results retain
+        # their prior role fallback; fetch one preceding board for that compatibility.
+        references = await self._pool.fetch(
+            "SELECT j.* FROM jobs j WHERE j.session_id=$1::uuid AND status='completed'"
+            " AND final_payload_json->'reference_plan'->'terms' IS NOT NULL"
+            " AND jsonb_array_length(final_payload_json->'reference_plan'->'terms') > 0"
+            " ORDER BY j.created_at DESC,j.job_id DESC LIMIT 2", session_id,
+        )
+        def view(row):
+            return dict(_to_envelope(row).model_dump(mode="json"), request_text=row["request_text"], created_at=row["created_at"])
+        page_ids = {str(row["job_id"]) for row in page_rows}
+        return {"items": [view(row) for row in page_rows], "has_more": has_more,
+                "next_before_job_id": str(page_rows[0]["job_id"]) if has_more else None,
+                "pending_items": [view(row) for row in pending if str(row["job_id"]) not in page_ids],
+                "reference_item": view(references[0]) if references else None,
+                "previous_reference_item": view(references[1]) if len(references) > 1 else None}
+
 
 def _dump(value: AgentResult | Failure) -> str:
     data = value.model_dump(mode="json")

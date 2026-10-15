@@ -4,7 +4,8 @@ const TERMINAL = new Set(["completed", "failed"]);
 export function upsertTurn(turns, turn) {
   const index = turns.findIndex((entry) => entry.id === turn.id);
   return index < 0 ? [...turns, turn] : turns.map((entry, position) => position === index
-    ? { ...entry, ...turn, polling_stopped: !TERMINAL.has(turn.job?.job_status)
+    ? { ...entry, ...turn, job: entry.job?.created_at && !turn.job?.created_at
+      ? { ...turn.job, created_at: entry.job.created_at } : turn.job, polling_stopped: !TERMINAL.has(turn.job?.job_status)
       && Boolean(entry.polling_stopped || turn.polling_stopped) } : entry);
 }
 
@@ -58,4 +59,28 @@ export function saveDemoTurns(storage, turns) {
     storage.setItem(DEMO_STORAGE_KEY, JSON.stringify(safeTurns));
     return true;
   } catch { return false; }
+}
+
+
+// Both inputs are chronological. Each input and ID is visited once; current state wins.
+export function mergeHistoryTurns(current, older) {
+  const currentById = new Map(current.map(turn => [turn.id, turn]));
+  const seen = new Set(), merged = [];
+  let i = 0, j = 0;
+  const before = (a, b) => {
+    const at = Date.parse(a.job?.created_at), bt = Date.parse(b.job?.created_at);
+    if (!Number.isFinite(at) || !Number.isFinite(bt)) return true;
+    if (at !== bt) return at < bt;
+    const fraction = turn => (turn.job.created_at.match(/\.(\d+)/)?.[1] || "").padEnd(9, "0");
+    const af = fraction(a), bf = fraction(b);
+    return af === bf ? a.id.localeCompare(b.id) <= 0 : af < bf;
+  };
+  while (i < older.length || j < current.length) {
+    const turn = j >= current.length || (i < older.length && before(older[i], current[j]))
+      ? older[i++] : current[j++];
+    if (seen.has(turn.id)) continue;
+    seen.add(turn.id);
+    merged.push(currentById.get(turn.id) || turn);
+  }
+  return merged;
 }

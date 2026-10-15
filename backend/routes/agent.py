@@ -393,11 +393,14 @@ async def open_conversation(session_id: uuid.UUID, request: Request, response: R
 
 @router.get("/api/sessions/{session_id}/jobs")
 async def conversation_history(session_id: uuid.UUID, request: Request, response: Response,
-                               limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)):
+                               limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0),
+                               latest: bool = False, before_job_id: uuid.UUID | None = None):
     sessions, jobs = await _database_call(get_repositories())
     token = await _owner(request, response, sessions)
     try:
         await _database_call(sessions.get_session(token, str(session_id)))
+        if latest:
+            return await _database_call(jobs.history_page(str(session_id), limit, str(before_job_id) if before_job_id else None))
         return {"items": await _database_call(jobs.history(str(session_id), limit, offset))}
     except JobNotFound:
         raise ApiContractError(ApiErrorCode.SESSION_NOT_FOUND, token) from None

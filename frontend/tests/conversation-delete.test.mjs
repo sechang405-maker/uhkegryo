@@ -25,12 +25,18 @@ test('demo deletion persists without resurrecting removed samples',()=>{
  const restored=createDemoSessionStore(storage);assert.equal(restored.current().turns.length,0);assert.ok(!restored.list().some(s=>s.session_id===first||s.session_id===second));
 });
 test('all retained conversations remain accessible beyond the first page', async () => {
-  const { listConversations } = await import('../lib/server-conversation.mjs');
+  const { listConversationPage, mergeSessions } = await import('../lib/server-conversation.mjs');
   const calls=[];
   const items=Array.from({length:101},(_,i)=>({session_id:`00000000-0000-4000-8000-${String(i).padStart(12,'0')}`,created_at:'2026-10-14T00:00:00Z'}));
-  const result=await listConversations({fetchImpl:async(url)=>{
-    calls.push(url); const offset=Number(new URL(url,'http://test').searchParams.get('offset'));
-    return {ok:true,status:200,json:async()=>({items:items.slice(offset,offset+100)})};
-  }});
-  assert.equal(result.length,101); assert.equal(calls.length,2);
+  let result=[],offset=0;
+  for (;;) {
+    const page=await listConversationPage({offset,fetchImpl:async(url)=>{
+      calls.push(url); const start=Number(new URL(url,'http://test').searchParams.get('offset'));
+      return {ok:true,status:200,json:async()=>({items:items.slice(start,start+20)})};
+    }});
+    result=mergeSessions(result,page.items);
+    if(!page.hasMore) break;
+    offset=page.nextOffset;
+  }
+  assert.equal(result.length,101); assert.equal(calls.length,6);
 });

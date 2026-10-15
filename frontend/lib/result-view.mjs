@@ -4,7 +4,7 @@ export function resultTerms(job) {
     ? result.reference_plan?.terms || [] : [];
 }
 
-export function renderedResultTerms(job, turns = []) {
+export function renderedResultTerms(job, turns = [], previousReferenceJob = null) {
   const result = job?.job_status === "completed" ? job.result : null;
   const update = result?.reference_update;
   if (!update) return resultTerms(job);
@@ -13,7 +13,8 @@ export function renderedResultTerms(job, turns = []) {
   const previousJob = currentIndex < 0 ? null : [...turns.slice(0, currentIndex)]
     .reverse()
     .find((turn) => resultTerms(turn.job).length)?.job;
-  const previousTerms = resultTerms(previousJob);
+  const previousTerms = resultTerms(previousReferenceJob?.job_id === previousJob?.job_id
+    ? previousReferenceJob : previousJob || previousReferenceJob);
   const currentTerms = result?.reference_plan?.terms || [];
   const preservedIds = update.preserved_term_ids || [];
   const replacedIds = update.replaced_term_ids || [];
@@ -23,7 +24,7 @@ export function renderedResultTerms(job, turns = []) {
     return [...new Set([...preservedIds, ...replacedIds])].flatMap((id) => {
       const term = replacedIds.includes(id)
         ? currentById.get(id)
-        : previousById.get(id) || currentById.get(id);
+        : currentById.get(id) || previousById.get(id);
       return term ? [term] : [];
     });
   }

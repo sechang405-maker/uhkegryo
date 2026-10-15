@@ -1,4 +1,4 @@
-import { createElement as h } from "react";
+import { createElement as h, memo } from "react";
 import Markdown from "react-markdown";
 import { answerForJob } from "../lib/conversation.mjs";
 import { resultTerms } from "../lib/result-view.mjs";
@@ -9,7 +9,7 @@ const components = {
   h2: ({ children }) => h("h3", null, children),
 };
 
-export default function MarkdownAnswer({ text, job }) {
+function MarkdownAnswer({ text, job }) {
   if (job) {
     const terms = resultTerms(job).filter(term => typeof term.label_ko === "string" && term.label_ko.trim()
       && typeof term.plain_meaning_ko === "string" && term.plain_meaning_ko.trim());
@@ -32,3 +32,5 @@ export default function MarkdownAnswer({ text, job }) {
     h(Markdown, { allowedElements, components, skipHtml: true, unwrapDisallowed: true }, text));
 }
 
+
+export default memo(MarkdownAnswer);

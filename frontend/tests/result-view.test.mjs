@@ -116,3 +116,14 @@ test("legacy category updates keep every preserved and replaced card", () => {
   assert.equal(view.pinUnavailableMessage({status: "future-status"}), view.pinUnavailableMessage({status: "unavailable"}));
   assert.equal(view.pinUnavailableMessage({status: "deleted"}), "삭제된 핀입니다.");
  });
+
+test('full current merged plan preserves cards with preceding reference outside page',()=>{
+ const body={term_id:'body',role:'body',pins:[{pin_id:'new'}]},pose={term_id:'pose',role:'pose'};
+ const job=completed('success',{reference_plan:{terms:[body,pose]},reference_update:{preserved_term_ids:['body'],replaced_term_ids:['pose']}});
+ assert.deepEqual(view.renderedResultTerms(job,[]),[body,pose]);
+});
+test('legacy role board uses bounded preceding reference context outside page',()=>{
+ const body=term('body'),pose=term('pose');
+ const job=completed('success',{reference_plan:{terms:[pose]},reference_update:{preserved_roles:['body'],replaced_roles:['pose']}});
+ assert.deepEqual(view.renderedResultTerms(job,[],completed('success',{reference_plan:{terms:[body]}})),[body,pose]);
+});

@@ -1,4 +1,4 @@
-import { upsertTurn, isTurnPending } from "./conversation.mjs";
+import { upsertTurn, isTurnPending, mergeHistoryTurns } from "./conversation.mjs";
 import { createJobPoller, STATUS_LABELS } from "./job-polling.mjs";
 
 export const RESTORE_ERROR = "대화를 복원하지 못했습니다. 다시 불러온 뒤 요청해 주세요.";
@@ -39,18 +39,37 @@ function validateSessions(items) {
     return item;
   });
 }
+export async function listConversationPage(options = {}) {
+  const offset = options.offset || 0;
+  const response = await (options.fetchImpl || globalThis.fetch)(`/api/sessions?limit=20&offset=${offset}`, {
+    credentials: "include", cache: "no-store", signal: options.signal,
+  });
+  if (response.status === 401 && offset === 0) return { items: [], hasMore: false, nextOffset: 0 };
+  if (!response.ok) throw new Error(RESTORE_ERROR);
+  const items = validateSessions((await response.json())?.items);
+  return { items, hasMore: items.length === 20, nextOffset: offset + items.length };
+}
 export async function listConversations(options = {}) {
-  const sessions = new Map();
-  for (let offset = 0; ; offset += 100) {
-    const response = await (options.fetchImpl || globalThis.fetch)(`/api/sessions?limit=100&offset=${offset}`, {
-      credentials: "include", cache: "no-store", signal: options.signal,
-    });
-    if (response.status === 401 && offset === 0) return [];
-    if (!response.ok) throw new Error(RESTORE_ERROR);
-    const items = validateSessions((await response.json())?.items);
-    for (const item of items) sessions.set(item.session_id, item);
-    if (items.length < 100) return [...sessions.values()];
-  }
+  return (await listConversationPage(options)).items;
+}
+export function mergeSessions(current, incoming) {
+  const items = new Map(current.map(item => [item.session_id, item]));
+  for (const item of incoming) if (!items.has(item.session_id)) items.set(item.session_id, item);
+  return [...items.values()];
+}
+export async function loadOlderConversation(options = {}) {
+  const id = sessionId(options.sessionId);
+  const cursor = options.beforeJobId ? `&before_job_id=${encodeURIComponent(options.beforeJobId)}` : "";
+  const page = await read(`/api/sessions/${id}/jobs?latest=true&limit=20${cursor}`, options);
+  if (!Array.isArray(page?.items) || (page.pending_items && !Array.isArray(page.pending_items))) throw new Error(RESTORE_ERROR);
+  const toTurn = (job) => {
+    if (!job.job_id || job.session_id !== id || typeof job.request_text !== "string"
+      || !Object.hasOwn(STATUS_LABELS, job.job_status)) throw new Error(RESTORE_ERROR);
+    return { id: job.job_id, request: job.request_text, job, demo: false };
+  };
+  const turns = mergeHistoryTurns(page.items.map(toTurn), (page.pending_items || []).map(toTurn));
+  return { turns, hasMore: page.has_more === true,
+    nextBeforeJobId: page.next_before_job_id || null, referenceJob: page.reference_item || null, previousReferenceJob: page.previous_reference_item || null };
 }
 export async function createConversation(options = {}) {
   const created = await read("/api/sessions", options, "POST");
@@ -71,27 +90,32 @@ export async function restoreConversation(options = {}) {
     if (!list.items.length) return { sessionId: null, turns: [] };
     id = sessionId(list.items[0]?.session_id);
   }
-  await read(`/api/sessions/${id}`, options);
-  let turns = [];
-  for (let offset = 0; ; offset += 100) {
-    const page = await read(`/api/sessions/${id}/jobs?limit=100&offset=${offset}`, options);
-    if (!Array.isArray(page?.items)) throw new Error(RESTORE_ERROR);
-    for (const job of page.items) {
-      if (!job.job_id || job.session_id !== id || typeof job.request_text !== "string"
-        || !Object.hasOwn(STATUS_LABELS, job.job_status)) throw new Error(RESTORE_ERROR);
-      turns = upsertTurn(turns, { id: job.job_id, request: job.request_text, job, demo: false });
-    }
-    if (page.items.length < 100) break;
-  }
-  const latest = turns.at(-1);
+  const session = await read(`/api/sessions/${id}`, options);
+  const page = await loadOlderConversation({ ...options, sessionId: id });
+  let turns = page.turns;
+  const latest = turns.filter(turn => !isTurnPending(turn)).at(-1) || turns.at(-1);
+  let referenceJob = page.referenceJob;
+  let previousReferenceJob = page.previousReferenceJob;
+  const hydrated = new Map();
+  const hydrate = async (jobId) => {
+    if (hydrated.has(jobId)) return hydrated.get(jobId);
+    const job = await read(`/api/jobs/${encodeURIComponent(jobId)}`, options);
+    if (job.job_id !== jobId || job.session_id !== id || !Object.hasOwn(STATUS_LABELS, job.job_status)) throw new Error(RESTORE_ERROR);
+    hydrated.set(jobId, job);
+    return job;
+  };
   if (latest) {
-    const job = await read(`/api/jobs/${encodeURIComponent(latest.id)}`, options);
-    if (job.job_id !== latest.id || job.session_id !== id
-      || !Object.hasOwn(STATUS_LABELS, job.job_status)) throw new Error(RESTORE_ERROR);
+    const job = await hydrate(latest.id);
     turns = upsertTurn(turns, { ...latest, job });
   }
-  return { sessionId: id, turns };
+  if (referenceJob) {
+    referenceJob = await hydrate(referenceJob.job_id);
+  }
+  if (!referenceJob?.result?.reference_update?.preserved_roles?.length) previousReferenceJob = null;
+  if (previousReferenceJob) previousReferenceJob = await hydrate(previousReferenceJob.job_id);
+  return { sessionId: id, session, ...page, turns, referenceJob, previousReferenceJob };
 }
+
 export function resumeConversation(turns, options) {
   const pollers = turns.filter(isTurnPending).map((turn) => {
     const poller = createJobPoller(turn.id, {

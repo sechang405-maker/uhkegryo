@@ -134,3 +134,27 @@ def test_default_submit_is_atomic_and_idempotent():
         assert await pool.fetchval("SELECT count(*) FROM sessions") == 1
         assert await pool.fetchval("SELECT count(*) FROM jobs") == 1
     asyncio.run(database_case(case))
+
+def test_latest_history_keyset_same_timestamp_and_foreign_cursor():
+    async def case(pool):
+        sessions,jobs=SessionRepository(pool),JobRepository(pool)
+        sid=await sessions.create_session('paged-owner')
+        other=await sessions.create_session('other-owner')
+        ids=[]
+        for i in range(21):
+            item,_=await jobs.submit(session_id=sid,request_text=f'fixture {i}',idempotency_key=str(uuid.uuid4()))
+            ids.append(item.job_id)
+        foreign,_=await jobs.submit(session_id=other,request_text='foreign',idempotency_key=str(uuid.uuid4()))
+        await pool.execute("UPDATE jobs SET created_at='2026-10-01T00:00:00Z' WHERE session_id=$1",uuid.UUID(sid))
+        latest=await jobs.history_page(sid,20)
+        expected=sorted(ids)
+        assert [item['job_id'] for item in latest['items']]==expected[1:]
+        assert latest['next_before_job_id']==expected[1]
+        assert latest['pending_items'][0]['job_id']==expected[0]
+        older=await jobs.history_page(sid,20,latest['next_before_job_id'])
+        assert [item['job_id'] for item in older['items']]==expected[:1]
+        assert older['has_more'] is False
+        with pytest.raises(JobNotFound): await jobs.history_page(sid,20,foreign.job_id)
+        legacy=await jobs.history(sid,20,0)
+        assert [item['job_id'] for item in legacy]==expected[:20]
+    asyncio.run(database_case(case))

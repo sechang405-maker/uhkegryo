@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { countCharacters, createSubmissionController, validateRequestText, shouldSubmitOnEnter } from "../lib/agent-submit.mjs";
 import { createGallerySelection } from "../lib/gallery-selection.mjs";
-import { createConversation, listConversations, restoreConversation, resumeConversation, RESTORE_ERROR, ensureLocalProfile, deleteConversation, DELETE_CONFIRM } from "../lib/server-conversation.mjs";
+import { createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, ensureLocalProfile, deleteConversation, DELETE_CONFIRM } from "../lib/server-conversation.mjs";
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
 import { DEMO_SCENARIOS, DEMO_NOTICE, DEMO_INPUT_ERROR, demoTerm } from "../lib/portfolio-demo-fixtures.mjs";
 import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
@@ -12,7 +12,7 @@ import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.
 import { getRecommendedSearchQuery } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode } from "../lib/term-search.mjs";
 import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
-import { stopTurnPolling, upsertTurn, isTurnPending } from "../lib/conversation.mjs";
+import { stopTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from "../lib/conversation.mjs";
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
@@ -41,6 +41,16 @@ export default function HomePage() {
   const sessionIdRef = useRef(null);
   const sessionLoadRef = useRef(0);
   const [sessions, setSessions] = useState([]);
+  const [sessionPage, setSessionPage] = useState({ hasMore: false, nextOffset: 0 });
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const sessionsGeneration = useRef(0);
+  const [historyPage, setHistoryPage] = useState({ hasMore: false, nextBeforeJobId: null });
+  const [olderLoading, setOlderLoading] = useState(false);
+  const [olderError, setOlderError] = useState("");
+  const historyController = useRef(null);
+  const restoreController = useRef(null);
+  const prependAnchor = useRef(null);
+  const [referenceJob, setReferenceJob] = useState(null);
   const [persistentProfile, setPersistentProfile] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const deleteInFlightRef = useRef(false);
@@ -71,8 +81,8 @@ export default function HomePage() {
   const pollerRef = useRef(null);
   const selectedJobRef = useRef(null);
   const mindMapSlots = useMemo(
-    () => createMindMapSlots(historyTurnId ? resultTerms(job) : renderedResultTerms(job, turns)),
-    [job, turns, historyTurnId],
+    () => createMindMapSlots(historyTurnId ? resultTerms(job) : renderedResultTerms(job, turns, referenceJob)),
+    [job, turns, historyTurnId, referenceJob],
   );
   const hasTerms = homeSlots.some((slot) => slot.terms.length > 0);
   const activeTermId = homeSlots.some((slot) => slot.terms.some((term) => term.term_id === selectedTermId))
@@ -104,6 +114,8 @@ export default function HomePage() {
   useEffect(() => {
     if (uiDemoEnabled) return;
     const controller = new AbortController();
+    cancelHistory();
+    restoreController.current = controller;
     const loadId = ++sessionLoadRef.current;
     gallerySelectionRef.current.reset(sessionIdRef.current);
     setRestoreError("");
@@ -111,17 +123,18 @@ export default function HomePage() {
     ensureLocalProfile({ signal: controller.signal }).then((persistent) => {
       if (controller.signal.aborted) return;
       setPersistentProfile(persistent);
-      return Promise.all([listConversations({ signal: controller.signal }), restoreConversation({ signal: controller.signal, sessionId: sessionIdRef.current || undefined })]);
-    }).then((loaded) => {
-      if (!loaded) return;
-      const [items, restored] = loaded;
-      if (controller.signal.aborted || loadId !== sessionLoadRef.current) return;
-      setSessions(items);
+      refreshSessions();
+      return restoreConversation({ signal: controller.signal, sessionId: sessionIdRef.current || undefined });
+    }).then((restored) => {
+      if (!restored || controller.signal.aborted || loadId !== sessionLoadRef.current) return;
       setSessionId(restored.sessionId);
       sessionIdRef.current = restored.sessionId;
+      if (restored.session?.created_at) setSessions(current => mergeSessions(current, [restored.session]));
+      setHistoryPage(restored);
+      setReferenceJob(restored.previousReferenceJob);
       setTurns(restored.turns);
       gallerySelectionRef.current.reset(restored.sessionId);
-      gallerySelectionRef.current.live(restored.turns.at(-1)?.job || null, restored.sessionId);
+      gallerySelectionRef.current.live(restored.referenceJob || restored.turns.at(-1)?.job || null, restored.sessionId);
       setConversationReady(true);
     }).catch(() => { if (!controller.signal.aborted && loadId === sessionLoadRef.current) setRestoreError(RESTORE_ERROR); });
     return () => controller.abort();
@@ -138,9 +151,68 @@ export default function HomePage() {
     setConversationReady(true);
   }
 
-  useEffect(() => {
-    if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+  useLayoutEffect(() => {
+    const container = chatScrollRef.current;
+    if (!container) return;
+    if (prependAnchor.current) {
+      const anchor = prependAnchor.current;
+      container.scrollTop = anchor.top + container.scrollHeight - anchor.height;
+      prependAnchor.current = null;
+    } else container.scrollTop = container.scrollHeight;
   }, [turns, termGuide, mobilePanel]);
+
+  function cancelHistory() {
+    historyController.current?.abort();
+    restoreController.current?.abort();
+    prependAnchor.current = null;
+    setOlderLoading(false);
+    setOlderError("");
+    setHistoryPage({ hasMore: false, nextBeforeJobId: null });
+    setReferenceJob(null);
+  }
+
+  async function refreshSessions() {
+    const generation = ++sessionsGeneration.current;
+    setSessionsLoading(true);
+    try {
+      const page = await listConversationPage();
+      if (generation !== sessionsGeneration.current) return;
+      setSessions(current => mergeSessions(current.filter(item => item.session_id === sessionIdRef.current), page.items));
+      setSessionPage(page);
+    } catch { if (generation === sessionsGeneration.current) setDeleteError(RESTORE_ERROR); }
+    finally { if (generation === sessionsGeneration.current) setSessionsLoading(false); }
+  }
+  async function loadMoreSessions() {
+    if (sessionsLoading) return;
+    const generation = sessionsGeneration.current;
+    setSessionsLoading(true);
+    try {
+      const page = await listConversationPage({ offset: sessionPage.nextOffset });
+      if (generation !== sessionsGeneration.current) return;
+      setSessions(current => mergeSessions(current, page.items));
+      setSessionPage(page);
+    } catch { if (generation === sessionsGeneration.current) setDeleteError(RESTORE_ERROR); }
+    finally { if (generation === sessionsGeneration.current) setSessionsLoading(false); }
+  }
+  async function loadOlder() {
+    if (olderLoading || !historyPage.hasMore) return;
+    const generation = sessionLoadRef.current;
+    const id = sessionIdRef.current;
+    historyController.current?.abort();
+    const controller = new AbortController();
+    historyController.current = controller;
+    setOlderLoading(true); setOlderError("");
+    try {
+      const page = await loadOlderConversation({ sessionId: id, beforeJobId: historyPage.nextBeforeJobId, signal: controller.signal });
+      if (controller.signal.aborted || generation !== sessionLoadRef.current || id !== sessionIdRef.current) return;
+      const container = chatScrollRef.current;
+      if (container) prependAnchor.current = { top: container.scrollTop, height: container.scrollHeight };
+      setTurns(current => mergeHistoryTurns(current, page.turns));
+      setHistoryPage(page);
+    } catch { if (!controller.signal.aborted && generation === sessionLoadRef.current) setOlderError(RESTORE_ERROR); }
+    finally { if (!controller.signal.aborted && generation === sessionLoadRef.current) setOlderLoading(false); }
+  }
+  useEffect(() => () => { historyController.current?.abort(); restoreController.current?.abort(); ++sessionsGeneration.current; }, []);
 
   useEffect(() => {
     if (uiDemoEnabled || !conversationReady || !pendingTurnIds) return;
@@ -386,6 +458,7 @@ export default function HomePage() {
         setTurns((entries) => upsertTurn(entries, { id: result.jobId, request: text,
           job: { job_id: result.jobId, session_id: activeSession,
             job_status: "queued", poll_after_ms: result.pollAfterMs }, demo: false }));
+        refreshSessions();
         setRequestText("");
       }
       else {
@@ -448,6 +521,7 @@ export default function HomePage() {
       setError("");
       return;
     }
+    cancelHistory();
     const loadId = ++sessionLoadRef.current;
     gallerySelectionRef.current.reset(session.session_id);
     setTermSearch(null);
@@ -464,13 +538,19 @@ export default function HomePage() {
     setSessionId(session.session_id);
     sessionIdRef.current = session.session_id;
     setSessions((items) => [session, ...items.filter((item) => item.session_id !== session.session_id)]);
+    refreshSessions();
     setTurns([]);
     setJob(null);
     try {
-      const restored = await restoreConversation({ sessionId: session.session_id });
+      const controller = new AbortController();
+      restoreController.current = controller;
+      const restored = await restoreConversation({ sessionId: session.session_id, signal: controller.signal });
       if (loadId !== sessionLoadRef.current) return;
+      if (restored.session?.created_at) setSessions(current => mergeSessions(current, [restored.session]));
+      setHistoryPage(restored);
+      setReferenceJob(restored.previousReferenceJob);
       setTurns(restored.turns);
-      gallerySelectionRef.current.live(restored.turns.at(-1)?.job || null, restored.sessionId);
+      gallerySelectionRef.current.live(restored.referenceJob || restored.turns.at(-1)?.job || null, restored.sessionId);
       setConversationReady(true);
       setActiveGalleryTermId(null);
       setBoardView("results");
@@ -493,6 +573,7 @@ export default function HomePage() {
       setMobilePanel("conversation");
       return;
     }
+    cancelHistory();
     const loadId = ++sessionLoadRef.current;
     gallerySelectionRef.current.reset(null);
     sessionIdRef.current = null;
@@ -515,6 +596,7 @@ export default function HomePage() {
       setSessions((items) => [created, ...items.filter((item) => item.session_id !== created.session_id)]);
       setSessionId(created.session_id);
       sessionIdRef.current = created.session_id;
+      refreshSessions();
       gallerySelectionRef.current.reset(created.session_id);
       setTurns([]);
       setJob(null);
@@ -546,7 +628,9 @@ export default function HomePage() {
       } else {
         await deleteConversation(session.session_id);
         setSessions(items => items.filter(item => item.session_id !== session.session_id));
+        refreshSessions();
         if (sessionIdRef.current === session.session_id) {
+          cancelHistory();
           ++sessionLoadRef.current;
           pollerRef.current?.stop();
           sessionIdRef.current = null;
@@ -603,6 +687,7 @@ export default function HomePage() {
                 onClick={() => removeSession(session)}>{deletingId === session.session_id ? "삭제 중…" : "삭제"}</button>
               </div>
             ))}
+          {!uiDemoEnabled && sessionPage.hasMore && <button type="button" className="history-sidebar-entry" disabled={sessionsLoading} onClick={loadMoreSessions}>대화 더 불러오기</button>}
           {!uiDemoEnabled && !sessions.length && <p className="history-sidebar-empty">아직 대화 세션이 없습니다.</p>}
           {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
         </nav>
@@ -780,6 +865,8 @@ export default function HomePage() {
           {restoreError && <div role="alert"><p>{restoreError}</p>
             <button type="button" onClick={() => setRestoreAttempt((value) => value + 1)}>대화 다시 불러오기</button></div>}
           {storageFailed && <p className="form-error" role="status">브라우저 기록을 읽거나 쓰지 못했습니다. 일부 기록이 복원되지 않을 수 있지만 현재 대화는 계속 사용할 수 있습니다.</p>}
+          {!uiDemoEnabled && historyPage.hasMore && <button type="button" disabled={olderLoading} onClick={loadOlder}>이전 대화 불러오기</button>}
+          {olderError && <p role="alert">{olderError}</p>}
           <ConversationPanel key={sessionId || "no-session"} turns={turns} onChoice={fillInput} onRetry={fillInput}
             retryDisabled={conversationBusy} onSelect={openTurn} selectedTurnId={historyTurnId} />
           <TermGuide term={termGuide} />

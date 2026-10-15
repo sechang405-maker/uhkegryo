@@ -29,7 +29,7 @@ async function submitScenario(mode) {
     historyLoaderRef: { current: { cancel: noop } },
     validateRequestText: () => null,
     termSearchControllerRef: { current: null },
-    resetSketchSearches: noop,
+    resetSketchSearches: noop, refreshSessions: noop,
     setMobilePanel: (value) => { state.panel = value; },
     setTermGuide: noop, uiDemoEnabled: false,
     pollerRef: { current: null }, pendingRequestRef: { current: "" }, selectedJobRef: { current: null },

@@ -16,7 +16,7 @@ test("완료 2건 복원 후 이전 기록만 재조회해 정상 썸네일을 �
   const enriched = (j) => ({ ...j, result: { reference_plan: { terms: [{ pins: [{ ...pin, thumbnail_url: "https://i.pinimg.com/fixture.jpg" }] }] } } });
   const calls = [], fetchImpl = async (url, options) => {
     calls.push(url); assert.equal(options.credentials, "include"); assert.equal(options.cache, "no-store");
-    return response(url.includes("offset=") ? { items: stored } : url.includes("/api/jobs/")
+    return response(url.includes("latest=true") ? { items: stored } : url.includes("/api/jobs/")
       ? enriched(stored.find((j) => url.endsWith(j.job_id))) : { items: [{ session_id: sid }], session_id: sid });
   };
   const { turns } = await restoreConversation({ fetchImpl });
@@ -50,16 +50,15 @@ test("서버 페이지 전체 복원, 중복 제거, 마지막 결과 enrichment
     assert.equal(options.credentials, "include"); assert.equal(options.cache, "no-store");
     assert.equal(options.signal, controller.signal);
     if (url === "/api/sessions?limit=1") return response({ items: [{ session_id: sid }] });
-    if (url.endsWith("offset=0")) return response({ items: Array.from({ length: 100 }, (_, i) => job(`${i}`)) });
-    if (url.endsWith("offset=100")) return response({ items: [job("99"), job("100")] });
+    if (url.includes("latest=true")) return response({ items: Array.from({ length: 20 }, (_, i) => job(`${81+i}`)), has_more: true, next_before_job_id: "81" });
     if (url.endsWith("/jobs/100")) return response({ ...job("100"), enriched: true });
     return response({ session_id: sid });
   } });
-  assert.equal(restored.sessionId, sid); assert.equal(restored.turns.length, 101);
-  assert.deepEqual(restored.turns.map((turn) => turn.id), Array.from({ length: 101 }, (_, i) => `${i}`));
+  assert.equal(restored.sessionId, sid); assert.equal(restored.turns.length, 20);
+  assert.deepEqual(restored.turns.map((turn) => turn.id), Array.from({ length: 20 }, (_, i) => `${81+i}`));
   assert.equal(restored.turns.at(-1).job.enriched, true);
   assert.equal(answerForJob(restored.turns[0].job), "통합 설명");
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 4);
 });
 
 test("미인증·빈 목록은 빈 대화이며 새 ID를 후속 제출에 명시", async () => {
@@ -86,9 +85,9 @@ test("세션 목록 복원과 선택한 세션의 대화만 복원", async () =>
   const items = [job("selected", "completed")].map((entry) => ({ ...entry, session_id: sid }));
   const fetchImpl = async (url) => {
     calls.push(url);
-    if (url === "/api/sessions?limit=100&offset=0") return response({ items: sessions });
+    if (url === "/api/sessions?limit=20&offset=0") return response({ items: sessions });
     if (url === `/api/sessions/${sid}`) return response(sessions[1]);
-    if (url === `/api/sessions/${sid}/jobs?limit=100&offset=0`) return response({ items });
+    if (url === `/api/sessions/${sid}/jobs?latest=true&limit=20`) return response({ items });
     if (url === "/api/jobs/selected") return response(items[0]);
     throw new Error(`unexpected request ${url}`);
   };
@@ -102,7 +101,7 @@ test("세션 목록 복원과 선택한 세션의 대화만 복원", async () =>
 
 test("세션 소유 쿠키가 없으면 세션 목록은 빈 목록으로 시작", async () => {
   const listed = await listConversations({ fetchImpl: async (url) => {
-    assert.equal(url, "/api/sessions?limit=100&offset=0");
+    assert.equal(url, "/api/sessions?limit=20&offset=0");
     return response({}, 401);
   } });
   assert.deepEqual(listed, []);
@@ -124,7 +123,7 @@ test("목록 장애·이력 권한 오류·손상 데이터는 복원 실패하�
   }
   for (const bad of [response({}, 401), response({}, 404), response({ items: [job("x", "invalid")] })]) {
     await assert.rejects(restoreConversation({ fetchImpl: async (url) => url.includes("limit=1")
-      && !url.includes("offset=") ? response({ items: [{ session_id: sid }] }) : url.includes("offset=") ? bad : response({}) }));
+      && !url.includes("offset=") ? response({ items: [{ session_id: sid }] }) : url.includes("latest=true") ? bad : response({}) }));
   }
   await assert.rejects(restoreConversation({ fetchImpl: async () => { throw new Error("offline"); } }));
 });
@@ -145,3 +144,4 @@ test("복원된 여러 진행 turn이 각각 종결·중단되고 cleanup은 늦
   assert.equal(turns.length, 3); assert.equal(turns[1].polling_stopped, true);
   assert.equal(answerForJob(turns[0].job), "통합 설명");
 });
+
