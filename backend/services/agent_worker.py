@@ -55,6 +55,7 @@ class AgentJobWorker:
         adapter: AgentInterpretationAdapter | None = None,
         mcp_gateway: McpToolGateway | None = None,
         widget_client: PinterestWidgetClient | None = None,
+        search_json_loader=None,
         local_search_url: str = '',
         heartbeat_interval: float = 10,
         tracer: JobTracer | None = None,
@@ -67,6 +68,7 @@ class AgentJobWorker:
         self._adapter = adapter
         self._mcp_gateway = mcp_gateway
         self._widget_client = widget_client
+        self._search_json_loader = search_json_loader
         self._local_search_url = local_search_url
         self._search_slots = asyncio.Semaphore(SEARCH_CONCURRENCY)
         self._heartbeat_interval = heartbeat_interval
@@ -412,6 +414,7 @@ class AgentJobWorker:
                         provider = SearXNGPinterestSearchProvider(
                             base_url=self._local_search_url,
                             exclude_pin_ids=tuple(exclude_pin_ids.get(term_id, ())),
+                            **({'json_loader': self._search_json_loader} if self._search_json_loader is not None else {}),
                         )
                         outcome = await provider.search(role, tuple(term.card['query_fragments']))
                         if excluded_board_pins:
@@ -583,10 +586,21 @@ class AgentJobWorker:
         return True
 
 
-async def run_worker(snapshot: CatalogSnapshot) -> None:
+async def run_worker(snapshot: CatalogSnapshot, *, http_resources=None) -> None:
     """Keep the polling worker alive without making API startup depend on the DB."""
     from backend.shared.config import get_settings
     from backend.shared.database import close_pool, create_pool
+    from backend.services.public_http import PublicHttpResources, current_resources
+
+    if http_resources is None:
+        http_resources = current_resources()
+    if http_resources is None:
+        # Standalone worker owns its transport for the entire polling lifecycle.
+        resources = PublicHttpResources()
+        try:
+            return await run_worker(snapshot, http_resources=resources)
+        finally:
+            await resources.aclose()
 
     while True:
         pool = None
@@ -597,9 +611,10 @@ async def run_worker(snapshot: CatalogSnapshot) -> None:
             pool = await create_pool(settings)
             local_codex = settings.llm_backend == 'codex-cli'
             mcp_gateway = None if local_codex else McpToolGateway(mcp_url=settings.mcp_base_url)
-            widget_client = PinterestWidgetClient() if not local_codex or settings.searxng_base_url else None
+            widget_client = http_resources.worker_widget if not local_codex or settings.searxng_base_url else None
             await AgentJobWorker(
                 pool, snapshot, mcp_gateway=mcp_gateway, widget_client=widget_client,
+                search_json_loader=http_resources.search_json,
                 local_search_url=settings.searxng_base_url if local_codex else '',
             ).run_forever(
                 concurrency=settings.worker_concurrency

@@ -14,3 +14,11 @@
 
 
 Pin statuses and queue/deadline semantics are defined in [API contract](./specs/api-contract.md#widget-pin-availability-and-scheduling). Temporary failures return `unavailable`, never `deleted`; shared admission waits for capacity rather than dropping the tail of an 80-Pin board.
+
+## Application HTTP ownership
+
+The API lifespan owns one `PublicHttpResources` instance and HTTP client with at most 16 connections/16 keepalive connections. Worker polling, result GET hydration, and term search reuse this transport. Widget requests retain a 10-second timeout; SearXNG requests retain 15 seconds and the existing loopback forwarding headers. Standalone `run_worker` owns and closes its resources when no application lifespan has installed them. Injected provider loaders and existing standalone route test hooks remain supported; the legacy standalone default loaders still use a request-scoped HTTP context manager.
+
+Worker and term-search enrichment share a cancellation-owning widget client; GET readers use a separate shielded widget client. Both share only the bounded positive public URL cache (60-second TTL, 256-entry LRU) and a global eight-slot Widget semaphore. A completed worker lookup therefore avoids another lookup on the first GET or card search. Simultaneous worker and GET misses can perform separate requests so cancelling the worker cannot cancel a GET reader. Search responses, queries, sessions, jobs, answers, raw Widget payloads and image bytes never enter this shared cache. Search itself is not cached.
+
+Shutdown stops the polling worker, removes application registration, cancels/awaits outstanding search and both kinds of Widget work, clears public URLs, and closes the transport once. Resource close is idempotent. The task 1 admission closure checks and per-I/O/whole-operation deadlines remain in place.

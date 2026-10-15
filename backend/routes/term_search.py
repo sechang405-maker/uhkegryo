@@ -26,6 +26,10 @@ class TermSearchRequest(BaseModel):
 
 
 def get_search_provider(suffix: str) -> PinterestWidgetProvider:
+    from backend.services.public_http import current_resources
+    resources = current_resources()
+    if resources is not None:
+        return resources.search_provider(get_settings().searxng_base_url, suffix)
     return PinterestWidgetProvider(
         SearXNGPinterestSearchProvider(base_url=get_settings().searxng_base_url, suffix=suffix),
         PinterestWidgetClient(),

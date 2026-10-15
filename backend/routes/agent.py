@@ -59,6 +59,10 @@ def close_result_tracer() -> None:
 
 
 def get_widget_client() -> PinterestWidgetClient:
+    from backend.services.public_http import current_resources
+    resources = current_resources()
+    if resources is not None:
+        return resources.result_widget
     loop = asyncio.get_running_loop()
     if loop not in _widget_clients:
         _widget_clients[loop] = PinterestWidgetClient(shared_readers=True)

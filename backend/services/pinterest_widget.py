@@ -39,7 +39,9 @@ class PinterestWidgetClient:
                  ttl_seconds: float = 60, max_entries: int = 256,
                  concurrency: int = 8, max_pending: int = 64,
                  timeout_seconds: float = 10, clock: Callable[[], float] = monotonic,
-                 shared_readers: bool = False, total_timeout_seconds: float = 120) -> None:
+                 shared_readers: bool = False, total_timeout_seconds: float = 120,
+                 public_cache: OrderedDict | None = None,
+                 slots: asyncio.Semaphore | None = None) -> None:
         if min(ttl_seconds, max_entries, concurrency, max_pending, timeout_seconds, total_timeout_seconds) <= 0:
             raise ValueError('Widget limits must be positive')
         self._json_loader = json_loader or _load_widget_json
@@ -48,18 +50,19 @@ class PinterestWidgetClient:
         self._clock = clock
         self._shared_readers = shared_readers
         self._closed = False
-        self._slots = asyncio.Semaphore(concurrency)
+        self._slots = slots if slots is not None else asyncio.Semaphore(concurrency)
         self._admission = asyncio.Semaphore(max_pending)
         self._concurrency = concurrency
         self._total_timeout = total_timeout_seconds
         # Only validated public URL strings; never jobs, owners, payloads or image bytes.
-        self._cache: OrderedDict[str, tuple[float, str]] = OrderedDict()
+        self._cache: OrderedDict[str, tuple[float, str]] = public_cache if public_cache is not None else OrderedDict()
         self._inflight: dict[str, asyncio.Task] = {}
+        self._owned_tasks: set[asyncio.Task] = set()
 
     async def aclose(self) -> None:
         # Close admission before cancellation releases capacity to queued readers.
         self._closed = True
-        tasks = list(self._inflight.values())
+        tasks = list(self._inflight.values()) + list(self._owned_tasks)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -123,7 +126,12 @@ class PinterestWidgetClient:
             return cached[1]
         if not self._shared_readers:
             # Worker jobs own their fetches: cancelling one job must not cancel another.
-            return await self._fetch(pin_id)
+            task = asyncio.create_task(self._fetch(pin_id))
+            self._owned_tasks.add(task)
+            try:
+                return await task
+            finally:
+                self._owned_tasks.discard(task)
         task = self._inflight.get(pin_id)
         if task is None:
             await self._admission.acquire()

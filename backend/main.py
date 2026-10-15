@@ -17,6 +17,7 @@ from backend.shared.auth import set_session_cookie
 from backend.services.catalog_repository import CatalogLoadError, load_catalog
 from backend.shared.config import get_settings, resolve_term_cards_dir
 from backend.services.agent_worker import run_worker
+from backend.services.public_http import PublicHttpResources, install_resources, remove_resources
 from backend.services.failure_mapping import public_failure
 from backend.schemas.enums import FailureCode
 
@@ -30,12 +31,17 @@ async def lifespan(app: FastAPI):
     except CatalogLoadError as error:
         raise RuntimeError(f"CATALOG_INVALID_AT_STARTUP: {error}") from error
     app.state.term_search_slots = asyncio.Semaphore(2)
+    resources = PublicHttpResources()
+    install_resources(resources)
+    app.state.public_http = resources
     worker_task = asyncio.create_task(run_worker(app.state.catalog))
     try:
         yield
     finally:
         worker_task.cancel()
         await asyncio.gather(worker_task, return_exceptions=True)
+        remove_resources(resources)
+        await resources.aclose()
         await close_widget_client()
         await asyncio.to_thread(close_result_tracer)
 
