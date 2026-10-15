@@ -300,6 +300,32 @@ def test_worker_stores_clarification_as_completed(monkeypatch, snapshot_factory)
     )
 
 
+@pytest.mark.parametrize('identity,phrase,posture',[
+    ('pose_seated_two_hand_aiming','앉아쏴','seated pose'),
+    ('pose_standing_two_hand_aiming','서서쏴','standing pose'),
+])
+def test_worker_searches_both_compound_conditions(monkeypatch,identity,phrase,posture):
+    from pathlib import Path
+    from backend.services.catalog_repository import load_catalog
+    snapshot=load_catalog(Path(__file__).parents[2]/'docs/domains/illustration-reference/term-cards')
+    output=InterpretationOutput(interpretation_state='select_terms',answer_text='자세와 조준을 함께 참고하세요.',
+        selections=[dict(role='pose',term_id=identity,evidence=[phrase],confidence=.9)])
+    adapter,jobs,recovery=FakeAdapter(output),FakeJobs({**JOB,'request_text':phrase+' 자세 레퍼런스를 찾아줘'}),FakeRecovery()
+    captured=[]
+    class Search:
+        def __init__(self,**kwargs):pass
+        async def search(self,role,fragments):
+            captured.append(fragments)
+            return RoleSearchOutcome(role=role)
+    monkeypatch.setattr(agent_worker,'SearXNGPinterestSearchProvider',Search)
+    worker=_worker(monkeypatch,jobs,recovery,snapshot,adapter)
+    worker._local_search_url='http://127.0.0.1:8080'
+    _run(worker.run_once())
+    assert len(captured)==1 and posture in ' '.join(captured[0]) and 'rifle aiming' in captured[0]
+    assert jobs.writes[-1][1].reference_plan.terms[0].term_id==identity
+    assert len(adapter.calls)==1 and adapter.tool_requests==[] and recovery.failures==[]
+
+
 def test_worker_guidance_uses_single_interpretation_without_search(monkeypatch, snapshot_factory):
     output = InterpretationOutput(interpretation_state='needs_clarification',
         clarification_type='catalog_limitation', unresolved_constraints=['조합 미지원'],

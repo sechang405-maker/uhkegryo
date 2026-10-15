@@ -1,6 +1,24 @@
 {
   "dataset_name": "illustration_reference_master_term_cards",
-  "dataset_version": "0.8-json-runtime-catalog-reviewed",
+  "dataset_version": "0.9-explicit-pose-compositions",
+  "pose_compositions": [
+    {
+      "term_id": "pose_seated_two_hand_aiming",
+      "base_term_id": "pose_sitting",
+      "action_term_id": "pose_action_two_hand_aiming",
+      "label_ko": "앉아서 양손 조준",
+      "label_en": "seated two-handed aiming",
+      "aliases_ko": ["앉아쏴", "앉아 쏴"]
+    },
+    {
+      "term_id": "pose_standing_two_hand_aiming",
+      "base_term_id": "pose_standing",
+      "action_term_id": "pose_action_two_hand_aiming",
+      "label_ko": "서서 양손 조준",
+      "label_en": "standing two-handed aiming",
+      "aliases_ko": ["서서쏴", "서서 쏴"]
+    }
+  ],
   "status": "fully_reviewed_runtime_approved",
   "purpose": "캐주얼 캐릭터 일러스트 레퍼런스 해석 Agent의 런타임 TERM_CARD 카탈로그입니다. index와 categories에 적힌 5개 JSON 파일을 함께 검증하고 메모리에 로드해 런타임 용어 선택에 사용합니다.",
   "source_documents": [

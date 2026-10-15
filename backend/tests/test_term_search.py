@@ -73,6 +73,21 @@ def test_ac01_real_provider_and_url_use_same_suffix(search_setup, suffix):
     assert [pin["pin_id"] for pin in result["pins"]] == [str(i) for i in range(1, 9)]
     assert all(pin["thumbnail_url"] and pin["status"] == "available" for pin in result["pins"])
     assert response.headers["cache-control"] == "no-store"
+    assert app.state.catalog == before
+
+
+@pytest.mark.parametrize('suffix',['drawing','sketch','mannequinization'])
+def test_composite_research_keeps_posture_and_action(search_setup,monkeypatch,suffix):
+    from pathlib import Path
+    from backend.services.catalog_repository import load_catalog
+    snapshot=load_catalog(Path(__file__).parents[2]/'docs/domains/illustration-reference/term-cards')
+    monkeypatch.setattr(app.state,'catalog',snapshot)
+    before=copy.deepcopy(snapshot)
+    response=TestClient(app).post('/api/term-search',json={'term_id':'pose_seated_two_hand_aiming','suffix':suffix})
+    assert response.status_code==200
+    query=search_setup.queries[0]['q']
+    assert 'seated pose' in query and 'rifle aiming' in query and query.endswith(suffix)
+    assert response.json()['label_ko']=='앉아서 양손 조준'
     assert "set-cookie" not in response.headers
     assert app.state.catalog == before
 

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.schemas.enums import Role
+from backend.services.catalog_composition import pose_compositions
 
 REQUIRED_CARD_FIELDS = (
     "term_id",
@@ -177,6 +178,16 @@ def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
     direct_disabled = psc.get("direct_search_disabled_term_ids", []) or []
     if not isinstance(direct_disabled, list):
         raise CatalogLoadError("pinterest_search_contract.direct_search_disabled_term_ids는 배열이어야 한다")
+
+    try:
+        combined, combined_feedback = pose_compositions(
+            index_data.get('pose_compositions', []), active_cards, feedback, direct_disabled)
+    except ValueError as error:
+        raise CatalogLoadError(str(error)) from error
+    active_cards.update(combined)
+    feedback.update(combined_feedback)
+    if combined:
+        role_terms[Role.POSE].extend(combined)
 
     return CatalogSnapshot(
         dataset_version=str(index_data.get("dataset_version", "unknown")),

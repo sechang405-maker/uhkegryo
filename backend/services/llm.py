@@ -705,6 +705,11 @@ def format_active_cards_json(snapshot: CatalogSnapshot) -> str:
                     "reference_checkpoints_ko": feedback.get("reference_checkpoints_ko", card.get("look_for", [])),
                 }
             )
+    for candidate in active_cards:
+        card = snapshot.active_cards[candidate['term_id']]
+        if card.get('component') == 'composite':
+            candidate['components'] = card['components']
+            candidate['aliases_ko'] = card['aliases_ko']
     return json.dumps({"active_cards": active_cards}, ensure_ascii=False, separators=(",", ":"))
 
 
