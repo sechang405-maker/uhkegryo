@@ -36,6 +36,8 @@ WORKER_CONCURRENCY = 5
 POLL_INTERVAL_SECONDS = 1
 SEARCH_RETRY_DELAYS_SECONDS = (1, 2)
 SEARCH_CONCURRENCY = 3
+LOCAL_SEARCH_IO_TIMEOUT_SECONDS = 25
+LOCAL_SEARCH_TOTAL_TIMEOUT_SECONDS = 110
 MAX_MCP_TOOL_CALLS = 16
 PINTEREST_SEARCH_TOOL = "search_pinterest_pins"
 MCP_TOOL_REFRESH_INTERVAL_SECONDS = 3 * 60 * 60
@@ -405,8 +407,8 @@ class AgentJobWorker:
             role = term.selection.role
             term_id = term.selection.term_id
             try:
-                async with asyncio.timeout(25):
-                    async with self._search_slots:
+                async with self._search_slots:
+                    async with asyncio.timeout(LOCAL_SEARCH_IO_TIMEOUT_SECONDS):
                         provider = SearXNGPinterestSearchProvider(
                             base_url=self._local_search_url,
                             exclude_pin_ids=tuple(exclude_pin_ids.get(term_id, ())),
@@ -423,7 +425,20 @@ class AgentJobWorker:
                 return term_id, RoleSearchOutcome(role=role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
 
         # gather propagates parent cancellation to each bounded search and widget lookup.
-        return dict(await asyncio.gather(*(search(term) for term in resolution.terms)))
+        outcomes = {term.selection.term_id: RoleSearchOutcome(
+            role=term.selection.role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
+            for term in resolution.terms}
+        async def collect(term):
+            term_id, outcome = await search(term)
+            outcomes[term_id] = outcome
+        try:
+            async with asyncio.timeout(LOCAL_SEARCH_TOTAL_TIMEOUT_SECONDS):
+                async with asyncio.TaskGroup() as group:
+                    for term in resolution.terms:
+                        group.create_task(collect(term))
+        except TimeoutError:
+            pass
+        return outcomes
 
     async def _search_backoff(self, role: Role, search_attempt: int, reason: str) -> None:
         delay = SEARCH_RETRY_DELAYS_SECONDS[search_attempt - 1]

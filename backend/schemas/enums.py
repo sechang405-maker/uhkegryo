@@ -97,6 +97,7 @@ class PinStatus(StrEnum):
 
     AVAILABLE = "available"
     DELETED = "deleted"
+    UNAVAILABLE = "unavailable"
 
 
 class InterpretationState(StrEnum):

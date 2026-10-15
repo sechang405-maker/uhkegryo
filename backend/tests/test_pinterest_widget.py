@@ -63,7 +63,7 @@ def test_widget_failure_or_missing_image_only_deletes_affected_pin():
 
     outcome = RoleSearchOutcome(role=Role.BODY, pins=[_pin("1"), _pin("2"), _pin("3"), _pin("4")])
     result = asyncio.run(PinterestWidgetClient(json_loader=load).enrich_outcome(outcome))
-    assert [pin.status for pin in result.pins] == [PinStatus.AVAILABLE] + [PinStatus.DELETED] * 3
+    assert [pin.status for pin in result.pins] == [PinStatus.AVAILABLE] + [PinStatus.UNAVAILABLE] * 3
     assert [pin.thumbnail_url for pin in result.pins] == ["https://i.pinimg.com/ok.jpg"] + [None] * 3
     assert all(pin.status is PinStatus.AVAILABLE for pin in outcome.pins)
 
@@ -239,8 +239,8 @@ def test_concurrent_requests_coalesce_limit_and_cancel_one_waiter():
         gate.set()
         result, overflow = await asyncio.gather(second,more)
         assert result.result.reference_plan.terms[0].pins[0].status is PinStatus.AVAILABLE
-        assert calls == 3
-        assert sum(p.status is PinStatus.DELETED for p in overflow.pins) == 6
+        assert calls == 9
+        assert all(p.status is PinStatus.AVAILABLE for p in overflow.pins)
         assert not client._inflight
         await client.aclose()
         assert not client._cache
@@ -261,9 +261,9 @@ def test_failure_timeout_and_invalid_payload_are_not_cached():
                 return _payload('11', {'image':{'url':'http://unsafe.invalid/','width':1,'height':1}})
             return _payload('11', {'image':{'url':'https://i.pinimg.com/ok.jpg','width':1,'height':1}})
         client= PinterestWidgetClient(json_loader=load, timeout_seconds=.01)
-        for _ in range(3):
+        for expected in (PinStatus.UNAVAILABLE, PinStatus.UNAVAILABLE, PinStatus.UNAVAILABLE):
             result=await client.enrich_job(_completed_job())
-            assert result.result.reference_plan.terms[0].pins[0].status is PinStatus.DELETED
+            assert result.result.reference_plan.terms[0].pins[0].status is expected
             assert not client._cache and not client._inflight
         result=await client.enrich_job(_completed_job())
         assert result.result.reference_plan.terms[0].pins[0].status is PinStatus.AVAILABLE

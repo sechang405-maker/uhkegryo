@@ -62,7 +62,7 @@ class PinResult(BaseModel):
 
     @model_validator(mode="after")
     def _deleted_pin_has_no_thumbnail(self) -> "PinResult":
-        if self.status is PinStatus.DELETED and self.thumbnail_url is not None:
+        if self.status in (PinStatus.DELETED, PinStatus.UNAVAILABLE) and self.thumbnail_url is not None:
             raise ValueError("deleted Pin은 thumbnail_url=null이어야 한다")
         return self
 

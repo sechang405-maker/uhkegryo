@@ -11,7 +11,7 @@ import { HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
 import { getRecommendedSearchQuery } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode } from "../lib/term-search.mjs";
-import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail } from "../lib/result-view.mjs";
+import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
 import { stopTurnPolling, upsertTurn, isTurnPending } from "../lib/conversation.mjs";
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
@@ -713,7 +713,7 @@ export default function HomePage() {
                         onError={() => setFailedThumbnails((current) => ({ ...current, [`${term.term_id}:${pin.pin_id}`]: true }))}
                       />
                     </button>
-                  ) : <div className="pin-gallery-card pin-unavailable" key={pin.pin_id}>접근할 수 없는 Pin</div>)}
+                  ) : <div className="pin-gallery-card pin-unavailable" key={pin.pin_id}>{pinUnavailableMessage(pin)}</div>)}
                 </div>
               </section>
             ))}

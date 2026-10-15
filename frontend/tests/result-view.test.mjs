@@ -110,3 +110,9 @@ test("legacy category updates keep every preserved and replaced card", () => {
   }) };
   assert.deepEqual(view.renderedResultTerms(current, [{ job: previous }, { job: current }]), [bodyA, bodyB, poseA, poseB]);
 });
+
+ test("temporary and unknown pin statuses have a retry message", () => {
+  assert.equal(view.pinUnavailableMessage({status: "unavailable"}), "이미지를 일시적으로 불러오지 못했습니다. 다시 시도해 주세요.");
+  assert.equal(view.pinUnavailableMessage({status: "future-status"}), view.pinUnavailableMessage({status: "unavailable"}));
+  assert.equal(view.pinUnavailableMessage({status: "deleted"}), "삭제된 핀입니다.");
+ });

@@ -19,6 +19,10 @@ WIDGET_URL = "https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids={pin_i
 JsonLoader = Callable[[str], Awaitable[object]]
 
 
+class WidgetUnavailable(Exception):
+    """A transient lookup failure; never evidence that a Pin was deleted."""
+
+
 class PinterestWidgetProvider:
     """Decorate a search provider while keeping its role/fragment contract."""
 
@@ -35,20 +39,26 @@ class PinterestWidgetClient:
                  ttl_seconds: float = 60, max_entries: int = 256,
                  concurrency: int = 8, max_pending: int = 64,
                  timeout_seconds: float = 10, clock: Callable[[], float] = monotonic,
-                 shared_readers: bool = False) -> None:
-        if min(ttl_seconds, max_entries, concurrency, max_pending, timeout_seconds) <= 0:
+                 shared_readers: bool = False, total_timeout_seconds: float = 120) -> None:
+        if min(ttl_seconds, max_entries, concurrency, max_pending, timeout_seconds, total_timeout_seconds) <= 0:
             raise ValueError('Widget limits must be positive')
         self._json_loader = json_loader or _load_widget_json
         self._ttl, self._max_entries = ttl_seconds, max_entries
         self._max_pending, self._timeout = max_pending, timeout_seconds
         self._clock = clock
         self._shared_readers = shared_readers
+        self._closed = False
         self._slots = asyncio.Semaphore(concurrency)
+        self._admission = asyncio.Semaphore(max_pending)
+        self._concurrency = concurrency
+        self._total_timeout = total_timeout_seconds
         # Only validated public URL strings; never jobs, owners, payloads or image bytes.
         self._cache: OrderedDict[str, tuple[float, str]] = OrderedDict()
         self._inflight: dict[str, asyncio.Task] = {}
 
     async def aclose(self) -> None:
+        # Close admission before cancellation releases capacity to queued readers.
+        self._closed = True
         tasks = list(self._inflight.values())
         for task in tasks:
             task.cancel()
@@ -58,9 +68,7 @@ class PinterestWidgetClient:
 
     async def enrich_outcome(self, outcome: RoleSearchOutcome) -> RoleSearchOutcome:
         """Return at most eight Pins in their original order without changing the input."""
-        pins = await asyncio.gather(
-            *(self._lookup(pin) for pin in outcome.pins[:8])
-        )
+        pins = await self._enrich_pins(outcome.pins[:8])
         return RoleSearchOutcome(role=outcome.role, pins=pins, code=outcome.code)
 
     async def enrich_job(self, envelope: JobEnvelope) -> JobEnvelope:
@@ -72,25 +80,43 @@ class PinterestWidgetClient:
             return result
         terms = result.result.reference_plan.terms
         locations = [(term, index, pin) for term in terms for index, pin in enumerate(term.pins)]
-        enriched = await asyncio.gather(
-            *(self._lookup(pin) for _, _, pin in locations)
-        )
+        enriched = await self._enrich_pins([pin for _, _, pin in locations])
         for (term, index, _), pin in zip(locations, enriched):
             term.pins[index] = pin
         return result
 
+    async def _enrich_pins(self, pins):
+        # A bounded set of consumers admits work gradually, preserving input order.
+        results = [pin.model_copy(update={"thumbnail_url": None, "status": PinStatus.UNAVAILABLE})
+                   for pin in pins]
+        pending = iter(enumerate(pins))
+        async def consume():
+            for index, pin in pending:
+                results[index] = await self._lookup(pin)
+        try:
+            async with asyncio.timeout(self._total_timeout):
+                async with asyncio.TaskGroup() as group:
+                    for _ in range(min(self._concurrency, len(pins))):
+                        group.create_task(consume())
+        except TimeoutError:
+            pass
+        return results
+
     async def _lookup(self, pin: PinResult) -> PinResult:
         url = None
+        status = PinStatus.DELETED
         if len(pin.pin_id) <= 64 and pin.pin_id.isascii() and pin.pin_id.isdigit():
-            url = await self._url(pin.pin_id)
-        return PinResult(
-            pin_id=pin.pin_id,
-            pin_url=pin.pin_url,
-            thumbnail_url=url,
-            status=PinStatus.AVAILABLE if url else PinStatus.DELETED,
-        )
+            try:
+                url = await self._url(pin.pin_id)
+                status = PinStatus.AVAILABLE if url else PinStatus.DELETED
+            except WidgetUnavailable:
+                status = PinStatus.UNAVAILABLE
+        return PinResult(pin_id=pin.pin_id, pin_url=pin.pin_url,
+                         thumbnail_url=url, status=status)
 
     async def _url(self, pin_id: str) -> str | None:
+        if self._closed:
+            raise WidgetUnavailable()
         cached = self._cache.pop(pin_id, None)
         if cached and cached[0] > self._clock():
             self._cache[pin_id] = cached
@@ -100,27 +126,60 @@ class PinterestWidgetClient:
             return await self._fetch(pin_id)
         task = self._inflight.get(pin_id)
         if task is None:
-            if len(self._inflight) >= self._max_pending:
-                return None  # Transient overload; never cache a failure.
-            task = asyncio.create_task(self._fetch(pin_id))
-            self._inflight[pin_id] = task
+            await self._admission.acquire()
+            if self._closed:
+                self._admission.release()
+                raise WidgetUnavailable()
+            # Another reader may have admitted or completed this Pin while we waited.
+            cached = self._cache.get(pin_id)
+            task = self._inflight.get(pin_id)
+            if cached and cached[0] > self._clock():
+                self._admission.release()
+                self._cache.move_to_end(pin_id)
+                return cached[1]
+            if task is None:
+                task = asyncio.create_task(self._fetch(pin_id))
+                self._inflight[pin_id] = task
+                def finished(done):
+                    self._admission.release()
+                    # Retrieve unobserved errors if all shielded readers disconnected.
+                    if not done.cancelled():
+                        done.exception()
+                task.add_done_callback(finished)
+            else:
+                self._admission.release()
         # A disconnected reader must not cancel another reader's shared lookup.
         return await asyncio.shield(task)
 
     async def _fetch(self, pin_id: str) -> str | None:
         try:
-            async with asyncio.timeout(self._timeout):
-                async with self._slots:
+            async with self._slots:
+                if self._closed:
+                    raise WidgetUnavailable()
+                async with asyncio.timeout(self._timeout):
                     payload = await self._json_loader(WIDGET_URL.format(pin_id=pin_id))
+                if not isinstance(payload, Mapping) or not isinstance(payload.get("data"), list):
+                    raise WidgetUnavailable()
+                # Only a well-formed empty result verifies absence. Broken records
+                # and unsafe/missing images remain retryable lookup failures.
+                data = payload["data"]
+                if data and not all(isinstance(item, Mapping) and "id" in item for item in data):
+                    raise WidgetUnavailable()
                 url = _largest_image(payload, pin_id)
+                if data and not url:
+                    raise WidgetUnavailable()
+            if self._closed:
+                raise WidgetUnavailable()
             if url and len(url) <= 4096:
                 self._cache[pin_id] = (self._clock() + self._ttl, url)
                 while len(self._cache) > self._max_entries:
                     self._cache.popitem(last=False)
                 return url
+            if url:
+                raise WidgetUnavailable()
             return None
-        except Exception:
-            return None
+        except Exception as error:
+            raise WidgetUnavailable() from error
         finally:
             self._inflight.pop(pin_id, None)
 

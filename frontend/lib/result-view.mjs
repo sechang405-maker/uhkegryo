@@ -64,3 +64,7 @@ export function resultUserMessage(job) {
   return ["out_of_scope", "unsafe_input", "reference_guidance"].includes(result?.agent_status) ? result.user_message : null;
 }
 
+
+export function pinUnavailableMessage(pin) {
+  return pin.status === "deleted" ? "삭제된 핀입니다." : "이미지를 일시적으로 불러오지 못했습니다. 다시 시도해 주세요.";
+}
