@@ -105,7 +105,7 @@ def test_compact_catalog_preserves_every_card_field_and_order(catalog):
     for card in restored["active_cards"]:
         source = catalog.active_cards[card["term_id"]]
         feedback = catalog.feedback.get(card["term_id"], {})
-        assert card == {
+        expected = {
             "role": source["role"], "term_id": source["term_id"], "label_ko": source["label_ko"],
             "confidence_gate": source["confidence_gate"],
             "requires_all_of": source.get("requires_all_of") or [],
@@ -113,6 +113,9 @@ def test_compact_catalog_preserves_every_card_field_and_order(catalog):
             "plain_meaning_ko": feedback.get("plain_meaning_ko", source.get("source_answer_draft", "")),
             "reference_checkpoints_ko": feedback.get("reference_checkpoints_ko", source.get("look_for", [])),
         }
+        if source.get('component') == 'composite':
+            expected.update(components=source['components'], aliases_ko=source['aliases_ko'])
+        assert card == expected
 
 
 @pytest.mark.parametrize("version", ["uhkegryo-interpreter-v0", "uhkegryo-interpreter-v1", "uhkegryo-interpreter-v4"])
