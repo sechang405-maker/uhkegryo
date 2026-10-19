@@ -250,8 +250,8 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 .reference-checkpoints h4 { margin: 0 0 10px; color: var(--accent); font-size: 14px; }
 .composer { display: grid; flex: 0 0 auto; gap: 10px; margin-top: 0; }
 .composer label { font-size: 13px; font-weight: 700; }
-.composer-input-frame { background: var(--canvas); padding: 6px; overflow: hidden; border: 3px solid var(--accent); border-radius: 15px; }
-.composer textarea { display: block; width: 100%; resize: none; min-height: 124px; padding: 9px; border: 0; outline: none; background: transparent; color: var(--text); font-weight: 400; line-height: 1.5; }
+.composer-input-frame { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; background: var(--canvas); padding: 6px; overflow: hidden; border: 3px solid var(--accent); border-radius: 15px; }
+.composer textarea { display: block; width: 100%; min-width: 0; resize: none; min-height: 44px; max-height: max(44px, min(164px, 25dvh)); padding: 10px; border: 0; outline: none; background: transparent; color: var(--text); font-weight: 400; line-height: 1.5; }
 .composer textarea::placeholder { color: var(--text-secondary); }
 .composer textarea { scrollbar-color: var(--accent) var(--accent-surface); scrollbar-width: thin; }
 .composer textarea::-webkit-scrollbar { width: 8px; }
@@ -261,12 +261,17 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 .composer-input-frame:focus-within { border-color: var(--accent-hover); box-shadow: 0 0 0 3px rgba(228, 75, 101, .18); }
 .composer-input-frame[data-invalid="true"] { border-color: var(--danger); }
 .form-error { margin: 0; color: var(--danger); font-size: 13px; line-height: 1.4; }
-.composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.composer-footer { display: none; align-items: center; justify-content: space-between; gap: 10px; }
+.composer-footer:has(.character-count) { display: flex; }
 .character-count { color: var(--text-secondary); font-size: 12px; }
 .input-hint { display:none; color: var(--text-secondary); font-size: 12px; font-weight: 400; line-height: 1.5; }
-.composer-submit { margin-left:auto; }
+.composer .composer-submit { align-self: end; min-width: 56px; min-height: 44px; padding: 10px 12px; margin: 0; }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
-@media (min-width:761px) { .composer:has(textarea:focus) .input-hint { display:inline; } }
+@media (min-width:761px) {
+  .composer-footer { display: flex; min-height: 18px; }
+  .input-hint { display: inline; visibility: hidden; }
+  .composer:focus-within .input-hint { visibility: visible; }
+}
 .hub-menu-tip { position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%); padding: 8px 12px; border: 2px solid var(--border); border-radius: 10px; background: var(--accent-surface); color: var(--text); font-size: 12px; white-space: nowrap; visibility: hidden; }
 .mind-map-hub:hover .hub-menu-tip, .mind-map-hub:focus-visible .hub-menu-tip { visibility: visible; }
 .image-preview { width: min(92vw, 920px); max-height: 90vh; padding: 0; border: 3px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); }

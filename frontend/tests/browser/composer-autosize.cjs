@@ -1,0 +1,48 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const assert=require('node:assert/strict');
+const path=require('node:path');
+(async()=>{
+ const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE}:{})});const checks=[];
+ try{for(const mobile of [false,true]){
+  const page=await browser.newPage({viewport:mobile?{width:390,height:844}:{width:1440,height:900},isMobile:mobile,hasTouch:mobile}),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  const sid='11111111-1111-4111-8111-111111111111',jobs=[],long=Array.from({length:14},(_,i)=>`연습할 그림 ${i}`).join('\n');let submitted=0,release,started;
+  const makeJob=i=>({job_id:`aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa${i}`,session_id:sid,request_text:'그림 연습 '+i,job_status:'completed',result:{agent_status:'drawing_chat',answer_text:('큰 형태부터 연습해 보세요.\n\n').repeat(30)+'마지막 줄입니다. FINAL-END'}});jobs.push(makeJob(0));
+  await page.route('**/api/**',r=>{const p=new URL(r.request().url()).pathname;
+   if(p==='/api/local/profile')return r.fulfill({json:{persistent:true}});
+   if(p==='/api/sessions')return r.fulfill({json:{items:[{session_id:sid,created_at:'2026-10-19T00:00:00Z'}]}});
+   if(p==='/api/sessions/'+sid)return r.fulfill({json:{session_id:sid}});
+   if(p.endsWith('/jobs'))return r.fulfill({json:{items:jobs,has_more:false}});
+   if(p==='/api/agent'){const job=makeJob(++submitted);jobs.push(job);return new Promise(resolve=>{release=()=>resolve(r.fulfill({status:202,json:{job_id:job.job_id,poll_after_ms:1}}));started?.();});}
+   if(p==='/api/term-search')return r.fulfill({json:{term_id:'pose_standing',role:'pose',label_ko:'스탠딩',recommended_search_query:'standing pose drawing',pins:[],reason_codes:['PIN_RESULTS_EMPTY']}});
+   const job=jobs.find(j=>p==='/api/jobs/'+j.job_id);return job?r.fulfill({json:job}):r.abort();
+  });
+  await page.goto(process.env.APP_BASE||'http://127.0.0.1:3100');if(mobile)await page.locator('[aria-controls="conversation-panel"]').click();await page.locator('.conversation-answer').waitFor();
+  const input=page.locator('#request-text'),button=page.locator('.composer-submit');
+  const dimensions=()=>page.evaluate(()=>{const i=document.querySelector('#request-text'),b=document.querySelector('.composer-submit'),f=document.querySelector('.composer-input-frame'),s=document.querySelector('.panel-top');const ir=i.getBoundingClientRect(),br=b.getBoundingClientRect(),fr=f.getBoundingClientRect();return {height:ir.height,top:ir.top,bottom:ir.bottom,cap:Math.max(44,Math.min(164,Math.floor((visualViewport?.height||innerHeight)*.25))),overflow:getComputedStyle(i).overflowY,scrollable:i.scrollHeight>i.clientHeight,inputScrollEnd:i.scrollHeight-i.clientHeight-i.scrollTop,inside:f.contains(b)&&br.left>=fr.left&&br.right<=fr.right&&br.bottom<=fr.bottom,nonOverlap:ir.right<=br.left-4,hitHeight:br.height,scrollEnd:s.scrollHeight-s.clientHeight-s.scrollTop,padding:getComputedStyle(s).paddingBottom};});
+  const endFollowed=()=>page.waitForFunction(()=>{const s=document.querySelector('.panel-top');return s.scrollHeight-s.clientHeight-s.scrollTop<2;});
+  assert.equal((await dimensions()).height,44,'starts with one line');assert.equal(await button.isDisabled(),true);
+  await input.focus();await endFollowed();const initial=await dimensions();assert.equal(initial.inside,true);assert.equal(initial.nonOverlap,true);assert.ok(initial.hitHeight>=44);
+  if(process.env.SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.SCREENSHOT_DIR,`composer-single-${mobile?'mobile':'desktop'}.png`)});
+  await page.keyboard.insertText(long);await endFollowed();const pasted=await dimensions();assert.equal(pasted.height,pasted.cap);assert.equal(pasted.overflow,'auto');assert.equal(pasted.scrollable,true);assert.ok(pasted.inputScrollEnd<2,'paste caret stays visible');assert.ok(pasted.top<initial.top,'bottom-anchored composer grows upward');assert.ok(Math.abs(pasted.bottom-initial.bottom)<1,'input bottom stays anchored');assert.ok(pasted.scrollEnd<2,'answer end remains anchored while input grows');
+  if(process.env.SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.SCREENSHOT_DIR,`composer-expanded-${mobile?'mobile':'desktop'}.png`)});
+  await input.fill('가'.repeat(480));await page.locator('#request-count').waitFor();await endFollowed();assert.equal((await dimensions()).nonOverlap,true,'counter footer does not overlap input/button');
+  const older=await page.locator('.panel-top').evaluate(async s=>{s.scrollTop-=120;await new Promise(requestAnimationFrame);return s.scrollTop;});
+  await input.fill(long+'\n한 줄 더');await page.waitForFunction(()=>!document.querySelector('#request-count'));assert.ok(Math.abs(await page.locator('.panel-top').evaluate(s=>s.scrollTop)-older)<2,'older answer reading position is preserved');
+  await page.locator('.panel-top').evaluate(async s=>{s.scrollTop=s.scrollHeight;await new Promise(requestAnimationFrame);});
+  await input.fill('짧게');assert.equal((await dimensions()).height,44,'deletion shrinks');await input.press('Shift+Enter');assert.equal(await input.inputValue(),'짧게\n');assert.ok((await dimensions()).height>44);assert.equal(submitted,0);
+  await input.fill('한글');await input.dispatchEvent('compositionstart');await input.dispatchEvent('keydown',{key:'Enter',code:'Enter',keyCode:229,isComposing:true,bubbles:true,cancelable:true});assert.equal(submitted,0);await input.dispatchEvent('compositionend');
+  await input.press('Enter');await page.waitForFunction(()=>document.querySelector('.composer-submit').disabled&&document.querySelector('.composer-submit').textContent.includes('전송 중'));
+  assert.equal(submitted,1);assert.equal((await dimensions()).inside,true);assert.equal((await dimensions()).nonOverlap,true);release();await page.waitForFunction(()=>!document.querySelector('#request-text').disabled);assert.equal(await input.inputValue(),'');assert.equal((await dimensions()).height,44,'accepted send resets height');
+  await input.fill('키보드 전송');await input.press('Tab');await button.evaluate(b=>{if(document.activeElement!==b)throw Error('send must be keyboard focusable after textarea');});await button.press('Space');await page.waitForFunction(()=>document.querySelector('.composer-submit').disabled);assert.equal(submitted,2);release();await page.waitForFunction(()=>!document.querySelector('#request-text').disabled);
+  await input.fill('버튼 클릭 전송');const pointerStarted=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('pointer submit did not start')),5000);started=()=>{clearTimeout(timer);resolve();};});await button.click();await pointerStarted;assert.equal(submitted,3);release();await page.waitForFunction(()=>!document.querySelector('#request-text').disabled);
+  await input.fill('답변을 읽은 뒤 전송');await page.locator('.conversation-answer').last().locator('p').last().click();
+  const outsideStarted=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('outside-focus pointer submit did not start')),5000);started=()=>{clearTimeout(timer);resolve();};});await button.click();await outsideStarted;assert.equal(submitted,4);release();await page.waitForFunction(()=>!document.querySelector('#request-text').disabled);
+  await input.fill(long);await page.setViewportSize(mobile?{width:320,height:500}:{width:800,height:390});await page.waitForFunction(()=>parseFloat(document.querySelector('#request-text').style.height)<=Math.max(44,Math.min(164,Math.floor((visualViewport?.height||innerHeight)*.25))));await endFollowed();const resized=await dimensions();assert.equal(resized.height,resized.cap);assert.equal(resized.nonOverlap,true);
+  if(mobile)await page.locator('[aria-controls="reference-panel"]').click();await page.locator('.term-graph-node[data-node-id="pose_standing"]').click();await page.locator('.term-graph-actions button').last().click();await page.locator('[data-gallery-term-id="pose_standing"]').waitFor({state:'attached'});await page.goBack();if(mobile)await page.locator('[aria-controls="conversation-panel"]').click();await page.waitForFunction(value=>document.querySelector('#request-text').value===value,long);assert.equal((await dimensions()).height,(await dimensions()).cap,'restored draft resizes');
+  await page.reload();if(mobile)await page.locator('[aria-controls="conversation-panel"]').click();await page.locator('.conversation-answer').last().waitFor();assert.equal(await input.inputValue(),'');assert.equal((await dimensions()).height,44,'saved conversation restores with one-line input');
+  await page.locator('.panel-top').evaluate(s=>{s.scrollTop=s.scrollHeight;});assert.ok((await dimensions()).scrollEnd<2);assert.equal((await dimensions()).padding,'16px');
+  const last=await page.locator('.conversation-answer').last().evaluate(a=>{const p=a.querySelector('.answer-prose p:last-child'),r=p.getBoundingClientRect(),s=document.querySelector('.panel-top').getBoundingClientRect(),hit=document.elementFromPoint(r.x+4,r.bottom-4);return r.bottom<s.bottom&&!!hit&&a.contains(hit);});assert.equal(last,true,'last answer remains readable');assert.deepEqual(errors,[]);checks.push({mobile,initialHeight:initial.height,maxHeight:pasted.height,resizedMax:resized.height,direction:'upward from fixed bottom',sendCalls:submitted});await page.close();
+ }console.log(JSON.stringify({checks,pasteAndShrink:true,loading:true,keyboardAndIME:true,restoreAndResize:true,lastAnswerReadable:true}));
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

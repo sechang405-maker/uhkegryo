@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { countCharacters, createSubmissionController, validateRequestText, shouldSubmitOnEnter } from "../lib/agent-submit.mjs";
+import { resizeComposerInput, createScrollEndAnchor } from "../lib/composer-autosize.mjs";
 import { createGallerySelection } from "../lib/gallery-selection.mjs";
 import { createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, ensureLocalProfile, deleteConversation, DELETE_CONFIRM } from "../lib/server-conversation.mjs";
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
@@ -176,6 +177,46 @@ export default function HomePage() {
     setStorageFailed(demoStoreRef.current.storageFailed);
     setConversationReady(true);
   }
+
+  useLayoutEffect(() => {
+    resizeComposerInput(inputRef.current, {
+      viewportHeight: window.visualViewport?.height || window.innerHeight,
+      scrollContainer: chatScrollRef.current,
+    });
+  }, [requestText, mobilePanel]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const container = chatScrollRef.current;
+    const anchor = container && createScrollEndAnchor(container);
+    const resize = () => {
+      resizeComposerInput(input, {
+        viewportHeight: window.visualViewport?.height || window.innerHeight,
+        scrollContainer: container,
+      });
+      anchor?.onResize();
+    };
+    let width = input.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (input.clientWidth !== width) { width = input.clientWidth; resize(); }
+    });
+    observer.observe(input);
+    const endObserver = new ResizeObserver(() => anchor?.onResize());
+    if (container) {
+      container.addEventListener("scroll", anchor.onScroll, { passive: true });
+      endObserver.observe(container);
+    }
+    window.addEventListener("resize", resize);
+    window.visualViewport?.addEventListener("resize", resize);
+    return () => {
+      observer.disconnect();
+      endObserver.disconnect();
+      container?.removeEventListener("scroll", anchor.onScroll);
+      window.removeEventListener("resize", resize);
+      window.visualViewport?.removeEventListener("resize", resize);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const container = chatScrollRef.current;
@@ -1012,7 +1053,7 @@ export default function HomePage() {
             ref={inputRef}
             name="request_text"
             aria-label="캐릭터 설명"
-            rows={5}
+            rows={1}
             value={requestText}
             disabled={conversationBusy}
             onCompositionStart={() => { composingRef.current = true; }}
@@ -1031,16 +1072,16 @@ export default function HomePage() {
             aria-invalid={Boolean(inputError)}
             aria-describedby={`request-limit${requestLength >= 450 ? " request-count" : ""}${inputError ? " request-error" : ""}`}
           />
+            <button className="composer-submit" type="submit" aria-busy={isSubmitting}
+              disabled={conversationBusy || Boolean(validateRequestText(requestText))}>
+              {isSubmitting ? "전송 중…" : "전송"}
+            </button>
           </div>
           <span id="request-limit" className="sr-only">최대 500자까지 입력할 수 있습니다.</span>
           {inputError && <p id="request-error" className="form-error" role="alert">{inputError}</p>}
           <div className="composer-footer">
             <span id="request-hint" className="input-hint">Enter로 검색 · Shift+Enter로 줄바꿈</span>
             {requestLength >= 450 && <span id="request-count" className="character-count" role="status">{requestLength} / 500</span>}
-            <button className="composer-submit" type="submit"
-              disabled={conversationBusy || Boolean(validateRequestText(requestText))}>
-              {isSubmitting ? "전송 중…" : "전송"}
-            </button>
           </div>
         </form>
       </aside>
