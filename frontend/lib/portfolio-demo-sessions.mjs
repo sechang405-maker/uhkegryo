@@ -63,7 +63,8 @@ export function createDemoSessionStore(storage) {
       save(); return current();
     },
     get storageFailed() { return storageFailed; },
-    list: () => sessions.map(({session_id,created_at})=>({session_id,created_at})),
+    list: () => sessions.map(({session_id,created_at,turns})=>({session_id,created_at,
+      title_terms: [...turns].reverse().map(hydrate).find(turn => turn.job.result?.reference_plan?.terms?.length)?.job.result.reference_plan.terms || []})),
     select(sessionId) {
       const selected = sessions.find(s => s.session_id === sessionId);
       if (!selected) return null;

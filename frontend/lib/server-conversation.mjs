@@ -54,7 +54,7 @@ export async function listConversations(options = {}) {
 }
 export function mergeSessions(current, incoming) {
   const items = new Map(current.map(item => [item.session_id, item]));
-  for (const item of incoming) if (!items.has(item.session_id)) items.set(item.session_id, item);
+  for (const item of incoming) items.set(item.session_id, { ...items.get(item.session_id), ...item });
   return [...items.values()];
 }
 export async function loadOlderConversation(options = {}) {

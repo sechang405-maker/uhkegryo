@@ -20,6 +20,25 @@ def test_calendar_cookie_expiry():
     assert auth.session_cookie_max_age(datetime(2026, 7, 31, tzinfo=timezone.utc)) == 92 * 86400
 
 
+def test_session_titles_use_latest_nonempty_cards_and_keep_owner_isolation():
+    import json
+    async def case(pool):
+        sessions, jobs = SessionRepository(pool), JobRepository(pool)
+        sid = await sessions.create_session('title-owner')
+        foreign = await sessions.create_session('other-title-owner')
+        expected = [{'term_id':'body_a','label_ko':'첫 카드'}, {'term_id':'pose_b','label_ko':'둘째 카드'}]
+        for index, terms in enumerate(([{'term_id':'old','label_ko':'이전'}], expected, [])):
+            job, _ = await jobs.submit(session_id=sid, request_text='private fixture', idempotency_key=str(uuid.uuid4()))
+            await pool.execute("UPDATE jobs SET status='completed', created_at=now()+$3*interval '1 second', final_payload_json=$2::jsonb WHERE job_id=$1::uuid",
+                               job.job_id, json.dumps({'reference_plan':{'terms':terms}}), index)
+        rows = await sessions.list_sessions('title-owner')
+        assert len(rows) == 1 and rows[0]['session_id'] == sid
+        assert rows[0]['title_terms'] == expected
+        assert 'private fixture' not in str(rows)
+        assert (await sessions.list_sessions('other-title-owner'))[0]['title_terms'] == []
+    asyncio.run(database_case(case))
+
+
 async def database_case(run, *, legacy=False):
     url = os.environ.get("MEMORY_TEST_DATABASE_URL")
     if not url:

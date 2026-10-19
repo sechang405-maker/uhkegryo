@@ -378,7 +378,11 @@ async def list_conversations(request: Request, response: Response,
                              limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)):
     sessions, _ = await _database_call(get_repositories())
     token = await _owner(request, response, sessions)
-    return {"items": await _database_call(sessions.list_sessions(token, limit, offset))}
+    from backend.services.session_titles import title_terms
+    items = await _database_call(sessions.list_sessions(token, limit, offset))
+    for item in items:
+        item['title_terms'] = title_terms(item.get('title_terms'), getattr(request.app.state, 'catalog', None))
+    return {"items": items}
 
 
 @router.get("/api/sessions/{session_id}")

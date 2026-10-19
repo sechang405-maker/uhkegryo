@@ -7,6 +7,7 @@ import { createConversation, listConversations, listConversationPage, mergeSessi
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
 import { DEMO_SCENARIOS, DEMO_NOTICE, DEMO_INPUT_ERROR, demoTerm } from "../lib/portfolio-demo-fixtures.mjs";
 import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
+import { sessionTitle } from "../lib/session-title.mjs";
 import { HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
 import { getRecommendedSearchQuery } from "../lib/recommended-query.mjs";
@@ -226,6 +227,7 @@ export default function HomePage() {
     const poller = resumeConversation(turns, { onUpdate: (turn) => {
       if (sessionIdRef.current !== activeSessionId || activeSessionId !== turn.job?.session_id) return;
       setTurns((entries) => upsertTurn(entries, turn));
+      if (turn.job?.job_status === "completed") refreshSessions();
       if (turn.id === latestId) gallerySelectionRef.current.live(turn.job, activeSessionId);
     }, onError: (id, message) => {
       if (sessionIdRef.current !== activeSessionId) return;
@@ -662,13 +664,13 @@ export default function HomePage() {
           {sessions.map((session) => (
               <div className="history-sidebar-row" key={session.session_id}>
               <button className="history-sidebar-entry" type="button"
-                disabled={isSubmitting || Boolean(deletingId)} title={new Date(session.created_at).toLocaleString("ko-KR")}
+                disabled={isSubmitting || Boolean(deletingId)} title={`${sessionTitle(session)} · ${new Date(session.created_at).toLocaleString("ko-KR")}`}
                 aria-current={sessionId === session.session_id ? "page" : undefined}
                 onClick={() => openSession(session)}>
-                <span className="history-sidebar-title">{uiDemoEnabled ? "샘플 · " : ""}{new Date(session.created_at).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "medium" })}</span>
+                <span className="history-sidebar-title">{uiDemoEnabled ? "샘플 · " : ""}{sessionTitle(session)}</span>
               </button>
               <button className="history-delete" type="button"
-                aria-label={`${new Date(session.created_at).toLocaleString("ko-KR")} 대화 삭제`}
+                aria-label={`${sessionTitle(session)} 대화 삭제`}
                 disabled={!conversationReady || isSubmitting || Boolean(deletingId) || (sessionId === session.session_id && Boolean(pendingTurnIds))}
                 onClick={() => removeSession(session)}>{deletingId === session.session_id ? "삭제 중…" : "삭제"}</button>
               </div>

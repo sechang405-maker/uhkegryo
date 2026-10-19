@@ -70,7 +70,13 @@ class SessionRepository:
 
     async def list_sessions(self, token: str, limit=20, offset=0) -> list[dict]:
         rows = await self._pool.fetch(
-            f"""SELECT s.*, {EXPIRY} AS expires_at
+            f"""SELECT s.*, {EXPIRY} AS expires_at,
+                (SELECT j.final_payload_json #> '{{reference_plan,terms}}'
+                 FROM jobs j WHERE j.session_id=s.session_id AND j.status='completed'
+                 AND CASE WHEN jsonb_typeof(j.final_payload_json #> '{{reference_plan,terms}}')='array'
+                     THEN jsonb_array_length(j.final_payload_json #> '{{reference_plan,terms}}') > 0
+                     ELSE FALSE END
+                 ORDER BY j.created_at DESC, j.job_id DESC LIMIT 1) AS title_terms
                 FROM sessions s JOIN anonymous_owners o USING(owner_id)
                 WHERE o.session_token_hash=$1 AND {LIVE}
                 ORDER BY s.last_activity_at DESC, s.session_id LIMIT $2 OFFSET $3""",
@@ -149,5 +155,9 @@ class SessionRepository:
 
 
 def session_view(row) -> dict:
-    return {key: str(row[key]) if key == "session_id" else row[key]
+    from backend.services.session_titles import title_terms
+    result = {key: str(row[key]) if key == "session_id" else row[key]
             for key in ("session_id", "created_at", "last_activity_at", "expires_at")}
+    if 'title_terms' in row:
+        result['title_terms'] = title_terms(row['title_terms'])
+    return result
