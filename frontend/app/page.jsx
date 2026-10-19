@@ -15,12 +15,15 @@ import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showTh
 import { stopTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from "../lib/conversation.mjs";
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
+import TermGraph from "../components/TermGraph";
+import { toggleTerm, appendTerms } from "../lib/term-graph.mjs";
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
 
 export default function HomePage() {
   const [requestText, setRequestText] = useState("");
+  const [graphTermIds, setGraphTermIds] = useState([]);
   const [error, setError] = useState("");
   const [job, setJob] = useState(() => (uiDemoEnabled ? DEMO_JOB : null));
   const [selectedTermId, setSelectedTermId] = useState(null);
@@ -808,44 +811,18 @@ export default function HomePage() {
             <button type="button" onClick={() => navigateBoard("home")}>용어 둘러보기</button>
           </div>
         ) : hasTerms ? (
-          <div className="mind-map-stage" aria-label="예시 용어 관계도">
-            <p className="mind-map-guide">검수된 예시 용어 · 용어를 누르면 레퍼런스를 검색해요.</p>
-            <div className="mind-map">
-              <svg className="mind-map-connectors" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                <line x1="50" y1="61.2" x2="50" y2="29" />
-                <line x1="50" y1="61.2" x2="69.1" y2="37.8" />
-                <line x1="50" y1="61.2" x2="88.5" y2="61.2" />
-                <line x1="50" y1="61.2" x2="11.5" y2="61.2" />
-                <line x1="50" y1="61.2" x2="30.9" y2="37.8" />
-              </svg>
-              <button className="mind-map-hub" type="button" aria-label="중앙 브랜드 홈"
-                aria-describedby="hub-menu-tip" onClick={() => navigateBoard("home")}>
-                <span aria-hidden="true">UH</span>
-                <span id="hub-menu-tip" className="hub-menu-tip" role="tooltip">홈으로 이동</span>
-              </button>
-              {homeSlots.map((slot, index) => (
-                <section className={`mind-map-group mind-map-group-${index}`} key={slot.role} aria-label={`${slot.roleLabel} TERM_CARD`}>
-                  <span className="mind-map-group-role">{slot.roleLabel}</span>
-                  <div className="mind-map-group-cards">
-                    {slot.terms.length > 0 ? slot.terms.map((term) => (
-                      <button
-                        type="button"
-                        className="mind-map-node"
-                        aria-label={`${slot.roleLabel} ${term.label_ko}`}
-                        aria-pressed={term.term_id === activeTermId}
-                        key={term.term_id}
-                        onClick={() => openTermSearch(term)}
-                      >
-                        {term.label_ko}
-                      </button>
-                    )) : (
-                      <div className="mind-map-node mind-map-node-empty">해석 없음</div>
-                    )}
-                  </div>
-                </section>
-              ))}
-            </div>
-          </div>
+          <TermGraph terms={HOME_TERMS} selectedIds={graphTermIds}
+            onToggle={(id) => setGraphTermIds((ids) => toggleTerm(ids, id))}
+            onSearch={openTermSearch}
+            onAdd={(terms) => {
+              const next = appendTerms(requestText, terms);
+              if (next === null) return false;
+              setRequestText(next);
+              setError("");
+              setMobilePanel("conversation");
+              inputRef.current?.focus();
+              return true;
+            }} />
         ) : (
           <div className="board-empty">
             <span className="board-empty-icon" aria-hidden="true">🖌️</span>
