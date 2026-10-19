@@ -16,6 +16,7 @@ from backend.services.failure_mapping import OperationalFailure, classify_failur
 from backend.services.response_assembler import RoleSearchOutcome
 from backend.services.search_url_builder import SEARCH_SUFFIXES
 from backend.services.public_pin_urls import is_opaque_pin_id, public_search_image
+from backend.services.public_failures import public_failure
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,9 @@ class SearXNGPinterestSearchProvider:
             if code is FailureCode.CONFIGURATION_ERROR:
                 raise OperationalFailure(code) from None
             logger.warning("SearXNG search unavailable", extra={"failure_code": code.value})
-            return RoleSearchOutcome(role=role, pins=[], code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
+            reason, retryable, delay = public_failure(error)
+            return RoleSearchOutcome(role=role, pins=[], code=ReasonCode.PIN_SEARCH_UNAVAILABLE,
+                                     search_failure=reason, retryable=retryable, retry_after_seconds=delay)
 
         if not isinstance(payload, Mapping) or not isinstance(payload.get("results"), list):
             record["failure_reason"] = "malformed_response"
@@ -115,7 +118,11 @@ class SearXNGPinterestSearchProvider:
                 extra={"failure_code": FailureCode.SEARCH_UPSTREAM_UNAVAILABLE.value},
             )
             return RoleSearchOutcome(
-                role=role, pins=pins, code=ReasonCode.PIN_SEARCH_UNAVAILABLE
+                role=role, pins=pins, code=ReasonCode.PIN_SEARCH_UNAVAILABLE,
+                search_failure=('access_restricted' if record['failure_reason'] in ('suspended','access_denied','captcha')
+                                else 'rate_limited' if record['failure_reason'] == 'rate_limited' else 'temporary'),
+                retryable=record['failure_reason'] == 'timeout',
+                retry_after_seconds=60 if record['failure_reason'] == 'rate_limited' else None,
             )
         # An unpatched engine replaces Pin URLs with external source links.
         # Those results cannot identify Pins for Widget enrichment. Do not

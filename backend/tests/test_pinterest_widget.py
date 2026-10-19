@@ -312,7 +312,8 @@ def test_failure_timeout_and_invalid_payload_are_not_cached():
                 return _payload('11', {'image':{'url':'http://unsafe.invalid/','width':1,'height':1}})
             return _payload('11', {'image':{'url':'https://i.pinimg.com/ok.jpg','width':1,'height':1}})
         client= PinterestWidgetClient(json_loader=load, timeout_seconds=.01)
-        for expected in (PinStatus.UNAVAILABLE, PinStatus.UNAVAILABLE, PinStatus.UNAVAILABLE):
+        # Timeout now retries once; the malformed third response remains uncached.
+        for expected in (PinStatus.UNAVAILABLE, PinStatus.UNAVAILABLE):
             result=await client.enrich_job(_completed_job())
             assert result.result.reference_plan.terms[0].pins[0].status is expected
             assert not client._cache and not client._inflight

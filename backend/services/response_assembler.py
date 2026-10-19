@@ -45,6 +45,9 @@ class RoleSearchOutcome:
     role: Role
     pins: list[PinResult] = field(default_factory=list)
     code: ReasonCode | None = None  # None=정상(빈 배열), PIN_RESULTS_EMPTY, PIN_SEARCH_UNAVAILABLE
+    search_failure: str | None = None
+    retryable: bool = False
+    retry_after_seconds: float | None = None
 
 
 def assemble(
@@ -122,6 +125,9 @@ def _build_term(
         search_url=build_search_url(card["query_fragments"]),
         pins=pins,
         reason_codes=term_codes,
+        search_failure=outcome.search_failure if outcome else None,
+        retryable=outcome.retryable if outcome else False,
+        retry_after_seconds=outcome.retry_after_seconds if outcome else None,
     )
 
 

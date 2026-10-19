@@ -59,6 +59,8 @@ class PinResult(BaseModel):
     pin_url: str
     thumbnail_url: str | None = None
     status: PinStatus
+    failure_reason: Literal['temporary', 'rate_limited', 'access_restricted', 'expired', 'deleted', 'unavailable'] | None = None
+    retry_after_seconds: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _deleted_pin_has_no_thumbnail(self) -> "PinResult":
@@ -84,6 +86,9 @@ class TermResult(BaseModel):
         default_factory=list
     )
     reason_codes: list[ReasonCode] = Field(default_factory=list)
+    search_failure: Literal['temporary', 'rate_limited', 'access_restricted', 'deleted', 'unavailable'] | None = None
+    retryable: bool = False
+    retry_after_seconds: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _validate_reason_codes(self) -> "TermResult":

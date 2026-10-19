@@ -40,6 +40,8 @@ export function renderedResultTerms(job, turns = [], previousReferenceJob = null
 }
 
 export function roleNotice(term) {
+  if (term?.search_failure === 'access_restricted') return '검색 서비스 접근이 제한되어 있습니다. 원문 링크를 확인해 주세요.';
+  if (term?.search_failure === 'rate_limited') return `요청 한도에 도달했습니다. ${Math.ceil(term.retry_after_seconds || 60)}초 후 다시 시도해 주세요.`;
   if (term?.reason_codes?.includes("PIN_SEARCH_UNAVAILABLE")) return "검색 결과를 가져오지 못했습니다.";
   if (term?.reason_codes?.includes("PIN_RESULTS_EMPTY")) return "검색 결과가 없습니다.";
   return null;
@@ -67,5 +69,13 @@ export function resultUserMessage(job) {
 
 
 export function pinUnavailableMessage(pin) {
+  if (pin.failure_reason === 'expired') return '미리보기가 만료되었습니다. 다시 불러와 주세요.';
+  if (pin.failure_reason === 'access_restricted') return '이 핀의 미리보기 접근이 제한되어 있습니다.';
+  if (pin.failure_reason === 'rate_limited') return `요청 한도에 도달했습니다. ${Math.ceil(pin.retry_after_seconds || 60)}초 후 다시 불러와 주세요.`;
   return pin.status === "deleted" ? "삭제된 핀입니다." : "이미지를 일시적으로 불러오지 못했습니다. 다시 시도해 주세요.";
+}
+
+export function originalPinLink(pin) {
+  return typeof pin?.pin_id === 'string' && /^(?:[0-9]{1,64}|e1_[A-Za-z0-9_-]{1,200})$/.test(pin.pin_id)
+    ? `https://www.pinterest.com/pin/${pin.pin_id}/` : null;
 }

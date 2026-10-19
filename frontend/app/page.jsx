@@ -11,8 +11,9 @@ import { sessionTitle } from "../lib/session-title.mjs";
 import { HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
 import { getRecommendedSearchQuery } from "../lib/recommended-query.mjs";
-import { searchFixedTerm, searchTermMode } from "../lib/term-search.mjs";
+import { searchFixedTerm, searchTermMode, applySketchResult, applyPreviewRecovery } from "../lib/term-search.mjs";
 import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
+import PinFailure from "../components/PinFailure";
 import { stopTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from "../lib/conversation.mjs";
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
@@ -344,17 +345,17 @@ export default function HomePage() {
     setSelectedTermId(term.term_id);
     setActiveGalleryTermId(term.term_id);
     setFailedThumbnails({});
-    setTermSearch({ term: { ...term, pins: [], reason_codes: [] }, loading: true });
+    setTermSearch({ term: { ...term, pins: term.pins || [], reason_codes: [] }, loading: true });
     setBoardView("term-results");
     setMobilePanel("conversation");
     try {
       const result = uiDemoEnabled
         ? demoTerm(term.term_id)
         : await searchFixedTerm(term, { signal: controller.signal });
-      if (!controller.signal.aborted) setTermSearch({ term: result, loading: false });
+      if (!controller.signal.aborted) setTermSearch({ term: term.pins?.some(showThumbnail) ? applySketchResult(term, result) : result, loading: false });
     } catch (error) {
       if (!controller.signal.aborted) setTermSearch({
-        term: { ...term, pins: [], reason_codes: ["PIN_SEARCH_UNAVAILABLE"] },
+        term: { ...term, pins: term.pins || [], reason_codes: ["PIN_SEARCH_UNAVAILABLE"] },
         loading: false, error: error.message,
       });
     }
@@ -366,7 +367,7 @@ export default function HomePage() {
     setSketchSearches({});
   }
 
-  async function searchCategory(term, suffix) {
+  async function searchCategory(term, suffix, recover = false) {
     if (uiDemoEnabled) {
       setSketchSearches((current) => ({ ...current, [term.term_id]: {
         suffix, error: "데모에서는 실시간 이미지 검색을 제공하지 않습니다.",
@@ -378,7 +379,10 @@ export default function HomePage() {
     sketchControllersRef.current.set(term.term_id, controller);
     setSketchSearches((current) => ({ ...current, [term.term_id]: { ...current[term.term_id], loading: true, pendingSuffix: suffix, error: null } }));
     try {
-      const updatedTerm = await searchTermMode(term, suffix, { signal: controller.signal });
+      const updatedTerm = recover
+        ? applyPreviewRecovery(term, await searchFixedTerm(term, { suffix, signal: controller.signal }),
+            (term.pins || []).filter(pin => failedThumbnails[`${term.term_id}:${pin.pin_id}`]).map(pin => pin.pin_id))
+        : await searchTermMode(term, suffix, { signal: controller.signal });
       if (!controller.signal.aborted) {
         setSketchSearches((current) => ({ ...current, [term.term_id]: { term: updatedTerm, suffix } }));
         setFailedThumbnails((current) => Object.fromEntries(Object.entries(current)
@@ -779,7 +783,8 @@ export default function HomePage() {
                         onError={() => setFailedThumbnails((current) => ({ ...current, [`${term.term_id}:${pin.pin_id}`]: true }))}
                       />
                     </button>
-                  ) : <div className="pin-gallery-card pin-unavailable" key={pin.pin_id}>{pinUnavailableMessage(pin)}</div>)}
+                  ) : <PinFailure key={pin.pin_id} pin={pin} disabled={Boolean(sketchSearches[term.term_id]?.loading)}
+                    onReload={() => searchCategory(term, sketchSearches[term.term_id]?.suffix || 'drawing', true)} />)}
                 </MasonryGallery>
               </section>
             ))}

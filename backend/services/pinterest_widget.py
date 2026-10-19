@@ -15,6 +15,7 @@ from backend.schemas.models import JobEnvelope, PinResult
 from backend.services.pinterest_provider import PinterestProvider
 from backend.services.response_assembler import RoleSearchOutcome
 from backend.services.public_pin_urls import is_opaque_pin_id, public_search_image
+from backend.services.public_failures import public_failure
 
 WIDGET_URL = "https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids={pin_id}"
 JsonLoader = Callable[[str], Awaitable[object]]
@@ -22,6 +23,8 @@ JsonLoader = Callable[[str], Awaitable[object]]
 
 class WidgetUnavailable(Exception):
     """A transient lookup failure; never evidence that a Pin was deleted."""
+    def __init__(self, reason='unavailable', retry_after_seconds=None):
+        self.reason, self.retry_after_seconds = reason, retry_after_seconds
 
 
 class PinterestWidgetProvider:
@@ -59,6 +62,7 @@ class PinterestWidgetClient:
         self._cache: OrderedDict[str, tuple[float, str]] = public_cache if public_cache is not None else OrderedDict()
         self._inflight: dict[str, asyncio.Task] = {}
         self._owned_tasks: set[asyncio.Task] = set()
+        self._retry_until = OrderedDict()
 
     async def aclose(self) -> None:
         # Close admission before cancellation releases capacity to queued readers.
@@ -73,7 +77,9 @@ class PinterestWidgetClient:
     async def enrich_outcome(self, outcome: RoleSearchOutcome) -> RoleSearchOutcome:
         """Return at most eight Pins in their original order without changing the input."""
         pins = await self._enrich_pins(outcome.pins[:8])
-        return RoleSearchOutcome(role=outcome.role, pins=pins, code=outcome.code)
+        return RoleSearchOutcome(role=outcome.role, pins=pins, code=outcome.code,
+                                 search_failure=outcome.search_failure, retryable=outcome.retryable,
+                                 retry_after_seconds=outcome.retry_after_seconds)
 
     async def enrich_job(self, envelope: JobEnvelope) -> JobEnvelope:
         """Rehydrate persisted Pin IDs without persisting thumbnails or whole responses."""
@@ -121,19 +127,27 @@ class PinterestWidgetClient:
                 self._cache[pin.pin_id] = cached
                 url = cached[1]
             return PinResult(pin_id=pin.pin_id, pin_url=pin.pin_url, thumbnail_url=url,
-                             status=PinStatus.AVAILABLE if url else PinStatus.UNAVAILABLE)
+                             status=PinStatus.AVAILABLE if url else PinStatus.UNAVAILABLE,
+                             failure_reason=None if url else 'expired')
         url = None
+        reason, delay = None, None
         status = PinStatus.DELETED
         if len(pin.pin_id) <= 64 and pin.pin_id.isascii() and pin.pin_id.isdigit():
             try:
                 url = await self._url(pin.pin_id)
                 status = PinStatus.AVAILABLE if url else PinStatus.DELETED
-            except WidgetUnavailable:
-                status = PinStatus.UNAVAILABLE
+            except WidgetUnavailable as error:
+                reason, delay = error.reason, error.retry_after_seconds
+                status = PinStatus.DELETED if reason == 'deleted' else PinStatus.UNAVAILABLE
         return PinResult(pin_id=pin.pin_id, pin_url=pin.pin_url,
-                         thumbnail_url=url, status=status)
+                         thumbnail_url=url, status=status, failure_reason=reason,
+                         retry_after_seconds=delay)
 
     async def _url(self, pin_id: str) -> str | None:
+        cooldown = self._retry_until.get(pin_id)
+        if cooldown and cooldown > self._clock():
+            raise WidgetUnavailable('rate_limited', cooldown - self._clock())
+        self._retry_until.pop(pin_id, None)
         if self._closed:
             raise WidgetUnavailable()
         cached = self._cache.pop(pin_id, None)
@@ -180,8 +194,20 @@ class PinterestWidgetClient:
             async with self._slots:
                 if self._closed:
                     raise WidgetUnavailable()
-                async with asyncio.timeout(self._timeout):
-                    payload = await self._json_loader(WIDGET_URL.format(pin_id=pin_id))
+                for attempt in range(2):
+                    try:
+                        async with asyncio.timeout(self._timeout):
+                            payload = await self._json_loader(WIDGET_URL.format(pin_id=pin_id))
+                        break
+                    except Exception as error:
+                        reason, retryable, delay = public_failure(error)
+                        if delay is not None:
+                            self._retry_until[pin_id] = self._clock() + delay
+                            while len(self._retry_until) > self._max_entries:
+                                self._retry_until.popitem(last=False)
+                        if attempt or not retryable or (delay is not None and delay > 2):
+                            raise WidgetUnavailable(reason, delay) from error
+                        await asyncio.sleep(delay if delay is not None else .25)
                 if not isinstance(payload, Mapping) or not isinstance(payload.get("data"), list):
                     raise WidgetUnavailable()
                 # Only a well-formed empty result verifies absence. Broken records
@@ -202,6 +228,8 @@ class PinterestWidgetClient:
             if url:
                 raise WidgetUnavailable()
             return None
+        except WidgetUnavailable:
+            raise
         except Exception as error:
             raise WidgetUnavailable() from error
         finally:

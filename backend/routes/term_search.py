@@ -57,7 +57,8 @@ async def search_term(payload: TermSearchRequest, request: Request, response: Re
         async with asyncio.timeout(SEARCH_TIMEOUT_SECONDS):
             outcome = await get_search_provider(payload.suffix).search(role, tuple(card["query_fragments"]))
     except TimeoutError:
-        outcome = RoleSearchOutcome(role=role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
+        outcome = RoleSearchOutcome(role=role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE,
+                                    search_failure='temporary', retryable=True)
     except OperationalFailure as error:
         if error.failure_code is FailureCode.CONFIGURATION_ERROR:
             raise HTTPException(503, "검색 서비스 설정을 확인해 주세요.") from None
@@ -73,4 +74,6 @@ async def search_term(payload: TermSearchRequest, request: Request, response: Re
         reference_checkpoints=feedback.get("reference_checkpoints_ko", card["look_for"]),
         search_url=build_search_url(card["query_fragments"], suffix=payload.suffix),
         pins=outcome.pins[:8], reason_codes=[outcome.code] if outcome.code else [],
+        search_failure=outcome.search_failure, retryable=outcome.retryable,
+        retry_after_seconds=outcome.retry_after_seconds,
     )
