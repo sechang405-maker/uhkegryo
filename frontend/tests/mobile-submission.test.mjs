@@ -11,7 +11,7 @@ assert.ok(start >= 0 && end > start);
 const handler = source.slice(start, end);
 
 async function submitScenario(mode) {
-  const state = { panel: "conversation", error: "", input: "마른 캐릭터", submitting: false };
+  const state = { boardMutations: [], panel: "conversation", error: "", input: "마른 캐릭터", submitting: false };
   const noop = () => {};
   const context = {
     conversationBusy: false,
@@ -19,7 +19,7 @@ async function submitScenario(mode) {
     AbortController, submissionRequestRef: { current: null },
     deleteInFlightRef: { current: false },
     submitInFlightRef: { current: false },
-    gallerySelectionRef: { current: { reset: noop } },
+    gallerySelectionRef: { current: { reset: () => state.boardMutations.push("reset"), begin: noop } },
     submissionRef: { current: {
       isPending: () => false,
       submit: async () => {
@@ -44,8 +44,8 @@ async function submitScenario(mode) {
     setError: (value) => { state.error = value; },
     setRequestText: (value) => { state.input = value; },
     setIsSubmitting: (value) => { state.submitting = value; },
-    setBoardView: noop, setPollError: noop, setSubmission: noop, setJob: noop,
-    setSelectedTermId: noop, setSessionId: noop, setSessions: noop, setTurns: noop,
+    setBoardView: () => state.boardMutations.push("view"), setPollError: noop, setSubmission: noop, setJob: () => state.boardMutations.push("job"),
+    setSelectedTermId: () => state.boardMutations.push("selection"), setSessionId: noop, setSessions: noop, setTurns: noop,
   };
   vm.createContext(context);
   vm.runInContext(handler + "\nthis.runSubmit = submit;", context);
@@ -63,11 +63,15 @@ for (const mode of ["error_response", "create_exception", "submit_exception"]) {
   });
 }
 
-test("successful mobile submission keeps references and clears the input", async () => {
+test("successful mobile submission keeps the conversation visible and clears the input", async () => {
   const state = await submitScenario("success");
-  assert.equal(state.panel, "reference");
+  assert.equal(state.panel, "conversation");
   assert.equal(state.input, "");
   assert.equal(state.error, "");
   assert.equal(state.submitting, false);
 });
 
+
+test("submitting chat keeps the current board and selection until an explicit reference result arrives", async () => {
+ const state = await submitScenario("success"); assert.deepEqual(state.boardMutations, []);
+});

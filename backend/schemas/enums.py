@@ -42,7 +42,7 @@ class JobStatus(StrEnum):
 
 
 class AgentStatus(StrEnum):
-    """결과 조립 상태 5종 (service_unavailable은 사용하지 않는다)."""
+    """레퍼런스·기록 회상·그림 대화의 최종 결과 상태."""
 
     SUCCESS = "success"
     NEEDS_CLARIFICATION = "needs_clarification"
@@ -51,6 +51,7 @@ class AgentStatus(StrEnum):
     PARTIAL_RESULT = "partial_result"
     MEMORY_ANSWER = "memory_answer"
     REFERENCE_GUIDANCE = "reference_guidance"
+    DRAWING_CHAT = "drawing_chat"
 
 
 class ReasonCode(StrEnum):
@@ -114,10 +115,12 @@ class PinStatus(StrEnum):
 
 
 class InterpretationState(StrEnum):
-    """InterpretationOutput의 LLM 해석 상태 2종 (docs/specs/prompt-interpreter-v0.md 기준)."""
+    """카드 해석, 문맥 질문 또는 일반 그림 대화."""
 
     SELECT_TERMS = "select_terms"
     NEEDS_CLARIFICATION = "needs_clarification"
+
+    DRAWING_CHAT = "drawing_chat"
 
 
 class ClarificationType(StrEnum):

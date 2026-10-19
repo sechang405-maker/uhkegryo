@@ -283,6 +283,10 @@ class AgentResult(BaseModel):
                     or not self.user_message.strip() or len(self.reason_codes) != 1
                     or not codes <= {ReasonCode.CATALOG_LIMITATION, ReasonCode.CLARIFICATION_REPEATED}):
                 raise ValueError('reference_guidance requires a message and one guidance reason, without a plan or question')
+        elif self.agent_status is AgentStatus.DRAWING_CHAT:
+            if (not self.answer_text.strip() or self.reference_plan is not None
+                    or self.clarifying_question is not None or codes or self.reference_update is not None):
+                raise ValueError("drawing_chat requires answer_text without a reference plan, update or question")
         elif self.agent_status is AgentStatus.MEMORY_ANSWER:
             if not self.memory_answer or self.reference_plan or self.reason_codes or self.clarifying_question:
                 raise ValueError("memory_answer requires text and forbids reference plan")
@@ -425,6 +429,12 @@ class InterpretationOutput(BaseModel):
 
     @model_validator(mode="after")
     def _validate_state_rules(self) -> "InterpretationOutput":
+        if self.interpretation_state is InterpretationState.DRAWING_CHAT:
+            if (not self.answer_text.strip() or self.selections or self.context_updates
+                    or self.unresolved_constraints or self.clarifying_question is not None
+                    or self.clarification_type is not None):
+                raise ValueError("drawing_chat requires text and forbids reference selections, updates and questions")
+            return self
         if self.interpretation_state is InterpretationState.SELECT_TERMS:
             if not self.selections:
                 raise ValueError("select_terms는 selections가 최소 하나 있어야 한다")

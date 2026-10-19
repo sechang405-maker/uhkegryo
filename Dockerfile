@@ -13,6 +13,7 @@ COPY prompts/uhkegryo-interpreter-v0.md /app/prompts/uhkegryo-interpreter-v0.md
 COPY prompts/uhkegryo-interpreter-v1.md /app/prompts/uhkegryo-interpreter-v1.md
 COPY prompts/uhkegryo-interpreter-v4.md /app/prompts/uhkegryo-interpreter-v4.md
 COPY skills/structured-output/SKILL.md /app/skills/structured-output/SKILL.md
+COPY skills/drawing-dialogue/SKILL.md /app/skills/drawing-dialogue/SKILL.md
 
 EXPOSE 8000
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

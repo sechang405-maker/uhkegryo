@@ -176,33 +176,36 @@ class AgentJobWorker:
                         resolution = await conversation_context.validate(
                             self._memory, job, interpretation, self._snapshot, context=context)
                         resolution = reference_update.select_searches(resolution, previous)
-                with trace.stage("searching"):
-                    with self._tracer.phase("search-status-update"):
-                        if not await self._update(job_id, attempt, JobStatus.SEARCHING):
-                            trace.stale()
-                            return
-                    if search_outcomes is None:
-                        search_outcomes = await self._search_outcomes(
-                            resolution, request_text=str(job["request_text"]),
-                            **({"exclude_pin_ids": {term_id: list(dict.fromkeys(
-                                pin.pin_id for pin in term.pins))
-                                for term_id, term in previous.items()}} if refresh else {}),
+                if resolution.status == 'chat':
+                    result = assemble(resolution, self._snapshot, answer_text=interpretation.answer_text)
+                else:
+                    with trace.stage("searching"):
+                        with self._tracer.phase("search-status-update"):
+                            if not await self._update(job_id, attempt, JobStatus.SEARCHING):
+                                trace.stale()
+                                return
+                        if search_outcomes is None:
+                            search_outcomes = await self._search_outcomes(
+                                resolution, request_text=str(job["request_text"]),
+                                **({"exclude_pin_ids": {term_id: list(dict.fromkeys(
+                                    pin.pin_id for pin in term.pins))
+                                    for term_id, term in previous.items()}} if refresh else {}),
+                            )
+                    with self._tracer.phase("search-result-assembly") as metrics:
+                        result = assemble(resolution, self._snapshot, search_outcomes,
+                            answer_text=("기존 조건을 유지하고 요청한 카드의 레퍼런스만 다시 찾았어요."
+                                if context.get("reference_action") == "refresh_terms"
+                                else "기존 조건은 유지하고 요청한 역할의 레퍼런스를 다시 찾았어요."
+                                if context.get("reference_action") == "refresh_roles"
+                                else "기존 조건은 유지하고 전체 레퍼런스를 다시 찾았어요.") if refresh else interpretation.answer_text)
+                        if refresh and result.reference_plan is not None and result.reason_codes:
+                            result.answer_text = "기존 조건은 유지했지만 일부 새 레퍼런스를 찾지 못했어요. 검색 결과 안내를 확인해 주세요."
+                        result = reference_update.merge_preserved(result, previous, interpretation)
+                        result = reference_update.annotate(result, context, [term.selection.term_id for term in resolution.terms])
+                        metrics.update(
+                            role_count=len(search_outcomes),
+                            pin_count=sum(len(outcome.pins) for outcome in search_outcomes.values()),
                         )
-                with self._tracer.phase("search-result-assembly") as metrics:
-                    result = assemble(resolution, self._snapshot, search_outcomes,
-                        answer_text=("기존 조건을 유지하고 요청한 카드의 레퍼런스만 다시 찾았어요."
-                            if context.get("reference_action") == "refresh_terms"
-                            else "기존 조건은 유지하고 요청한 역할의 레퍼런스를 다시 찾았어요."
-                            if context.get("reference_action") == "refresh_roles"
-                            else "기존 조건은 유지하고 전체 레퍼런스를 다시 찾았어요.") if refresh else interpretation.answer_text)
-                    if refresh and result.reference_plan is not None and result.reason_codes:
-                        result.answer_text = "기존 조건은 유지했지만 일부 새 레퍼런스를 찾지 못했어요. 검색 결과 안내를 확인해 주세요."
-                    result = reference_update.merge_preserved(result, previous, interpretation)
-                    result = reference_update.annotate(result, context, [term.selection.term_id for term in resolution.terms])
-                    metrics.update(
-                        role_count=len(search_outcomes),
-                        pin_count=sum(len(outcome.pins) for outcome in search_outcomes.values()),
-                    )
                 if recalled is not None:
                     result.memory_answer, result.sources = recalled.memory_answer, recalled.sources
             with trace.stage("rendering"):

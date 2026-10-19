@@ -108,6 +108,8 @@ def resolve(
     verified_source_texts: Mapping[str, Sequence[str]] | None = None,
 ) -> ResolutionResult:
     """LLM 해석 후보를 카탈로그와 대조해 결정론 검증하고 조정 계층에 넘길 결과를 만든다."""
+    if interpretation.interpretation_state is InterpretationState.DRAWING_CHAT:
+        return ResolutionResult(status='chat')
     if interpretation.interpretation_state is InterpretationState.NEEDS_CLARIFICATION:
         if interpretation.clarification_type is ClarificationType.CATALOG_LIMITATION:
             return ResolutionResult(status='guidance', reason_codes=[ReasonCode.CATALOG_LIMITATION],

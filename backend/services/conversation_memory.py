@@ -24,7 +24,7 @@ def record(row):
                             for key in ("role", "term_id", "label_ko", "label_en")}
                            for term in (payload.get("reference_plan") or {}).get("terms", [])[:10]]
         result["question"] = (payload.get("clarifying_question") or "")[:500]
-        result["message"] = (payload.get("user_message") or "")[:1000]
+        result["message"] = (payload.get("answer_text") or payload.get("user_message") or "")[:1000]
         for term in result["terms"]:
             term["role"] = Role(term["role"]).value
     # Retain whole fields: never cut serialized JSON or expose provider payloads.
@@ -106,6 +106,7 @@ class ConversationMemory:
                AND (cardinality($6::text[])=0 OR EXISTS(SELECT 1 FROM unnest($6::text[]) k
                     WHERE strpos(lower(request_text || ' ' ||
                       COALESCE(final_payload_json->>'user_message','') || ' ' ||
+                      COALESCE(final_payload_json->>'answer_text','') || ' ' ||
                       COALESCE(final_payload_json->>'clarifying_question','') || ' ' ||
                       COALESCE((SELECT string_agg(COALESCE(t->>'label_ko','') || ' ' ||
                                                  COALESCE(t->>'label_en',''),' ')

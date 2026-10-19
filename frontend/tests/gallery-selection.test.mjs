@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createGallerySelection } from "../lib/gallery-selection.mjs";
 
 const sid = "session-a";
-const job = (id, session = sid, result = { reference_plan: { terms: [{ term_id: id }] } }) =>
+const job = (id, session = sid, result = { agent_status: "success", reference_plan: { terms: [{ term_id: id }] } }) =>
   ({ job_id: id, session_id: session, job_status: "completed", result });
 const entry = (id, session = sid) => ({ id, job: job(id, session) });
 const response = (body, ok = true) => ({ ok, json: async () => body });
@@ -94,4 +94,22 @@ test("browser restoration cancels stale history and protects the restored select
   gallery.restore(job("live"), null, sid);
   gallery.live(job("latest"), sid);
   assert.equal(state.job.job_id, "latest");
+});
+
+test("pending and conversational results preserve the last valid reference board", () => {
+  const { gallery, state } = setup();
+  const reference = job("reference"); gallery.live(reference, sid);
+  for (const incoming of [
+    {job_status:"queued"}, {job_status:"running"}, {job_status:"failed"},
+    ...["drawing_chat", "needs_clarification", "memory_answer", "reference_guidance"].map(agent_status => job(agent_status, sid, {agent_status, answer_text:"Contextual answer"})),
+  ]) { gallery.live(incoming, sid); assert.equal(state.job, reference); }
+});
+
+test("beginning another request retains a restored board while allowing a new explicit result", () => {
+  const { gallery, state } = setup();
+  const reference = job("restored"); gallery.restore(reference, "restored", sid);
+  gallery.begin(sid); assert.equal(state.job, reference); assert.equal(state.selected, null);
+  gallery.live(job("chat", sid, {agent_status:"drawing_chat",answer_text:"Hello"}), sid);
+  assert.equal(state.job, reference);
+  const next = job("new"); gallery.live(next, sid); assert.equal(state.job, next);
 });

@@ -119,11 +119,11 @@ export default function HomePage() {
   const recommendedSearchQuery = showingGraph && graphTermIds.length
     ? combineRecommendedSearchQueries(HOME_TERMS.filter(term => graphTermIds.includes(term.term_id)))
     : getRecommendedSearchQuery(queryTerm);
-  const pendingTurnIds = turns.filter(isTurnPending).map((turn) => turn.id).join(",");
+  const pendingTurnIds = turns.filter(isTurnPending).map((turn) => `${turn.id}:${turn.screen_generation ?? ""}`).join(",");
   const conversationBusy = !conversationReady || isSubmitting || Boolean(pendingTurnIds) || Boolean(deletingId);
   const requestLength = countCharacters(requestText);
   const inputError = error || (requestLength > 500 ? validateRequestText(requestText) : "");
-  screenSnapshotRef.current = { boardView, requestText, graphTermIds, graphFocusId, graphList, mobilePanel, job, historyTurnId,
+  screenSnapshotRef.current = { screenGeneration: screenGenerationRef.current, boardView, requestText, graphTermIds, graphFocusId, graphList, mobilePanel, job, historyTurnId,
     termSearch, termGuide, sessionId, turns, historyPage, referenceJob, activeGalleryTermId, selectedTermId,
     sketchSearches, failedThumbnails, error, pollError, restoreError, conversationReady, isSubmitting,
     recoveryBudget: recoveryBudgetRef.current };
@@ -244,11 +244,20 @@ export default function HomePage() {
     if (uiDemoEnabled || !conversationReady || !pendingTurnIds) return;
     const latestId = turns.at(-1)?.id;
     const activeSessionId = sessionIdRef.current;
+    const activeScreenId = turns.at(-1)?.screen_generation ?? screenGenerationRef.current;
     const poller = resumeConversation(turns, { onUpdate: (turn) => {
       if (sessionIdRef.current !== activeSessionId || activeSessionId !== turn.job?.session_id) return;
       setTurns((entries) => upsertTurn(entries, turn));
       if (turn.job?.job_status === "completed") refreshSessions();
-      if (turn.id === latestId) gallerySelectionRef.current.live(turn.job, activeSessionId);
+      if (turn.id === latestId && activeScreenId === screenGenerationRef.current) {
+        gallerySelectionRef.current.live(turn.job, activeSessionId);
+        if (resultTerms(turn.job).length) {
+          setBoardView("results");
+          setMobilePanel("reference");
+          setTermSearch(null);
+          setTermGuide(null);
+        }
+      }
     }, onError: (id, message) => {
       if (sessionIdRef.current !== activeSessionId) return;
       setPollError(message);
@@ -315,7 +324,8 @@ export default function HomePage() {
     setGraphFocusId(snapshot.graphFocusId || HOME_TERMS[0]?.term_id);
     setGraphList(Boolean(snapshot.graphList));
     setMobilePanel(snapshot.mobilePanel);
-    setTurns(snapshot.turns);
+    setTurns(snapshot.turns.map(turn => isTurnPending(turn) && turn.screen_generation === snapshot.screenGeneration
+      ? { ...turn, screen_generation: screenGenerationRef.current } : turn));
     setHistoryPage(snapshot.historyPage);
     setReferenceJob(snapshot.referenceJob);
     setActiveGalleryTermId(snapshot.activeGalleryTermId);
@@ -541,10 +551,8 @@ export default function HomePage() {
     submissionRequestRef.current = submitRequest;
     const submissionController = submissionRef.current;
     submitInFlightRef.current = true;
-    gallerySelectionRef.current.reset(sessionIdRef.current);
-    termSearchControllerRef.current?.abort();
-    resetSketchSearches();
-    setMobilePanel("reference");
+    gallerySelectionRef.current.begin(sessionIdRef.current);
+    setMobilePanel("conversation");
     setTermGuide(null);
 
     if (uiDemoEnabled) {
@@ -564,13 +572,9 @@ export default function HomePage() {
     }
 
     pollerRef.current?.stop();
-    setBoardView("results");
     setIsSubmitting(true);
     setError("");
     setPollError("");
-    setJob(null);
-    setSelectedTermId(null);
-    selectedJobRef.current = null;
     try {
       let activeSession = sessionIdRef.current;
       if (!activeSession) {
@@ -581,7 +585,7 @@ export default function HomePage() {
       }
       setSessionId(activeSession);
       sessionIdRef.current = activeSession;
-      gallerySelectionRef.current.reset(activeSession);
+      gallerySelectionRef.current.begin(activeSession);
       const result = await submissionController.submit(text, { sessionId: activeSession, signal:submitRequest.signal });
       if(submitLoadId !== sessionLoadRef.current || submissionRequestRef.current !== submitRequest)return;
       if (result.ok) {
@@ -589,7 +593,7 @@ export default function HomePage() {
           const selected = items.find((item) => item.session_id === activeSession);
           return selected ? [selected, ...items.filter((item) => item.session_id !== activeSession)] : items;
         });
-        setTurns((entries) => upsertTurn(entries, { id: result.jobId, request: text,
+        setTurns((entries) => upsertTurn(entries, { id: result.jobId, request: text, screen_generation: submitScreenId,
           job: { job_id: result.jobId, session_id: activeSession,
             job_status: "queued", poll_after_ms: result.pollAfterMs }, demo: false }));
         refreshSessions();
@@ -873,8 +877,6 @@ export default function HomePage() {
             }}>다시 불러오기</button>
             <button type="button" onClick={() => navigateBoard("home")}>용어 둘러보기</button>
           </div>
-        ) : boardView === "results" && !historyTurnId && conversationBusy && conversationReady ? (
-          <div className="board-search-loading"><ImageSearchLoading label="요청을 처리하는 중입니다…" /></div>
         ) : ["results", "term-results"].includes(boardView) && hasGalleryRows ? (
           <div className="pin-gallery" ref={galleryRef} data-single={galleryRows.length === 1}
             aria-label="카테고리별 Pinterest 핀 썸네일" onScroll={handleGalleryScroll}>
@@ -991,8 +993,7 @@ export default function HomePage() {
           {storageFailed && <p className="form-error" role="status">브라우저 기록을 읽거나 쓰지 못했습니다. 일부 기록이 복원되지 않을 수 있지만 현재 대화는 계속 사용할 수 있습니다.</p>}
           {!uiDemoEnabled && historyPage.hasMore && <button type="button" disabled={olderLoading} onClick={loadOlder}>이전 대화 불러오기</button>}
           {olderError && <p role="alert">{olderError}</p>}
-          <ConversationPanel key={sessionId || "no-session"} turns={turns} onChoice={fillInput} onRetry={fillInput}
-            retryDisabled={conversationBusy} onSelect={openTurn} selectedTurnId={historyTurnId} />
+          <ConversationPanel key={sessionId || "no-session"} turns={turns} />
           <TermGuide term={termGuide} />
           {uiDemoEnabled && <div className="demo-scenarios" aria-label="대표 샘플 입력">
             <p>대표 예시를 선택한 뒤 전송해 보세요.</p>
