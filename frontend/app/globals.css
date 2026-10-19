@@ -25,14 +25,17 @@
 .term-graph-controls { display:flex; align-items:center; justify-content:flex-end; gap:6px; margin:18px 0 0; }
 .term-graph-controls span { min-width:40px; text-align:center; font-size:11px; color:var(--text-secondary); }
 .term-graph-controls button { min-width:40px; }
-.term-graph-scene { height:clamp(480px,60vh,680px); position:relative; overflow:hidden; touch-action:none; cursor:grab; border-radius:14px; background:radial-gradient(ellipse at center, var(--surface) 0, var(--canvas) 70%); }
+.term-graph-scene { height:clamp(480px,60vh,680px); position:relative; overflow:hidden; touch-action:none; user-select:none; cursor:grab; border-radius:14px; background:radial-gradient(ellipse at center, var(--surface) 0, var(--canvas) 70%); }
 .term-graph-scene:active { cursor:grabbing; }
 .term-graph-scene > svg { position:absolute; width:100%; height:100%; pointer-events:none; }
 .term-graph-scene line { stroke:var(--border); stroke-width:1.3; opacity:.45; vector-effect:non-scaling-stroke; }
 .term-graph-scene line.is-focused { stroke:var(--accent); opacity:1; stroke-width:2; }
-.term-graph-node,.term-graph-category { position:absolute; transform:translate(-50%,-50%); }
+.term-graph-node,.term-graph-category { position:absolute; transform:translate(-50%,-50%) scale(var(--node-scale,1)); transform-origin:center; }
 .term-graph-node { display:flex; align-items:center; gap:6px; padding:7px 9px; min-height:38px; max-width:154px; border:1px solid transparent; border-radius:9px; background:var(--canvas); font-size:12px; text-align:left; line-height:1.4; box-shadow:0 3px 12px #0003; }
-.term-graph-node .term-graph-dot { display:grid; place-items:center; width:12px; height:12px; flex-shrink:0; border:1px solid var(--text-secondary); background:var(--surface-raised); border-radius:50%; transform:scale(var(--node-scale)); font-size:10px; }
+.term-graph-node .term-graph-dot { display:grid; place-items:center; width:12px; height:12px; flex-shrink:0; border:1px solid var(--text-secondary); background:radial-gradient(circle at 30% 25%,var(--text-secondary),var(--surface-raised) 70%); border-radius:50%; font-size:10px; }
+.term-graph-node[data-distant="true"]:not([data-focused="true"]):not([data-selected="true"]):not(:hover) { gap:0; padding:6px; min-height:26px; background:transparent; box-shadow:none; }
+.term-graph-node[data-distant="true"]:not([data-focused="true"]):not([data-selected="true"]):not(:hover) .term-graph-label { display:none; }
+.term-graph-node:hover,.term-graph-node:focus-visible,.term-graph-node[data-selected="true"] { opacity:1 !important; }
 .term-graph-node[data-selected="true"] .term-graph-dot { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
 .term-graph-node[data-focused="true"] { border-color:var(--accent); background:var(--accent-surface); z-index:1001 !important; }
 .term-graph-node:focus-visible { z-index:1002 !important; }
@@ -62,6 +65,7 @@
   .term-graph-heading { gap:8px; }
   .term-graph-node { padding:8px; min-width:36px; min-height:36px; background:var(--surface); }
   .term-graph-node:not([data-focused="true"]) .term-graph-label { display:none; }
+  .term-graph-node:not([data-focused="true"]) { width:36px; height:36px; padding:6px; justify-content:center; border-radius:50%; }
   .term-graph-node[data-focused="true"] { max-width:130px; }
 }
 @media (max-width: 760px) {
