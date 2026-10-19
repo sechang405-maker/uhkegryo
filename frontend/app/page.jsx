@@ -1072,9 +1072,9 @@ export default function HomePage() {
             aria-invalid={Boolean(inputError)}
             aria-describedby={`request-limit${requestLength >= 450 ? " request-count" : ""}${inputError ? " request-error" : ""}`}
           />
-            <button className="composer-submit" type="submit" aria-busy={isSubmitting}
+            <button className="composer-submit" type="submit" aria-label="전송" aria-busy={isSubmitting}
               disabled={conversationBusy || Boolean(validateRequestText(requestText))}>
-              {isSubmitting ? "전송 중…" : "전송"}
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 15 6-6 6 6" /></svg>
             </button>
           </div>
           <span id="request-limit" className="sr-only">최대 500자까지 입력할 수 있습니다.</span>
