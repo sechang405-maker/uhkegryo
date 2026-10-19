@@ -81,7 +81,6 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
       <div className="term-graph-scene" tabIndex={0} role="group" aria-label="회전 가능한 용어 공간"
         aria-describedby="term-graph-help" onKeyDown={key} onPointerDown={start} onPointerMove={move}
         onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
-        onWheel={event=>{if(event.ctrlKey||event.metaKey) return; zoom(event.deltaY>0?-.06:.06);}}
         data-yaw={view.yaw.toFixed(3)} data-pitch={view.pitch.toFixed(3)} data-zoom={view.zoom.toFixed(2)}>
         <svg viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">
           {graph.edges.map(edge=><line key={edge.target} x1={points[edge.source].x} y1={points[edge.source].y}
@@ -102,7 +101,7 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
           </button> : <span key={node.id} style={style} data-node-id={node.id} data-depth={p.depth.toFixed(3)} className="term-graph-category">{node.label}</span>;
         })}
       </div>
-      <p id="term-graph-help" className="term-graph-help">드래그로 회전 · 휠/두 손가락으로 확대 · 공간에 초점을 두고 방향키로 회전 · Tab으로 용어 이동</p>
+      <p id="term-graph-help" className="term-graph-help">드래그로 회전 · 버튼/두 손가락으로 확대 · 공간에 초점을 두고 방향키로 회전 · Tab으로 용어 이동</p>
     </>}
     {focused && <article className="term-graph-detail" aria-label="선택한 용어 설명">
       <div aria-live="polite"><h2>{focused.label_ko}</h2><p>{focused.plain_meaning_ko}</p></div>
