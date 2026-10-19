@@ -144,8 +144,8 @@ a { color: var(--accent); }
 .result-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .result-actions button, .result-actions a { padding: 8px 10px; border: 3px solid var(--accent); border-radius: 12px; background: transparent; color: var(--text); font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
 .result-actions button:disabled { opacity: .6; cursor: wait; }
-.pin-gallery-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); align-items: start; gap: 16px; min-width: 0; padding: 3px; }
-.pin-gallery-card { display: block; width: 100%; max-width: 320px; min-width: 0; padding: 0; cursor: zoom-in; overflow: hidden; border: 3px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: 0 5px 0 rgba(228, 75, 101, .06); transition: transform .18s ease, box-shadow .18s ease; }
+.pin-gallery-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); align-items: start; gap: 10px; min-width: 0; position: relative; }
+.pin-gallery-card { display: block; width: 100%; max-width: none; min-width: 0; padding: 0; cursor: zoom-in; overflow: hidden; border: 3px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: 0 5px 0 rgba(228, 75, 101, .06); transition: transform .18s ease, box-shadow .18s ease; }
 .pin-gallery-card:hover, .pin-gallery-card:focus-visible { transform: translateY(-3px); box-shadow: 0 8px 0 rgba(228, 75, 101, .16); }
 .pin-gallery-card:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
 .pin-gallery-card img { display: block; width: 100%; height: auto; padding: 4px; }
@@ -359,3 +359,7 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 @keyframes history-enter { from { transform:translateX(-100%); } to { transform:translateX(0); } }
 @media (prefers-reduced-motion:reduce) { .history-drawer[open] { animation:none; } }
 @media (max-width:760px) { .desktop-history-logo { display:none; } .mobile-workspace-nav .history-logo { flex:0 0 auto; padding:0 8px; } .mobile-workspace-nav .brand-name { display:none; } .mobile-workspace-nav .brand-mark { height:30px; width:30px; } }
+
+.pin-gallery-items[data-masonry="ready"] { display:block; }
+.pin-gallery-items[data-masonry="ready"] > .masonry-item { position:absolute; top:0; left:0; }
+.masonry-item { min-width:0; display:flow-root; }

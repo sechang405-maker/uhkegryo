@@ -16,6 +16,7 @@ import { stopTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from ".
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
 import TermGraph from "../components/TermGraph";
+import MasonryGallery from "../components/MasonryGallery";
 import HistoryDrawer, { HistoryLogo } from "../components/HistoryDrawer";
 import { toggleTerm, appendTerms } from "../lib/term-graph.mjs";
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
@@ -748,7 +749,7 @@ export default function HomePage() {
                 </div>
                 {sketchSearches[term.term_id]?.loading && <LoadingIndicator size="small" label={`${({ drawing: "일반", sketch: "스케치", mannequinization: "도형화" })[sketchSearches[term.term_id]?.pendingSuffix]} 레퍼런스를 찾는 중입니다…`} />}
                 {sketchSearches[term.term_id]?.error && <p className="sketch-search-notice" role="alert">{sketchSearches[term.term_id].error}</p>}
-                <div className="pin-gallery-items">
+                <MasonryGallery>
                   {boardView === "term-results" && termSearch?.loading && <ImageSearchLoading />}
                   {boardView === "term-results" && termSearch?.error && <p className="pin-unavailable" role="alert">{termSearch.error}</p>}
                   {roleNotice(term) && <p className="pin-unavailable" role="status">{roleNotice(term)}</p>}
@@ -777,7 +778,7 @@ export default function HomePage() {
                       />
                     </button>
                   ) : <div className="pin-gallery-card pin-unavailable" key={pin.pin_id}>{pinUnavailableMessage(pin)}</div>)}
-                </div>
+                </MasonryGallery>
               </section>
             ))}
           </div>
