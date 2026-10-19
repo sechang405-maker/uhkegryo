@@ -11,9 +11,22 @@ class Role(StrEnum):
 
     BODY = "body"
     POSE = "pose"
-    VIEW = "view"
+    COMPOSITION = "composition"
+    VIEW = "composition"  # Source compatibility; wire values are canonical.
     PERSPECTIVE = "perspective"
-    LAYOUT = "layout"
+    LAYOUT = "composition"
+
+    @classmethod
+    def _missing_(cls, value):
+        if value in ("view", "layout"):
+            return cls.COMPOSITION
+        return None
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        result = handler(schema)
+        result["enum"] = list(dict.fromkeys(role.value for role in cls))
+        return result
 
 
 class JobStatus(StrEnum):

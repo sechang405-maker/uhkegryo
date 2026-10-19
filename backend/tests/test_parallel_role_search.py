@@ -49,12 +49,12 @@ def test_parallel_overlap_order_and_timing(monkeypatch, snapshot_factory):
             active += 1
             peak = max(peak, active)
             role = args["role"]
-            await asyncio.sleep({"body": .06, "pose": .04, "view": .02}[role])
+            await asyncio.sleep({"body": .06, "pose": .04, "composition": .02}[role])
             active -= 1
             finished.append(role)
             return empty(role)
 
-        roles = ["body", "pose", "view"]
+        roles = ["body", "pose", "composition"]
         started = perf_counter()
         for role in roles:
             await handler("search_pinterest_pins", {"role": role})
@@ -106,8 +106,8 @@ def test_shared_limit_includes_widget_across_jobs(monkeypatch, snapshot_factory)
         assert started == active == peak == 3
         release.set()
         results = await asyncio.wait_for(asyncio.gather(*tasks), 1)
-        assert started == 10 and active == 0 and peak == 3
-        assert all(len(result) == 5 for result in results)
+        assert started == 2 * len(Role) and active == 0 and peak == 3
+        assert all(len(result) == len(Role) for result in results)
 
     asyncio.run(scenario())
 
@@ -147,13 +147,13 @@ def test_retry_backoff_releases_search_slots(monkeypatch, snapshot_factory):
             seen.append(role)
             if role == "pose" and seen.count(role) == 1:
                 raise RuntimeError("search upstream unavailable")
-            if role == "view":
+            if role == "composition":
                 return {"role": role, "pins": [{"pin_id": "123",
                         "pin_url": "https://www.pinterest.com/pin/123/", "status": "available"}], "code": None}
             return {"role": role, "pins": [], "code": "PIN_SEARCH_UNAVAILABLE"} if role == "pose" else empty(role)
 
         worker, _ = setup(monkeypatch, snapshot_factory,
-                          [[search("body"), search("pose"), search("pose", "duplicate"), search("view")],
+                          [[search("body"), search("pose"), search("pose", "duplicate"), search("composition")],
                            [search("pose")], [search("pose")], []], handler)
 
         async def backoff(delay):
@@ -165,9 +165,9 @@ def test_retry_backoff_releases_search_slots(monkeypatch, snapshot_factory):
                 worker._search_slots.release()
 
         monkeypatch.setattr(agent_worker.asyncio, "sleep", backoff)
-        outcomes = await worker._search_outcomes(resolution(["body", "pose", "view"]), request_text="test")
+        outcomes = await worker._search_outcomes(resolution(["body", "pose", "composition"]), request_text="test")
         assert seen.count("body") == 1 and seen.count("pose") == 3
-        assert seen.count("view") == 1 and outcomes[Role.VIEW].pins[0].pin_id == "123"
+        assert seen.count("composition") == 1 and outcomes[Role.COMPOSITION].pins[0].pin_id == "123"
         assert delays == [1, 2]
         assert outcomes[Role.BODY].code.value == "PIN_RESULTS_EMPTY"
         assert outcomes[Role.POSE].code.value == "PIN_SEARCH_UNAVAILABLE"

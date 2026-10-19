@@ -7,7 +7,7 @@ import { createMindMapSlots } from "../lib/term-mind-map.mjs";
 test("실제 모드 홈은 검색 job 없이 검수된 다섯 카테고리를 제공한다", () => {
   assert.ok(Array.isArray(homeCatalog.HOME_TERMS));
   const slots = createMindMapSlots(homeCatalog.HOME_TERMS);
-  assert.deepEqual(slots.map((slot) => slot.terms.length), [3, 3, 3, 3, 2]);
+  assert.deepEqual(slots.map((slot) => slot.terms.length), [6, 12, 13, 5]);
   assert.equal(slots[0].term.label_ko, "모래시계형");
 });
 
@@ -26,7 +26,7 @@ test("초기 포트폴리오 샘플은 지정한 체형만 보여 주고 이미�
   assert.equal(DEMO_JOB.job_status, "completed");
   assert.match(DEMO_REQUEST_TEXT, /허리가 들어간/);
   assert.equal(slots.filter((slot) => slot.term).length, 1);
-  assert.deepEqual(slots.map((slot) => slot.terms.length), [1, 0, 0, 0, 0]);
+  assert.deepEqual(slots.map((slot) => slot.terms.length), [1, 0, 0, 0]);
   assert.equal(slots[0].term.label_ko, "모래시계형");
   assert.deepEqual(slots[0].term.pins, []);
 });

@@ -58,7 +58,7 @@ test("실패와 빈 카테고리 및 접근 불가 Pin을 순서대로 보존한
     term("pose", { reason_codes: ["PIN_RESULTS_EMPTY"], pins: [] }),
     term("view", { pins: [{ pin_id: "deleted", status: "deleted", thumbnail_url: "old" }] }),
   ]));
-  assert.deepEqual(rows.map((row) => row.role), ["body", "pose", "view"]);
+  assert.deepEqual(rows.map((row) => row.role), ["body", "pose", "composition"]);
   assert.match(view.roleNotice(rows[0].term), /가져오지/);
   assert.match(view.roleNotice(rows[1].term), /없습니다/);
   assert.equal(rows[2].pins[0].pin_id, "deleted");

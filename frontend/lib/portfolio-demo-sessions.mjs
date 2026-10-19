@@ -39,7 +39,8 @@ export function createDemoSessionStore(storage) {
           || !Array.isArray(s.turns) || new Set(s.turns.map(t=>t.id)).size !== s.turns.length) throw Error('invalid demo session');
         const turns = s.turns.map(t => {
           const fixture = DEMO_SCENARIOS.find(item => item.id === t.fixtureId);
-          if (!validId(t.id) || !fixture || t.request !== fixture.request || t.answer !== fixture.job.result.answer_text) throw Error('invalid demo turn');
+          if (!validId(t.id) || !fixture || t.request !== fixture.request || typeof t.answer !== 'string'
+            || t.answer.replaceAll('시점', '구도') !== fixture.job.result.answer_text) throw Error('invalid demo turn');
           return { id:t.id, fixtureId:fixture.id, request:fixture.request, answer:fixture.job.result.answer_text };
         });
         return {session_id:s.session_id,created_at:s.created_at,turns};

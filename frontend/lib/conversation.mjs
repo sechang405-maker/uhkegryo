@@ -19,7 +19,7 @@ export function answerForJob(job) {
   if (job?.job_status !== "completed") return "";
   const result = job.result || {};
   if (result.agent_status === "needs_clarification") return result.clarifying_question || "원하는 조건을 조금 더 알려주세요.";
-  if (["unsafe_input", "out_of_scope"].includes(result.agent_status)) return result.user_message || "캐릭터의 체형·포즈·시점을 설명해 주세요.";
+  if (["unsafe_input", "out_of_scope"].includes(result.agent_status)) return result.user_message || "캐릭터의 체형·포즈·구도를 설명해 주세요.";
   if (result.agent_status === "memory_answer") return result.memory_answer || result.user_message || "대화 기록의 답변을 확인할 수 없습니다.";
   return result.answer_text?.trim() || result.user_message?.trim() || "통합 답변은 백엔드 연결 후 표시됩니다. 현재 응답에는 통합 답변이 없습니다.";
 }

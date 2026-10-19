@@ -49,6 +49,7 @@ class PublicHttpResources:
             self._search_tasks.discard(task)
 
     def search_provider(self, base_url, suffix='drawing', **kwargs):
+        kwargs.setdefault('candidate_limit', 24)
         return PinterestWidgetProvider(self.raw_search_provider(base_url, suffix, **kwargs), self.worker_widget)
 
     def raw_search_provider(self, base_url, suffix='drawing', **kwargs):

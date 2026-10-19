@@ -423,9 +423,11 @@ class AgentJobWorker:
             term_id = term.selection.term_id
             try:
                 async with self._search_slots:
+                    search_started = asyncio.get_running_loop().time()
                     async with asyncio.timeout(LOCAL_SEARCH_IO_TIMEOUT_SECONDS):
                         provider = SearXNGPinterestSearchProvider(
                             base_url=self._local_search_url,
+                            candidate_limit=24,
                             exclude_pin_ids=tuple(exclude_pin_ids.get(term_id, ())),
                             **({'json_loader': self._search_json_loader} if self._search_json_loader is not None else {}),
                         )
@@ -435,7 +437,8 @@ class AgentJobWorker:
                             if not outcome.pins and outcome.code is None:
                                 outcome.code = ReasonCode.PIN_RESULTS_EMPTY
                         if self._widget_client is not None:
-                            outcome = await self._widget_client.enrich_outcome(outcome)
+                            outcome = await self._widget_client.fill_outcome(outcome, timeout_seconds=max(.001,
+                                LOCAL_SEARCH_IO_TIMEOUT_SECONDS - .1 - (asyncio.get_running_loop().time() - search_started)))
                         return term_id, outcome
             except Exception:
                 return term_id, RoleSearchOutcome(role=role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE)

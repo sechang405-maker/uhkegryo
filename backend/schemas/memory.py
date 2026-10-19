@@ -23,7 +23,7 @@ class ContextUpdate(MemoryModel):
 class RecallQuery(MemoryModel):
     mode: Literal["none", "recall", "mixed"]
     reference_action: Literal["update", "refresh_all", "refresh_roles", "refresh_terms"] = "update"
-    refresh_roles: list[Role] = Field(default_factory=list, max_length=5)
+    refresh_roles: list[Role] = Field(default_factory=list, max_length=4)
     refresh_term_ids: list[str] = Field(default_factory=list, max_length=10)
     role: Role | None = None
     term_id: str | None = Field(default=None, max_length=200)
@@ -32,6 +32,16 @@ class RecallQuery(MemoryModel):
     end: datetime | None = None
     source_job_ids: list[UUID] = Field(default_factory=list, max_length=20)
     latest: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_refresh_roles(cls, value):
+        if isinstance(value, dict) and any(role in ("view", "layout") for role in value.get("refresh_roles", [])):
+            if len(value["refresh_roles"]) != len(set(value["refresh_roles"])):
+                return value
+            value = dict(value)
+            value["refresh_roles"] = list(dict.fromkeys(Role(role) for role in value["refresh_roles"]))
+        return value
 
     @model_validator(mode="after")
     def bounds(self):

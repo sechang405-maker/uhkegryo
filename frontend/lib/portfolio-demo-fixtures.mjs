@@ -4,11 +4,11 @@ import { HOME_TERMS, catalogTerm } from './home-catalog.mjs';
 // No third-party image, thumbnail, remote response or real user data is bundled.
 const samples = [
   ['demo-hourglass', '어깨와 골반 폭이 비슷하고 허리가 들어간 캐릭터', ['body_hourglass'],
-    '샘플 답변: 어깨와 골반 폭이 비슷하고 허리가 들어간 실루엣을 모래시계형으로 설명합니다. 포즈와 시점은 이 예시에서 정하지 않았습니다.'],
+    '샘플 답변: 어깨와 골반 폭이 비슷하고 허리가 들어간 실루엣을 모래시계형으로 설명합니다. 포즈와 구도는 이 예시에서 정하지 않았습니다.'],
   ['demo-weight-shift', '한쪽 다리에 체중을 싣고 선 캐릭터', ['pose_weight_shift'],
     '샘플 답변: 한쪽 다리에 체중을 싣는 자세를 체중 이동으로 설명합니다. 어깨와 골반의 반대 기울기는 지정되지 않았으므로 콘트라포스토로 단정하지 않습니다.'],
   ['demo-seated-low', '아래에서 올려다보는 앉은 캐릭터', ['pose_sitting', 'view_low_angle'],
-    '샘플 답변: 앉은 자세와 아래에서 올려다보는 낮은 시점을 함께 보여 줍니다. 신체 단축이나 배경 투시는 별도로 지정하지 않았습니다.'],
+    '샘플 답변: 앉은 자세와 아래에서 올려다보는 낮은 구도를 함께 보여 줍니다. 신체 단축이나 배경 투시는 별도로 지정하지 않았습니다.'],
 ];
 export const DEMO_SCENARIOS = samples.map(([id, request, ids, answer]) => ({
   id, request, job: { job_status: 'completed', result: { agent_status: 'success',

@@ -13,7 +13,8 @@ import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.
 import { getRecommendedSearchQuery } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode, applySketchResult, applyPreviewRecovery } from "../lib/term-search.mjs";
 import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
-import PinFailure from "../components/PinFailure";
+import { usableGalleryPins } from "../lib/gallery-pins.mjs";
+import { createRecoveryBudget, claimRecovery, finishRecovery } from "../lib/recovery-budget.mjs";
 import { stopTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from "../lib/conversation.mjs";
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
@@ -76,6 +77,8 @@ export default function HomePage() {
   const termSearchControllerRef = useRef(null);
   const [sketchSearches, setSketchSearches] = useState({});
   const sketchControllersRef = useRef(new Map());
+  const recoveryBudgetRef = useRef(createRecoveryBudget(0));
+  const [recoveryClock, setRecoveryClock] = useState(0);
   const [previewPin, setPreviewPin] = useState(null);
   const [previewFailed, setPreviewFailed] = useState(false);
   const previewDialogRef = useRef(null);
@@ -309,7 +312,7 @@ export default function HomePage() {
   function openTurn(turn) {
     if (!conversationReady || turn.job?.job_status !== "completed") return;
     termSearchControllerRef.current?.abort();
-    resetSketchSearches();
+    resetSketchSearches(false);
     setTermSearch(null);
     setTermGuide(null);
     previewDialogRef.current?.close();
@@ -361,13 +364,14 @@ export default function HomePage() {
     }
   }
 
-  function resetSketchSearches() {
+  function resetSketchSearches(resetBudget = true) {
     for (const controller of sketchControllersRef.current.values()) controller.abort();
     sketchControllersRef.current.clear();
     setSketchSearches({});
+    if (resetBudget) recoveryBudgetRef.current = createRecoveryBudget(recoveryBudgetRef.current.generation + 1);
   }
 
-  async function searchCategory(term, suffix, recover = false) {
+  async function searchCategory(term, suffix, recover = false, recoveryKind = 'manual') {
     if (uiDemoEnabled) {
       setSketchSearches((current) => ({ ...current, [term.term_id]: {
         suffix, error: "데모에서는 실시간 이미지 검색을 제공하지 않습니다.",
@@ -375,27 +379,73 @@ export default function HomePage() {
       return;
     }
     if (sketchControllersRef.current.has(term.term_id)) return;
+    const generation = recoveryBudgetRef.current.generation;
+    if (recover) {
+      const claim = claimRecovery(recoveryBudgetRef.current, { generation, termId: term.term_id, kind: recoveryKind });
+      if (!claim.allowed) return;
+      recoveryBudgetRef.current = claim.budget;
+    } else {
+      const cards = { ...recoveryBudgetRef.current.cards };
+      delete cards[term.term_id];
+      recoveryBudgetRef.current = { ...recoveryBudgetRef.current, cards };
+    }
     const controller = new AbortController();
     sketchControllersRef.current.set(term.term_id, controller);
     setSketchSearches((current) => ({ ...current, [term.term_id]: { ...current[term.term_id], loading: true, pendingSuffix: suffix, error: null } }));
+    let recoveryResult;
     try {
+      const failedIds = Object.keys(failedThumbnails).filter(key => key.startsWith(`${term.term_id}:`)).map(key => key.slice(term.term_id.length + 1));
+      const result = recover ? await searchFixedTerm(term, { suffix, signal: controller.signal, maxRetries: 0,
+        excludePinIds: [...failedIds, ...(term.pins || []).map(pin => pin.pin_id)] }) : null;
+      recoveryResult = result;
       const updatedTerm = recover
-        ? applyPreviewRecovery(term, await searchFixedTerm(term, { suffix, signal: controller.signal }),
-            (term.pins || []).filter(pin => failedThumbnails[`${term.term_id}:${pin.pin_id}`]).map(pin => pin.pin_id))
+        ? applyPreviewRecovery(term, result, failedIds)
         : await searchTermMode(term, suffix, { signal: controller.signal });
       if (!controller.signal.aborted) {
         setSketchSearches((current) => ({ ...current, [term.term_id]: { term: updatedTerm, suffix } }));
-        setFailedThumbnails((current) => Object.fromEntries(Object.entries(current)
+        if (!recover) setFailedThumbnails((current) => Object.fromEntries(Object.entries(current)
           .filter(([key]) => !key.startsWith(`${term.term_id}:`))));
       }
     } catch (error) {
+      recoveryResult ||= error;
       if (!controller.signal.aborted) setSketchSearches((current) => ({
         ...current, [term.term_id]: { ...current[term.term_id], loading: false, pendingSuffix: null, error: error.message },
       }));
     } finally {
+      if (recover) recoveryBudgetRef.current = finishRecovery(recoveryBudgetRef.current, {
+        generation, termId: term.term_id, retryAfterSeconds: recoveryResult?.retry_after_seconds,
+        restricted: recoveryResult?.search_failure === 'access_restricted',
+      });
       if (sketchControllersRef.current.get(term.term_id) === controller) sketchControllersRef.current.delete(term.term_id);
     }
   }
+
+  useEffect(() => {
+    if (uiDemoEnabled || !['results', 'term-results'].includes(boardView)) return;
+    for (const {term,pins} of galleryRows) {
+      if (pins.some(pin => !showThumbnail(pin) || failedThumbnails[`${term.term_id}:${pin.pin_id}`])) {
+        const restricted = term.search_failure === 'access_restricted' || pins.some(pin => pin.failure_reason === 'access_restricted');
+        const retryAfterSeconds = Math.max(term.retry_after_seconds || 0, ...pins.map(pin => pin.retry_after_seconds || 0));
+        if (restricted || retryAfterSeconds > 0) {
+          const claim = claimRecovery(recoveryBudgetRef.current, {generation: recoveryBudgetRef.current.generation, termId: term.term_id});
+          if (claim.allowed) {
+            recoveryBudgetRef.current = finishRecovery(claim.budget, {generation: claim.budget.generation,
+              termId: term.term_id, restricted, retryAfterSeconds});
+            setRecoveryClock(Date.now());
+          }
+          continue;
+        }
+        // One automatic attempt per explicit search generation; no effect-driven retry loop.
+        searchCategory(term, sketchSearches[term.term_id]?.suffix || 'drawing', true, 'auto');
+      }
+    }
+  }, [galleryRows, failedThumbnails, boardView]);
+
+  useEffect(() => {
+    if (!Object.values(recoveryBudgetRef.current.cards).some(card => card.retryAt > Date.now())) return;
+    const timer = setInterval(() => setRecoveryClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [recoveryClock, sketchSearches, galleryRows]);
 
   async function submit(text) {
     if (deleteInFlightRef.current || conversationBusy || submitInFlightRef.current || submissionRef.current.isPending()) return;
@@ -498,7 +548,7 @@ export default function HomePage() {
     setPreviewPin(null);
     setTermSearch(null);
     setTermGuide(null);
-    resetSketchSearches();
+    resetSketchSearches(false);
     termSearchControllerRef.current?.abort();
     setBoardView(view);
     setMobilePanel("reference");
@@ -755,6 +805,15 @@ export default function HomePage() {
                 </div>
                 {sketchSearches[term.term_id]?.loading && <LoadingIndicator size="small" label={`${({ drawing: "일반", sketch: "스케치", mannequinization: "도형화" })[sketchSearches[term.term_id]?.pendingSuffix]} 레퍼런스를 찾는 중입니다…`} />}
                 {sketchSearches[term.term_id]?.error && <p className="sketch-search-notice" role="alert">{sketchSearches[term.term_id].error}</p>}
+                <p className="pin-result-count" role="status">이미지 {usableGalleryPins(pins, failedThumbnails, term.term_id).length} / 최대 8개</p>
+                {recoveryBudgetRef.current.cards[term.term_id]?.auto &&
+                  !recoveryBudgetRef.current.cards[term.term_id]?.manual &&
+                  !recoveryBudgetRef.current.cards[term.term_id]?.restricted &&
+                  usableGalleryPins(pins, failedThumbnails, term.term_id).length < 8 &&
+                  <button type="button" disabled={Boolean(sketchSearches[term.term_id]?.loading) || recoveryBudgetRef.current.cards[term.term_id]?.retryAt > Date.now()}
+                    onClick={() => searchCategory(term, sketchSearches[term.term_id]?.suffix || 'drawing', true)}>
+                    {recoveryBudgetRef.current.cards[term.term_id]?.retryAt > Date.now()
+                      ? `${Math.ceil((recoveryBudgetRef.current.cards[term.term_id].retryAt-Date.now())/1000)}초 후 추가로 찾기` : '이미지 추가로 찾기'}</button>}
                 <MasonryGallery>
                   {boardView === "term-results" && termSearch?.loading && <ImageSearchLoading />}
                   {boardView === "term-results" && termSearch?.error && <p className="pin-unavailable" role="alert">{termSearch.error}</p>}
@@ -762,7 +821,7 @@ export default function HomePage() {
                   {boardView === "term-results" && !termSearch?.loading && (termSearch?.error || roleNotice(term)) &&
                     <button type="button" onClick={() => openTermSearch(term)}>다시 찾기</button>}
                   {!pins.length && !roleNotice(term) && !(boardView === "term-results" && termSearch?.loading) && <p className="pin-unavailable">{uiDemoEnabled ? "데모에서는 실시간 이미지 검색을 제공하지 않습니다." : "표시할 핀이 없습니다."}</p>}
-                  {pins.map((pin, index) => showThumbnail(pin) && !failedThumbnails[`${term.term_id}:${pin.pin_id}`] ? (
+                  {usableGalleryPins(pins, failedThumbnails, term.term_id).map((pin, index) => (
                     <button
                       className="pin-gallery-card"
                       type="button"
@@ -783,8 +842,7 @@ export default function HomePage() {
                         onError={() => setFailedThumbnails((current) => ({ ...current, [`${term.term_id}:${pin.pin_id}`]: true }))}
                       />
                     </button>
-                  ) : <PinFailure key={pin.pin_id} pin={pin} disabled={Boolean(sketchSearches[term.term_id]?.loading)}
-                    onReload={() => searchCategory(term, sketchSearches[term.term_id]?.suffix || 'drawing', true)} />)}
+                  ))}
                 </MasonryGallery>
               </section>
             ))}
@@ -862,7 +920,7 @@ export default function HomePage() {
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            placeholder="원하는 체형, 포즈, 시점을 적어 주세요"
+            placeholder="원하는 체형, 포즈, 구도을 적어 주세요"
             aria-invalid={Boolean(error)}
             aria-describedby={`request-hint request-count${error ? " request-error" : ""}`}
           />

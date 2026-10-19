@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+from backend.schemas.enums import Role
+
 from backend.services.catalog_repository import load_catalog
 from backend.services.codex_llm import CodexInterpretationAdapter
 from backend.services.codex_runtime import MODEL
@@ -49,7 +51,7 @@ def load_cases(ids):
                 raise ValueError(f"{case['id']}: inactive expected term")
         for role, term in expected.get('final_constraints', {}).items():
             card = snapshot.get_active(term)
-            if card is None or card['role'] != role:
+            if card is None or card['role'] != Role(role).value:
                 raise ValueError(f"{case['id']}: invalid expected context constraint")
     return cases
 
@@ -69,12 +71,13 @@ def check_output(case, output):
             'required_terms': set(expected.get('required_terms', [])) <= selected,
             'forbidden_terms': not bool(set(expected.get('forbidden_terms', [])) & selected)}
     if 'final_constraints' in expected:
-        state = {role: value['term_id'] for role, value in case['context']['constraints'].items()}
+        state = {Role(value.get('role', role)).value: value['term_id'] for role, value in case['context']['constraints'].items()}
+        final_constraints = {Role(role).value: term for role, term in expected['final_constraints'].items()}
         for update in output.context_updates:
             state[update.role.value] = update.term_id
-        checks['context_updates'] = all(state.get(role) == term for role, term in expected['final_constraints'].items())
-        checks['context_selections'] = all(item.term_id == expected['final_constraints'][item.role.value]
-            for item in output.selections if item.role.value in expected['final_constraints'])
+        checks['context_updates'] = all(state.get(role) == term for role, term in final_constraints.items())
+        checks['context_selections'] = all(item.term_id == final_constraints[item.role.value]
+            for item in output.selections if item.role.value in final_constraints)
     return checks
 
 

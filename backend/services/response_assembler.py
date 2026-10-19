@@ -7,7 +7,7 @@
 - 폴백: `source_answer_draft -> plain_meaning_ko`, `selection_reason=null`,
   `look_for -> reference_checkpoints`.
 - `search_url`은 결정론 URL 빌더가 만든다. `pins`는 provider(T16)의 결과를 역할 사례로 주입받는다.
-- 역할 순서(body→pose→view→perspective→layout)와 역할당 최대 1개, 사유 코드 집계는 계약을 따른다.
+- 역할 순서(body→pose→composition→perspective)와 전역 최대 10개, 사유 코드 집계는 계약을 따른다.
 """
 
 from __future__ import annotations

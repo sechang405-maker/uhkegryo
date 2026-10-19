@@ -5,8 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { HOME_TERMS } from "../lib/home-catalog.mjs";
 import TermGuide from "../components/TermGuide.mjs";
 
-test("홈 카드 14개는 뜻·관찰점·주의 사항으로 안내할 수 있다", () => {
-  assert.equal(HOME_TERMS.length, 14);
+test("홈 카드 36개는 뜻·관찰점·주의 사항으로 안내할 수 있다", () => {
+  assert.equal(HOME_TERMS.length, 36);
   for (const term of HOME_TERMS) {
     const html = renderToStaticMarkup(createElement(TermGuide, { term }));
     assert.ok(term.plain_meaning_ko);

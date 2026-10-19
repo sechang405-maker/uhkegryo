@@ -23,8 +23,8 @@ def test_catalog_schema_limits_term_ids_to_their_role():
     ]})
     definitions = response_format(cards)["json_schema"]["schema"]["$defs"]
     for name in ("InterpretationSelection", "ContextUpdate"):
-        variants = [definitions[f"{name}_{role}"] for role in ("view", "layout")]
-        assert len(variants) == 2
+        variants = [definitions[f"{name}_composition"]]
+        assert len(variants) == 1
         for variant in variants:
             properties = variant["properties"]
             role = properties["role"]["enum"][0]
@@ -32,7 +32,8 @@ def test_catalog_schema_limits_term_ids_to_their_role():
             if name == "ContextUpdate":
                 assert term["anyOf"][1] == {"type": "null"}
                 term = term["anyOf"][0]
-            assert term["enum"] == ["view_front" if role == "view" else "layout_center"]
+            assert role == "composition"
+            assert term["enum"] == ["view_front", "layout_center"]
             assert variant["additionalProperties"] is False
 
 
@@ -71,7 +72,7 @@ def test_generation_stays_open_during_upstream_call(monkeypatch):
 @pytest.mark.parametrize("wrong_role", [False, True, "clarify"])
 def test_v4_role_slots_convert_to_existing_array_contract(wrong_role):
     payload = json.loads(CLARIFY_JSON if wrong_role == "clarify" else SELECT_JSON)
-    roles = ("body", "pose", "view", "perspective", "layout")
+    roles = ("body", "pose", "composition", "perspective")
     payload["selections"] = dict.fromkeys(roles)
     payload["selections"]["pose"] = {
         "role": "view" if wrong_role else "pose", "term_id": "pose_contrapposto",

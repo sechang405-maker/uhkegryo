@@ -110,6 +110,21 @@ class ReferencePlan(BaseModel):
     terms: list[TermResult] = Field(default_factory=list, max_length=MAX_SELECTED_TERMS)
     unresolved_roles: list[Role] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_roles(cls, value):
+        if isinstance(value, dict) and any(
+            isinstance(term, dict) and term.get("role") in ("view", "layout")
+            for term in value.get("terms", [])
+        ):
+            value = dict(value)
+            value["terms"] = sorted(value.get("terms", []),
+                key=lambda term: list(Role).index(Role(term["role"])))
+            present = {Role(term["role"]) for term in value["terms"]}
+            value["unresolved_roles"] = list(dict.fromkeys(
+                Role(role) for role in value.get("unresolved_roles", []) if Role(role) not in present))
+        return value
+
     @model_validator(mode="after")
     def _validate_role_uniqueness_and_order(self) -> "ReferencePlan":
         seen: set[str] = set()
@@ -120,7 +135,7 @@ class ReferencePlan(BaseModel):
             seen.add(term.term_id)
             role_index = list(Role).index(term.role)
             if role_index < prev_index:
-                raise ValueError("terms는 역할 순서(body→pose→view→perspective→layout)를 지켜야 한다")
+                raise ValueError("terms는 역할 순서(body→pose→composition→perspective)를 지켜야 한다")
             prev_index = role_index
         for role in self.unresolved_roles:
             if role in {term.role for term in self.terms}:
@@ -131,13 +146,29 @@ class ReferencePlan(BaseModel):
 class ReferenceUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    replaced_roles: list[Role] = Field(default_factory=list, max_length=5)
-    preserved_roles: list[Role] = Field(default_factory=list, max_length=5)
-    removed_roles: list[Role] = Field(default_factory=list, max_length=5)
+    replaced_roles: list[Role] = Field(default_factory=list, max_length=4)
+    preserved_roles: list[Role] = Field(default_factory=list, max_length=4)
+    removed_roles: list[Role] = Field(default_factory=list, max_length=4)
 
     replaced_term_ids: list[str] = Field(default_factory=list, max_length=10)
     preserved_term_ids: list[str] = Field(default_factory=list, max_length=10)
     removed_term_ids: list[str] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_roles(cls, value):
+        if not isinstance(value, dict):
+            return value
+        fields = ("replaced_roles", "preserved_roles", "removed_roles")
+        if not any(role in ("view", "layout") for field in fields for role in value.get(field, [])):
+            return value
+        value = dict(value)
+        seen = set()
+        for field in fields:
+            roles = list(dict.fromkeys(Role(role) for role in value.get(field, [])))
+            value[field] = [role for role in roles if role not in seen]
+            seen.update(roles)
+        return value
 
     @model_validator(mode="after")
     def disjoint_roles(self):
@@ -172,6 +203,27 @@ class AgentResult(BaseModel):
     answer_text: Annotated[str, Field(strict=True, max_length=4000)] = ""
     memory_answer: str | None = Field(default=None, min_length=1, max_length=2000)
     sources: list[MemorySource] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="before")
+    @classmethod
+    def preserve_legacy_update_card_identity(cls, value):
+        """Recover card-level update intent before old category names are merged."""
+        if not isinstance(value, dict) or not isinstance(value.get("reference_update"), dict):
+            return value
+        update = value["reference_update"]
+        fields = ("replaced", "preserved", "removed")
+        if not any(role in ("view", "layout") for field in fields
+                   for role in update.get(field + "_roles", [])):
+            return value
+        value = dict(value)
+        update = dict(update)
+        terms = (value.get("reference_plan") or {}).get("terms", [])
+        if terms and not any(update.get(field + "_term_ids") for field in fields):
+            for field in fields:
+                update[field + "_term_ids"] = [term["term_id"] for term in terms
+                    if isinstance(term, dict) and term.get("role") in update.get(field + "_roles", [])]
+        value["reference_update"] = update
+        return value
 
     @model_validator(mode="after")
     def _validate_state_rules(self) -> "AgentResult":
@@ -387,7 +439,7 @@ class InterpretationOutput(BaseModel):
                 role_index = list(Role).index(selection.role)
                 if role_index < prev_index:
                     raise ValueError(
-                        "selections는 역할 순서(body→pose→view→perspective→layout)를 지켜야 한다"
+                        "selections는 역할 순서(body→pose→composition→perspective)를 지켜야 한다"
                     )
                 prev_index = role_index
             if self.unresolved_constraints:

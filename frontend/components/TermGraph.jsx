@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
-import { buildTermGraph, projectNode, INITIAL_VIEW, clamp } from '../lib/term-graph.mjs';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { buildTermGraph, separateGraphLabels, INITIAL_VIEW, clamp } from '../lib/term-graph.mjs';
 
 export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch}) {
   const graph=useMemo(()=>buildTermGraph(terms),[terms]);
@@ -9,12 +9,23 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
   const [list,setList]=useState(false);
   const [focusedId,setFocusedId]=useState(terms[0]?.term_id);
   const [notice,setNotice]=useState('');
+  const sceneRef=useRef(null);
+  const [sceneSize,setSceneSize]=useState({width:1000,height:600,compact:false});
+  useEffect(()=>{
+    const scene=sceneRef.current;
+    if(!scene) return;
+    const observer=new ResizeObserver(()=>{
+      if(scene.clientWidth>0&&scene.clientHeight>0) setSceneSize({width:scene.clientWidth,height:scene.clientHeight,compact:window.innerWidth<=1000});
+    });
+    observer.observe(scene);
+    return()=>observer.disconnect();
+  },[list]);
   const gesture=useRef(null);
   const pointers=useRef(new Map());
   const suppressClick=useRef(false);
   const focused=terms.find(term=>term.term_id===focusedId);
   const selected=terms.filter(term=>selectedIds.includes(term.term_id));
-  const points=Object.fromEntries(graph.nodes.map(node=>[node.id,projectNode(node,view)]));
+  const points=useMemo(()=>separateGraphLabels(graph,view,sceneSize.width,sceneSize.height,sceneSize.compact),[graph,view,sceneSize]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.6)})); }
   function start(event) {
@@ -70,15 +81,15 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
         </div>)}
       </fieldset>)}
     </div> : <>
-      <div className="term-graph-controls" role="group" aria-label="그래프 시점 조절">
+      <div className="term-graph-controls" role="group" aria-label="그래프 회전 조절">
         <button type="button" aria-label="왼쪽으로 회전" onClick={()=>rotate(-.2,0)}>↶</button>
         <button type="button" aria-label="오른쪽으로 회전" onClick={()=>rotate(.2,0)}>↷</button>
         <button type="button" aria-label="축소" disabled={view.zoom<=.65} onClick={()=>zoom(-.15)}>−</button>
         <span aria-live="off">{Math.round(view.zoom*100)}%</span>
         <button type="button" aria-label="확대" disabled={view.zoom>=1.6} onClick={()=>zoom(.15)}>+</button>
-        <button type="button" onClick={()=>setView(INITIAL_VIEW)}>시점 초기화</button>
+        <button type="button" onClick={()=>setView(INITIAL_VIEW)}>회전 초기화</button>
       </div>
-      <div className="term-graph-scene" tabIndex={0} role="group" aria-label="회전 가능한 용어 공간"
+      <div className="term-graph-scene" ref={sceneRef} tabIndex={0} role="group" aria-label="회전 가능한 용어 공간"
         aria-describedby="term-graph-help" onKeyDown={key} onPointerDown={start} onPointerMove={move}
         onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
         onWheel={event=>{if(event.ctrlKey||event.metaKey) return; zoom(event.deltaY>0?-.06:.06);}}

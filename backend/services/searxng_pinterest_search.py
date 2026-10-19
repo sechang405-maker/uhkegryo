@@ -36,6 +36,7 @@ class SearXNGPinterestSearchProvider:
         suffix: str = "drawing",
         engine_attempts: list[dict] | None = None,
         exclude_pin_ids: tuple[str, ...] = (),
+        candidate_limit: int = 8,
     ) -> None:
         if suffix not in SEARCH_SUFFIXES:
             raise ValueError("지원하지 않는 검색 접미사입니다")
@@ -44,6 +45,9 @@ class SearXNGPinterestSearchProvider:
         self._json_loader = json_loader or _load_search_json
         self._engine_attempts = engine_attempts
         self._exclude_pin_ids = frozenset(exclude_pin_ids)
+        if type(candidate_limit) is not int or not 1 <= candidate_limit <= 24:
+            raise ValueError('candidate_limit must be between 1 and 24')
+        self._candidate_limit = candidate_limit
 
     async def search(
         self, role: Role, query_fragments: tuple[str, ...]
@@ -95,7 +99,7 @@ class SearXNGPinterestSearchProvider:
                 extra={"failure_code": FailureCode.SEARCH_UPSTREAM_UNAVAILABLE.value},
             )
             return RoleSearchOutcome(role=role, pins=[], code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
-        pins = parse_search_results(payload, exclude_pin_ids=self._exclude_pin_ids)
+        pins = parse_search_results(payload, limit=self._candidate_limit, exclude_pin_ids=self._exclude_pin_ids)
         engine_errors = payload.get("unresponsive_engines", [])
         engine_unresponsive = isinstance(engine_errors, list) and any(
             isinstance(engine_error, (list, tuple))

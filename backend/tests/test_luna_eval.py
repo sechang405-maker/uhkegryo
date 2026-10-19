@@ -13,7 +13,7 @@ def test_fixed_selection_and_dry_run_do_not_construct_transport(tmp_path, monkey
     metadata = asyncio.run(runner.run(tmp_path/'dry', runner.CASE_IDS, 'a'*40))
     assert metadata['mode'] == 'dry_run'
     assert metadata['usage'] == 'unknown'
-    assert len(metadata['catalog_files_sha256']) == 6
+    assert set(metadata['catalog_files_sha256']) == {'index.json', 'body.json', 'pose.json', 'composition.json', 'perspective.json'}
     assert not (tmp_path/'dry'/'results.jsonl').exists()
 
 

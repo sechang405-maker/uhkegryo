@@ -88,9 +88,8 @@ def test_plan_role_order_and_unresolved(snapshot_factory, card_factory):
     assert [t.role for t in result.reference_plan.terms] == [Role.BODY]
     assert result.reference_plan.unresolved_roles == [
         Role.POSE,
-        Role.VIEW,
+        Role.COMPOSITION,
         Role.PERSPECTIVE,
-        Role.LAYOUT,
     ]
 
 

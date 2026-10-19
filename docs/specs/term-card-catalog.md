@@ -12,7 +12,7 @@
 
 ## What
 
-앱 시작 시 index의 `categories` 순서대로 `body`, `pose`, `view`, `perspective`, `layout` JSON만 읽는다. 활성 조건 `runtime_eligible=true && mvp_status=active_in_current_contract`를 통과한 카드를 `term_id -> card` 메모리 사전과 역할별 목록으로 로드한다. 요청 처리 중 파일을 다시 읽지 않는다.
+앱 시작 시 index의 `categories` 순서대로 `body`, `pose`, `composition`, `perspective` JSON만 읽는다. 활성 조건 `runtime_eligible=true && mvp_status=active_in_current_contract`를 통과한 카드를 `term_id -> card` 메모리 사전과 역할별 목록으로 로드한다. 요청 처리 중 파일을 다시 읽지 않는다.
 
 카드 변경은 JSON 수정, 사람의 출처·권리·도메인 검토, 계약·평가 회귀 확인 후 해당 환경의 새 인스턴스 시작으로 반영한다. 개인 저장소에서 PR은 필수가 아니다. TERM_CARD는 DB에 적재하거나 외부 어휘·Getty 데이터를 병합하지 않는다.
 

@@ -60,7 +60,7 @@ def test_parallel_worker_attaches_diagnostics_to_job_and_removes_from_llm(monkey
                 "secret": "must not leave gateway",
             }]}
             return {"content": [{"type": "text", "text": json.dumps(payload)}]} if text_response else payload
-        roles = ["pose", "view"]
+        roles = ["pose", "composition"]
         worker, adapter = setup(monkeypatch, snapshot_factory, [[search(r) for r in roles], []], handler)
         client = FakeLangfuse()
         worker._tracer = JobTracer(client)

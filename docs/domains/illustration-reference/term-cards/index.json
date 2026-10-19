@@ -1,6 +1,6 @@
 {
   "dataset_name": "illustration_reference_master_term_cards",
-  "dataset_version": "0.9-explicit-pose-compositions",
+  "dataset_version": "1.0-composition-category",
   "pose_compositions": [
     {
       "term_id": "pose_seated_two_hand_aiming",
@@ -8,7 +8,10 @@
       "action_term_id": "pose_action_two_hand_aiming",
       "label_ko": "앉아서 양손 조준",
       "label_en": "seated two-handed aiming",
-      "aliases_ko": ["앉아쏴", "앉아 쏴"]
+      "aliases_ko": [
+        "앉아쏴",
+        "앉아 쏴"
+      ]
     },
     {
       "term_id": "pose_standing_two_hand_aiming",
@@ -16,7 +19,10 @@
       "action_term_id": "pose_action_two_hand_aiming",
       "label_ko": "서서 양손 조준",
       "label_en": "standing two-handed aiming",
-      "aliases_ko": ["서서쏴", "서서 쏴"]
+      "aliases_ko": [
+        "서서쏴",
+        "서서 쏴"
+      ]
     }
   ],
   "status": "fully_reviewed_runtime_approved",
@@ -24,7 +30,7 @@
   "source_documents": [
     "docs/domains/illustration-reference/term-cards/SOURCE_PROVENANCE.md"
   ],
-  "card_count": 82.0,
+  "card_count": 82,
   "data_governance": {
     "source_of_truth": "versioned_json_runtime_catalog",
     "json_role": "runtime_source_and_review_input",
@@ -37,11 +43,10 @@
     "selectable_roles_current_mvp": [
       "body",
       "pose",
-      "view",
-      "perspective",
-      "layout"
+      "composition",
+      "perspective"
     ],
-    "promotion_rule": "현재 5개 역할 파일의 82개 카드는 오세창 검수를 거쳐 모두 runtime_eligible=true로 승인되었습니다. 이후 새 카드는 오세창 검수와 query_fragments, look_for, confidence_gate, requires 조건의 확정, API 계약·Skill·평가셋 검토 뒤에만 추가합니다.",
+    "promotion_rule": "현재 4개 카테고리 파일의 82개 카드는 오세창 검수를 거쳐 모두 runtime_eligible=true로 승인되었습니다. 이후 새 카드는 오세창 검수와 query_fragments, look_for, confidence_gate, requires 조건의 확정, API 계약·Skill·평가셋 검토 뒤에만 추가합니다.",
     "query_rule": "구현 시 코드는 선택된 카드의 query_fragments만 결합하고, 기존 조각의 drawing 포함 여부를 검사하거나 제거하지 않은 채 최종 검색어 끝에 고정 접미사 drawing을 무조건 한 번 추가해야 합니다. 따라서 현재 pose_gesture 카드의 gesture drawing과 action line reference 조각을 결합한 최종 검색어는 gesture drawing action line reference drawing입니다. 일상어 설명을 검색어에 그대로 덧붙이지 않고, 카드에 있는 표준 전문용어 조각만 사용합니다. requires_all_of는 모두, requires_any_of는 하나 이상 충족해야 합니다."
   },
   "pinterest_search_contract": {
@@ -50,7 +55,7 @@
     "allow_llm_freeform_query": false,
     "allow_explanatory_sentence_as_query": false,
     "allow_abstract_intent_as_direct_query": false,
-    "abstract_input_policy": "'귀여운 포즈', '히어로 포즈'처럼 체형·포즈·시점이 특정되지 않은 표현은 링크를 만들지 않습니다. LLM은 사용자가 원하는 축을 한 가지 질문으로 좁힌 뒤에만 허용 term_id를 선택합니다.",
+    "abstract_input_policy": "'귀여운 포즈', '히어로 포즈'처럼 체형·포즈·구도이 특정되지 않은 표현은 링크를 만들지 않습니다. LLM은 사용자가 원하는 축을 한 가지 질문으로 좁힌 뒤에만 허용 term_id를 선택합니다.",
     "direct_search_disabled_term_ids": [
       "pose_power_pose",
       "pose_action",
@@ -80,14 +85,14 @@
     ],
     "term_selection_rule": "LLM은 입력의 실제 단서가 confidence_gate를 통과할 때만 term_id를 고릅니다. 단서가 부족하면 terminology와 Pinterest 링크를 만들지 않고 InterpretationOutput의 clarifying_question을 반환합니다.",
     "body_term_notice": "체형 카드는 사람을 평가하거나 진단하는 분류가 아닙니다. 캐릭터의 실루엣과 비례를 찾기 위한 레퍼런스 용어입니다.",
-    "candidate_policy": "현재 5개 역할 파일의 82개 카드는 모두 초보자 화면과 검색 결과의 선택 후보입니다. 새 카드 또는 파일 밖 용어는 별도 검수·계약 확정 전까지 선택 후보가 아닙니다.",
+    "candidate_policy": "현재 4개 카테고리 파일의 82개 카드는 모두 초보자 화면과 검색 결과의 선택 후보입니다. 새 카드 또는 파일 밖 용어는 별도 검수·계약 확정 전까지 선택 후보가 아닙니다.",
     "feedback_fallback_rule": "현재 승인 카드는 active_term_feedback의 초보자용 설명·선택 이유·확인 지점을 표시합니다. 이후 새 카드에 화면 설명이 없으면 label_ko, source_answer_draft, look_for만 표시하고, 없는 문구를 LLM이 지어내지 않습니다. pinterest_search_notice_ko, common_confusion_ko, clarifying_question_ko는 검수용 비공개 메타데이터이며 API와 UI에 노출하지 않습니다."
   },
   "beginner_feedback_review": {
     "status": "reviewed",
     "reviewed_by": "오세창",
     "reviewed_at": "2026-09-23",
-    "scope": "5개 역할 파일의 82개 term_id 전체에 대한 런타임 승인 상태와 active_term_feedback의 초보자용 용어 설명·선택 이유·검색 안내·확인 지점·혼동 안내·추가 질문.",
+    "scope": "4개 카테고리 파일의 82개 term_id 전체에 대한 런타임 승인 상태와 active_term_feedback의 초보자용 용어 설명·선택 이유·검색 안내·확인 지점·혼동 안내·추가 질문.",
     "excluded": "외부 검색 결과, 실제 외부 어휘 조회 결과, 평가 실행 결과, 역할별 JSON에 없는 새 term_id"
   },
   "active_term_feedback": {
@@ -212,9 +217,9 @@
         "머리·가슴·골반이 지지 다리 위에 놓이는 관계"
       ],
       "common_confusion_ko": [
-        "스탠딩은 정면·측면 같은 시점을 뜻하지 않습니다."
+        "스탠딩은 정면·측면 같은 구도을 뜻하지 않습니다."
       ],
-      "clarifying_question_ko": "정면, 3/4, 아래에서 올려다보는 시점 중 어느 방향의 서 있는 자세가 필요한가요?",
+      "clarifying_question_ko": "정면, 3/4, 아래에서 올려다보는 구도 중 어느 방향의 서 있는 자세가 필요한가요?",
       "review_status": "reviewed"
     },
     "pose_sitting": {
@@ -260,7 +265,7 @@
       "review_status": "reviewed"
     },
     "view_front": {
-      "plain_meaning_ko": "얼굴과 몸통의 앞면이 보는 사람 쪽을 향하는 시점입니다.",
+      "plain_meaning_ko": "얼굴과 몸통의 앞면이 보는 사람 쪽을 향하는 구도입니다.",
       "selection_reason_template_ko": "입력에 정면, 앞을 보고 있다, 얼굴과 몸이 관객을 향한다는 단서가 있을 때 '프론트 뷰'로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'front view'라는 표준 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -274,7 +279,7 @@
       "review_status": "reviewed"
     },
     "view_three_quarter": {
-      "plain_meaning_ko": "인물이 정면과 측면의 중간 방향으로 돌아가 한쪽 면이 조금 더 보이는 시점입니다.",
+      "plain_meaning_ko": "인물이 정면과 측면의 중간 방향으로 돌아가 한쪽 면이 조금 더 보이는 구도입니다.",
       "selection_reason_template_ko": "입력에 살짝 옆을 본다, 45도쯤 돌아섰다는 단서가 있을 때 '3/4 뷰'로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'three quarter view'라는 표준 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -288,7 +293,7 @@
       "review_status": "reviewed"
     },
     "view_high_angle": {
-      "plain_meaning_ko": "카메라가 인물보다 높은 곳에 있어 아래를 내려다보는 시점입니다.",
+      "plain_meaning_ko": "카메라가 인물보다 높은 곳에 있어 아래를 내려다보는 구도입니다.",
       "selection_reason_template_ko": "입력에 위에서 내려다본다, 카메라가 인물보다 높다는 단서가 있을 때 '하이 앵글'로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'high angle view'라는 표준 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -302,7 +307,7 @@
       "review_status": "reviewed"
     },
     "view_low_angle": {
-      "plain_meaning_ko": "카메라가 인물보다 낮은 곳에 있어 위를 올려다보는 시점입니다.",
+      "plain_meaning_ko": "카메라가 인물보다 낮은 곳에 있어 위를 올려다보는 구도입니다.",
       "selection_reason_template_ko": "입력에 아래에서 올려다본다, 카메라가 인물보다 낮다는 단서가 있을 때 '로우 앵글'로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'low angle view'라는 표준 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -312,7 +317,7 @@
       "common_confusion_ko": [
         "로우 앵글은 극단적으로 바닥 가까이에서 보는 개미 눈높이와 다를 수 있습니다."
       ],
-      "clarifying_question_ko": "조금 아래에서 올려다보는 시점인가요, 바닥 가까이에서 극단적으로 올려다보는 시점인가요?",
+      "clarifying_question_ko": "조금 아래에서 올려다보는 구도인가요, 바닥 가까이에서 극단적으로 올려다보는 구도인가요?",
       "review_status": "reviewed"
     },
     "perspective_three_point": {
@@ -326,7 +331,7 @@
       "common_confusion_ko": [
         "건물의 수직선이 평행하게 유지되면 보통 3점 투시가 아닙니다."
       ],
-      "clarifying_question_ko": "인물 시점만 필요한가요, 배경 건물까지 강하게 기울어지는 원근이 필요한가요?",
+      "clarifying_question_ko": "인물 구도만 필요한가요, 배경 건물까지 강하게 기울어지는 원근이 필요한가요?",
       "review_status": "reviewed"
     },
     "perspective_foreshortening": {
@@ -545,7 +550,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "닐링에 해당하는지 확인하려고 합니다. 입력에서 '닐링 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -559,7 +564,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "T포즈에 해당하는지 확인하려고 합니다. 입력에서 'T포즈 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -573,7 +578,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "A포즈에 해당하는지 확인하려고 합니다. 입력에서 'A포즈 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -587,7 +592,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "편안한 서기에 해당하는지 확인하려고 합니다. 입력에서 '편안한 서기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -601,7 +606,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "군인 자세에 해당하는지 확인하려고 합니다. 입력에서 '군인 자세 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -615,7 +620,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "팔을 든 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 '팔을 든 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -629,7 +634,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "바르게 앉음에 해당하는지 확인하려고 합니다. 입력에서 '바르게 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -643,7 +648,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "의자 끝에 앉음에 해당하는지 확인하려고 합니다. 입력에서 '의자 끝에 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -657,7 +662,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "웅크리고 앉음에 해당하는지 확인하려고 합니다. 입력에서 '웅크리고 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -671,7 +676,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "앞으로 기대 앉음에 해당하는지 확인하려고 합니다. 입력에서 '앞으로 기대 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -685,7 +690,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "뒤로 기대 앉음에 해당하는지 확인하려고 합니다. 입력에서 '뒤로 기대 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -699,7 +704,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "연화좌에 해당하는지 확인하려고 합니다. 입력에서 '연화좌 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -713,7 +718,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "반연화좌에 해당하는지 확인하려고 합니다. 입력에서 '반연화좌 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -727,7 +732,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "정좌에 해당하는지 확인하려고 합니다. 입력에서 '정좌 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -741,7 +746,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "쪼그리고 앉음에 해당하는지 확인하려고 합니다. 입력에서 '쪼그리고 앉음 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -755,7 +760,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "누움에 해당하는지 확인하려고 합니다. 입력에서 '누움 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -769,7 +774,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "팔꿈치로 지탱에 해당하는지 확인하려고 합니다. 입력에서 '팔꿈치로 지탱 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -783,7 +788,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "옆으로 누움에 해당하는지 확인하려고 합니다. 입력에서 '옆으로 누움 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -797,7 +802,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "엎드림에 해당하는지 확인하려고 합니다. 입력에서 '엎드림 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -811,7 +816,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "등을 대고 누움에 해당하는지 확인하려고 합니다. 입력에서 '등을 대고 누움 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -825,7 +830,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "액션 포즈에 해당하는지 확인하려고 합니다. 입력에서 '액션 포즈 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -839,7 +844,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "점프에 해당하는지 확인하려고 합니다. 입력에서 '점프 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -853,7 +858,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "달리기에 해당하는지 확인하려고 합니다. 입력에서 '달리기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -867,7 +872,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "걷기에 해당하는지 확인하려고 합니다. 입력에서 '걷기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -881,7 +886,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "돌아보기에 해당하는지 확인하려고 합니다. 입력에서 '돌아보기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -895,7 +900,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "비틀기에 해당하는지 확인하려고 합니다. 입력에서 '비틀기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -909,7 +914,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "손 뻗기에 해당하는지 확인하려고 합니다. 입력에서 '손 뻗기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -923,7 +928,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "웅크리기에 해당하는지 확인하려고 합니다. 입력에서 '웅크리기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -937,7 +942,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "도약에 해당하는지 확인하려고 합니다. 입력에서 '도약 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -951,7 +956,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "낙하에 해당하는지 확인하려고 합니다. 입력에서 '낙하 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -965,7 +970,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "균형 잡기에 해당하는지 확인하려고 합니다. 입력에서 '균형 잡기 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -979,7 +984,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "클래식 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 '클래식 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -993,7 +998,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "체중 이동 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 '체중 이동 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -1007,7 +1012,7 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "역동적 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 '역동적 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
@@ -1021,79 +1026,79 @@
       ],
       "common_confusion_ko": [
         "'성격·감정 묘사만 있음'만으로는 이 용어를 확정하지 않습니다.",
-        "'카메라 시점만 있음'만으로는 이 용어를 확정하지 않습니다."
+        "'카메라 구도만 있음'만으로는 이 용어를 확정하지 않습니다."
       ],
       "clarifying_question_ko": "S자 곡선 콘트라포스토에 해당하는지 확인하려고 합니다. 입력에서 'S자 곡선 콘트라포스토 또는 이에 해당하는 자세의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
     },
     "view_profile": {
-      "plain_meaning_ko": "인물을 옆에서 본 시점입니다.",
-      "selection_reason_template_ko": "입력에서 '측면 뷰 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 측면 뷰로 해석합니다.",
+      "plain_meaning_ko": "인물을 옆에서 본 구도입니다.",
+      "selection_reason_template_ko": "입력에서 '측면 뷰 또는 이에 해당하는 구도의 명시' 단서가 확인될 때 측면 뷰로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'profile' + 'view reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
-        "인물을 옆에서 본 시점입니다."
+        "인물을 옆에서 본 구도입니다."
       ],
       "common_confusion_ko": [
         "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
         "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
       ],
-      "clarifying_question_ko": "측면 뷰에 해당하는지 확인하려고 합니다. 입력에서 '측면 뷰 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "clarifying_question_ko": "측면 뷰에 해당하는지 확인하려고 합니다. 입력에서 '측면 뷰 또는 이에 해당하는 구도의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
     },
     "view_back": {
-      "plain_meaning_ko": "인물을 뒤에서 본 시점입니다.",
-      "selection_reason_template_ko": "입력에서 '뒷면 뷰 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 뒷면 뷰로 해석합니다.",
+      "plain_meaning_ko": "인물을 뒤에서 본 구도입니다.",
+      "selection_reason_template_ko": "입력에서 '뒷면 뷰 또는 이에 해당하는 구도의 명시' 단서가 확인될 때 뒷면 뷰로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'back view' + 'view reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
-        "인물을 뒤에서 본 시점입니다."
+        "인물을 뒤에서 본 구도입니다."
       ],
       "common_confusion_ko": [
         "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
         "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
       ],
-      "clarifying_question_ko": "뒷면 뷰에 해당하는지 확인하려고 합니다. 입력에서 '뒷면 뷰 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "clarifying_question_ko": "뒷면 뷰에 해당하는지 확인하려고 합니다. 입력에서 '뒷면 뷰 또는 이에 해당하는 구도의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
     },
     "view_birds_eye": {
-      "plain_meaning_ko": "높은 곳에서 장면 전체를 내려다보는 시점입니다. 단순 하이 앵글보다 위쪽에 가깝습니다.",
-      "selection_reason_template_ko": "입력에서 '조감도 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 조감도로 해석합니다.",
+      "plain_meaning_ko": "높은 곳에서 장면 전체를 내려다보는 구도입니다. 단순 하이 앵글보다 위쪽에 가깝습니다.",
+      "selection_reason_template_ko": "입력에서 '조감도 또는 이에 해당하는 구도의 명시' 단서가 확인될 때 조감도로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'bird's eye view' + 'view reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
-        "높은 곳에서 장면 전체를 내려다보는 시점입니다. 단순 하이 앵글보다 위쪽에 가깝습니다."
+        "높은 곳에서 장면 전체를 내려다보는 구도입니다. 단순 하이 앵글보다 위쪽에 가깝습니다."
       ],
       "common_confusion_ko": [
         "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
         "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
       ],
-      "clarifying_question_ko": "조감도에 해당하는지 확인하려고 합니다. 입력에서 '조감도 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "clarifying_question_ko": "조감도에 해당하는지 확인하려고 합니다. 입력에서 '조감도 또는 이에 해당하는 구도의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
     },
     "view_worms_eye": {
-      "plain_meaning_ko": "아주 낮은 위치에서 위로 올려다보는 시점입니다. 단순 로우 앵글보다 아래쪽에 가깝습니다.",
-      "selection_reason_template_ko": "입력에서 '개미 눈높이 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 개미 눈높이로 해석합니다.",
+      "plain_meaning_ko": "아주 낮은 위치에서 위로 올려다보는 구도입니다. 단순 로우 앵글보다 아래쪽에 가깝습니다.",
+      "selection_reason_template_ko": "입력에서 '개미 눈높이 또는 이에 해당하는 구도의 명시' 단서가 확인될 때 개미 눈높이로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'worm's eye view' + 'view reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
-        "아주 낮은 위치에서 위로 올려다보는 시점입니다. 단순 로우 앵글보다 아래쪽에 가깝습니다."
+        "아주 낮은 위치에서 위로 올려다보는 구도입니다. 단순 로우 앵글보다 아래쪽에 가깝습니다."
       ],
       "common_confusion_ko": [
         "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
         "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
       ],
-      "clarifying_question_ko": "개미 눈높이에 해당하는지 확인하려고 합니다. 입력에서 '개미 눈높이 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "clarifying_question_ko": "개미 눈높이에 해당하는지 확인하려고 합니다. 입력에서 '개미 눈높이 또는 이에 해당하는 구도의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
     },
     "view_dutch_angle": {
-      "plain_meaning_ko": "카메라의 수평선을 기울여 불안정하거나 긴장된 느낌을 만드는 시점입니다.",
-      "selection_reason_template_ko": "입력에서 '더치 앵글 또는 이에 해당하는 시점의 명시' 단서가 확인될 때 더치 앵글로 해석합니다.",
+      "plain_meaning_ko": "카메라의 수평선을 기울여 불안정하거나 긴장된 느낌을 만드는 구도입니다.",
+      "selection_reason_template_ko": "입력에서 '더치 앵글 또는 이에 해당하는 구도의 명시' 단서가 확인될 때 더치 앵글로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'dutch angle' + 'view reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
-        "카메라의 수평선을 기울여 불안정하거나 긴장된 느낌을 만드는 시점입니다."
+        "카메라의 수평선을 기울여 불안정하거나 긴장된 느낌을 만드는 구도입니다."
       ],
       "common_confusion_ko": [
         "'인물 포즈만 제시됨'만으로는 이 용어를 확정하지 않습니다.",
         "'배경의 투시 정보만 제시됨'만으로는 이 용어를 확정하지 않습니다."
       ],
-      "clarifying_question_ko": "더치 앵글에 해당하는지 확인하려고 합니다. 입력에서 '더치 앵글 또는 이에 해당하는 시점의 명시'가 보이는 것이 맞나요?",
+      "clarifying_question_ko": "더치 앵글에 해당하는지 확인하려고 합니다. 입력에서 '더치 앵글 또는 이에 해당하는 구도의 명시'가 보이는 것이 맞나요?",
       "review_status": "reviewed"
     },
     "perspective_one_point": {
@@ -1180,7 +1185,7 @@
         "손이 몸통 뒤에서 맞잡히거나 가려지는지"
       ],
       "common_confusion_ko": [
-        "인물을 뒤에서 본 시점만으로는 이 자세를 확정하지 않습니다.",
+        "인물을 뒤에서 본 구도만으로는 이 자세를 확정하지 않습니다.",
         "한 팔이 몸통 뒤로 잠시 가려진 모습은 두 손을 등 뒤로 둔 자세와 다릅니다."
       ],
       "clarifying_question_ko": "두 손을 등 뒤로 보내 맞잡은 자세가 필요한가요, 아니면 단순히 뒷모습이 필요한가요?",
@@ -1232,7 +1237,7 @@
       "review_status": "reviewed"
     },
     "view_over_the_shoulder": {
-      "plain_meaning_ko": "앞쪽 인물의 어깨나 머리 일부를 전경에 두고, 그 너머의 대상이나 장면을 바라보는 시점입니다.",
+      "plain_meaning_ko": "앞쪽 인물의 어깨나 머리 일부를 전경에 두고, 그 너머의 대상이나 장면을 바라보는 구도입니다.",
       "selection_reason_template_ko": "입력에 어깨 너머로 보거나 전경의 어깨를 지나 대상을 본다는 단서가 있을 때 '오버더숄더 뷰'로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'over the shoulder drawing' 검색어로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -1241,13 +1246,13 @@
       ],
       "common_confusion_ko": [
         "인물을 단순히 뒤에서 본 모습은 오버더숄더 뷰와 다릅니다.",
-        "인물이 고개만 뒤로 돌린 모습은 이 시점을 뜻하지 않습니다."
+        "인물이 고개만 뒤로 돌린 모습은 이 구도을 뜻하지 않습니다."
       ],
       "clarifying_question_ko": "앞쪽 인물의 어깨를 전경에 두고 그 너머의 대상을 보는 화면이 필요한가요?",
       "review_status": "reviewed"
     },
     "view_full_body": {
-      "plain_meaning_ko": "머리부터 발까지가 한 화면 안에 들어와 전신 비례와 자세를 함께 볼 수 있는 시점입니다.",
+      "plain_meaning_ko": "머리부터 발까지가 한 화면 안에 들어와 전신 비례와 자세를 함께 볼 수 있는 구도입니다.",
       "selection_reason_template_ko": "입력에 전신이 보이거나 머리부터 발까지 나온다는 단서가 있을 때 '전신 뷰'로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'full body reference drawing' 검색어로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -1269,7 +1274,7 @@
     "candidate_modifier_combination": "기본 포즈에 결합하는 후보",
     "candidate_modifier_contract": "손·머리 등 detail 계약이 추가된 뒤에만 쓸 후보",
     "candidate_specialized_pose": "문화·용법을 별도 검토할 전문 포즈 후보",
-    "candidate_view": "시점 계약 확장 뒤에 쓸 후보",
+    "candidate_view": "구도 계약 확장 뒤에 쓸 후보",
     "candidate_intent_pose": "구체 포즈가 아닌 연출 의도 후보",
     "candidate_body": "체형·인체 비례 계약 확장 뒤에 쓸 후보",
     "candidate_perspective": "원근 선택 계약 확장 뒤에 쓸 후보",
@@ -1279,11 +1284,9 @@
   "category_load_order": [
     "body",
     "pose",
-    "view",
-    "perspective",
-    "layout"
+    "composition",
+    "perspective"
   ],
-
   "categories": [
     {
       "role": "body",
@@ -1296,19 +1299,22 @@
       "card_count": 58
     },
     {
-      "role": "view",
-      "file": "view.json",
-      "card_count": 11
+      "role": "composition",
+      "file": "composition.json",
+      "card_count": 13
     },
     {
       "role": "perspective",
       "file": "perspective.json",
       "card_count": 5
-    },
-    {
-      "role": "layout",
-      "file": "layout.json",
-      "card_count": 2
     }
-  ]
+  ],
+  "category_compatibility": {
+    "canonical": "composition",
+    "legacy_role_aliases": [
+      "view",
+      "layout"
+    ],
+    "migration": "Normalize legacy role keys on read. Preserve every term_id and stored record; no database rewrite."
+  }
 }

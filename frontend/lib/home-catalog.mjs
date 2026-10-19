@@ -1,19 +1,24 @@
 import catalogIndex from "../../docs/domains/illustration-reference/term-cards/index.json" with { type: "json" };
 import bodyCatalog from "../../docs/domains/illustration-reference/term-cards/body.json" with { type: "json" };
 import poseCatalog from "../../docs/domains/illustration-reference/term-cards/pose.json" with { type: "json" };
-import viewCatalog from "../../docs/domains/illustration-reference/term-cards/view.json" with { type: "json" };
+import compositionCatalog from "../../docs/domains/illustration-reference/term-cards/composition.json" with { type: "json" };
 import perspectiveCatalog from "../../docs/domains/illustration-reference/term-cards/perspective.json" with { type: "json" };
-import layoutCatalog from "../../docs/domains/illustration-reference/term-cards/layout.json" with { type: "json" };
 
 const HOME_TERM_IDS = [
   "body_hourglass", "body_inverted_triangle", "body_triangle",
+  "body_slim", "body_childlike", "body_human_proportion",
   "pose_contrapposto", "pose_weight_shift", "pose_s_curve",
+  "pose_standing", "pose_sitting", "pose_gesture", "pose_reclining", "pose_kneeling",
+  "pose_walking", "pose_running", "pose_jumping", "pose_hand_open_palm",
   "view_front", "view_three_quarter", "view_high_angle",
+  "view_low_angle", "view_profile", "view_back", "view_birds_eye", "view_worms_eye",
+  "view_dutch_angle", "view_over_the_shoulder", "view_full_body",
   "perspective_three_point", "perspective_foreshortening", "perspective_vanishing_point",
+  "perspective_one_point", "perspective_two_point",
   "composition_rule_of_thirds", "layout_composition",
 ];
 const cardsById = new Map(
-  [bodyCatalog, poseCatalog, viewCatalog, perspectiveCatalog, layoutCatalog]
+  [bodyCatalog, poseCatalog, compositionCatalog, perspectiveCatalog]
     .flatMap((catalog) => catalog.cards).map((card) => [card.term_id, card]),
 );
 

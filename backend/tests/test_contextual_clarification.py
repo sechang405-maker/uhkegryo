@@ -29,7 +29,7 @@ def test_model_question_survives_resolver_and_assembly(snapshot_factory):
 ])
 def test_invalid_public_question_uses_safe_fallback(snapshot_factory, text):
     result = resolve(clarification(text), snapshot_factory([]), request_text='자세')
-    assert result.clarifying_question == '캐릭터의 체형·포즈·시점 중 어떤 정보를 더 알려주실 수 있나요?'
+    assert result.clarifying_question == '캐릭터의 체형·포즈·구도 중 어떤 정보를 더 알려주실 수 있나요?'
 
 
 def test_catalog_limitation_is_guidance_not_missing_user_information(snapshot_factory):

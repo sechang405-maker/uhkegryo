@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HOME_TERMS } from '../lib/home-catalog.mjs';
-import { buildTermGraph, projectNode, toggleTerm, appendTerms } from '../lib/term-graph.mjs';
+import { buildTermGraph, projectNode, separateGraphLabels, INITIAL_VIEW, toggleTerm, appendTerms } from '../lib/term-graph.mjs';
 
 test('graph retains each example once and connects only its actual category', () => {
  const graph = buildTermGraph([...HOME_TERMS, HOME_TERMS[0], {role:'invented',term_id:'bad',label_ko:'bad'}]);
- assert.equal(graph.nodes.filter(n=>n.term).length,14);
- assert.equal(graph.nodes.length,19);
- assert.equal(graph.edges.length,14);
+ assert.equal(graph.nodes.filter(n=>n.term).length,36);
+ assert.equal(graph.nodes.length,40);
+ assert.equal(graph.edges.length,36);
  for(const edge of graph.edges) {
   const target=graph.nodes.find(n=>n.id===edge.target);
   assert.equal(edge.source,`category:${target.term.role}`);
@@ -35,4 +35,16 @@ test('adding terms preserves the draft, deduplicates labels and respects the inp
  assert.equal(appendTerms(text,HOME_TERMS.slice(0,2)),text);
  assert.equal(appendTerms('가'.repeat(499),HOME_TERMS.slice(0,2)),null);
  assert.equal(appendTerms('🙂'.repeat(490),HOME_TERMS.slice(0,1))?.startsWith('🙂'),true);
+});
+
+test('dense reviewed nodes remain separate on desktop and compact mobile projections',()=>{
+ const graph=buildTermGraph(HOME_TERMS);
+ for(const [width,height,compact] of [[990,600,false],[350,360,true]]) {
+  const points=Object.values(separateGraphLabels(graph,INITIAL_VIEW,width,height,compact));
+  assert.equal(points.length,40);
+  for(let i=0;i<points.length;i++)for(let j=0;j<i;j++) {
+   const a=points[i],b=points[j];
+   assert.ok(Math.abs(a.x-b.x)*width/1000>=(a.w+b.w)/2-1 || Math.abs(a.y-b.y)*height/700>=(a.h+b.h)/2-1);
+  }
+ }
 });

@@ -44,14 +44,14 @@ _CLARIFICATION_TO_REASON: dict[ClarificationType, ReasonCode] = {
 }
 
 _DEFAULT_DSD_QUESTION = (
-    "검색하기 어려운 표현이에요. 체형·자세·시점 중 하나를 구체적으로 알려주세요."
+    "검색하기 어려운 표현이에요. 체형·자세·구도 중 하나를 구체적으로 알려주세요."
 )
 _CLARIFICATION_QUESTIONS: dict[ClarificationType, str] = {
     ClarificationType.ABSTRACT_INTENT: (
-        "원하는 캐릭터의 체형·포즈·시점 중 하나를 구체적으로 설명해 주세요."
+        "원하는 캐릭터의 체형·포즈·구도 중 하나를 구체적으로 설명해 주세요."
     ),
     ClarificationType.INSUFFICIENT_VISUAL_EVIDENCE: (
-        "캐릭터의 체형·포즈·시점 중 어떤 정보를 더 알려주실 수 있나요?"
+        "캐릭터의 체형·포즈·구도 중 어떤 정보를 더 알려주실 수 있나요?"
     ),
     ClarificationType.CONFLICTING_CONSTRAINTS: (
         "서로 다른 조건 중 어떤 조건을 우선할지 알려주세요."
@@ -134,7 +134,7 @@ def resolve(
             invalid.append(selection)
             continue
         card = snapshot.get_active(selection.term_id)
-        if card is None or str(card.get("role")) != str(selection.role) or card.get('component') == 'composite':
+        if card is None or Role(card.get("role")) != selection.role or card.get('component') == 'composite':
             invalid.append(selection)
             continue
         if only_names_other_cards(selection, snapshot):

@@ -22,9 +22,9 @@ def refresh_resolution(previous, snapshot, context):
     if action == 'refresh_terms':
         requested = set(context.get('refresh_term_ids', []))
     elif action == 'refresh_roles':
-        roles = set(context.get('refresh_roles', []))
-        requested = {term['term_id'] for term in original if term['role'] in roles}
-        if not roles <= {term['role'] for term in original}:
+        roles = {Role(role) for role in context.get('refresh_roles', [])}
+        requested = {term['term_id'] for term in original if Role(term['role']) in roles}
+        if not roles <= {Role(term['role']) for term in original}:
             requested = set()
     else:
         requested = {term['term_id'] for term in original}

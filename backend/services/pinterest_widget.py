@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from backend.schemas.enums import JobStatus, PinStatus, Role
+from backend.schemas.enums import JobStatus, PinStatus, ReasonCode, Role
 from backend.schemas.models import JobEnvelope, PinResult
 from backend.services.pinterest_provider import PinterestProvider
 from backend.services.response_assembler import RoleSearchOutcome
@@ -35,7 +35,11 @@ class PinterestWidgetProvider:
         self._widget = widget
 
     async def search(self, role: Role, query_fragments: tuple[str, ...]) -> RoleSearchOutcome:
-        return await self._widget.enrich_outcome(await self._source.search(role, query_fragments))
+        started = monotonic()
+        async with asyncio.timeout(25):
+            outcome = await self._source.search(role, query_fragments)
+        # Leave a small margin for the route's enclosing 25-second deadline.
+        return await self._widget.fill_outcome(outcome, timeout_seconds=max(.001, 24.9 - (monotonic() - started)))
 
 
 class PinterestWidgetClient:
@@ -81,6 +85,57 @@ class PinterestWidgetClient:
                                  search_failure=outcome.search_failure, retryable=outcome.retryable,
                                  retry_after_seconds=outcome.retry_after_seconds)
 
+    async def fill_outcome(self, outcome: RoleSearchOutcome, *, timeout_seconds=25) -> RoleSearchOutcome:
+        """Fill eight usable images from one bounded, ordered candidate set."""
+        candidates, ids = [], set()
+        for pin in outcome.pins:
+            if outcome.search_failure in ('rate_limited', 'access_restricted') and not (
+                is_opaque_pin_id(pin.pin_id) and public_search_image(pin.thumbnail_url)
+            ):
+                continue  # Never start another upstream lookup after source restriction.
+            if pin.pin_id not in ids:
+                ids.add(pin.pin_id)
+                candidates.append(pin)
+            if len(candidates) == 24:
+                break
+        pins, images = [], set()
+        failure, delay = outcome.search_failure, outcome.retry_after_seconds
+        offset = 0
+        # Never submit more lookups than the number of missing images.
+        deadline = monotonic() + min(25, self._total_timeout, timeout_seconds)
+        while offset < len(candidates) and len(pins) < 8:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                failure = failure or 'temporary'
+                break
+            batch = candidates[offset:offset + min(self._concurrency, 8 - len(pins))]
+            offset += len(batch)
+            enriched = await self._enrich_pins(batch, timeout_seconds=remaining)
+            restricted = False
+            for pin in enriched:
+                if pin.failure_reason == 'temporary':
+                    failure = failure or 'temporary'
+                if pin.failure_reason in ('rate_limited', 'access_restricted'):
+                    restricted = True
+                    if failure != 'access_restricted':
+                        failure, delay = pin.failure_reason, pin.retry_after_seconds
+                if (pin.status is PinStatus.AVAILABLE and pin.thumbnail_url
+                        and pin.thumbnail_url not in images):
+                    images.add(pin.thumbnail_url)
+                    pins.append(pin)
+            if restricted or outcome.search_failure in ('rate_limited', 'access_restricted'):
+                break
+            if monotonic() >= deadline:
+                failure = failure or 'temporary'
+                break
+        code = outcome.code
+        if (candidates or failure) and not pins:
+            code = ReasonCode.PIN_SEARCH_UNAVAILABLE
+            failure = failure or 'unavailable'
+        return RoleSearchOutcome(role=outcome.role, pins=pins, code=code,
+                                 search_failure=failure, retryable=outcome.retryable,
+                                 retry_after_seconds=delay)
+
     async def enrich_job(self, envelope: JobEnvelope) -> JobEnvelope:
         """Rehydrate persisted Pin IDs without persisting thumbnails or whole responses."""
         if envelope.job_status is not JobStatus.COMPLETED or envelope.result is None:
@@ -95,16 +150,16 @@ class PinterestWidgetClient:
             term.pins[index] = pin
         return result
 
-    async def _enrich_pins(self, pins):
+    async def _enrich_pins(self, pins, *, timeout_seconds=None):
         # A bounded set of consumers admits work gradually, preserving input order.
-        results = [pin.model_copy(update={"thumbnail_url": None, "status": PinStatus.UNAVAILABLE})
+        results = [pin.model_copy(update={"thumbnail_url": None, "status": PinStatus.UNAVAILABLE, "failure_reason": 'temporary'})
                    for pin in pins]
         pending = iter(enumerate(pins))
         async def consume():
             for index, pin in pending:
                 results[index] = await self._lookup(pin)
         try:
-            async with asyncio.timeout(self._total_timeout):
+            async with asyncio.timeout(min(self._total_timeout, timeout_seconds) if timeout_seconds is not None else self._total_timeout):
                 async with asyncio.TaskGroup() as group:
                     for _ in range(min(self._concurrency, len(pins))):
                         group.create_task(consume())
@@ -130,15 +185,17 @@ class PinterestWidgetClient:
                              status=PinStatus.AVAILABLE if url else PinStatus.UNAVAILABLE,
                              failure_reason=None if url else 'expired')
         url = None
-        reason, delay = None, None
-        status = PinStatus.DELETED
+        reason, delay = 'unavailable', None
+        status = PinStatus.UNAVAILABLE
         if len(pin.pin_id) <= 64 and pin.pin_id.isascii() and pin.pin_id.isdigit():
             try:
                 url = await self._url(pin.pin_id)
-                status = PinStatus.AVAILABLE if url else PinStatus.DELETED
+                status = PinStatus.AVAILABLE if url else PinStatus.UNAVAILABLE
+                reason = None if url else 'unavailable'
             except WidgetUnavailable as error:
                 reason, delay = error.reason, error.retry_after_seconds
-                status = PinStatus.DELETED if reason == 'deleted' else PinStatus.UNAVAILABLE
+                reason = 'unavailable' if reason == 'deleted' else reason
+                status = PinStatus.UNAVAILABLE
         return PinResult(pin_id=pin.pin_id, pin_url=pin.pin_url,
                          thumbnail_url=url, status=status, failure_reason=reason,
                          retry_after_seconds=delay)
@@ -205,18 +262,17 @@ class PinterestWidgetClient:
                             self._retry_until[pin_id] = self._clock() + delay
                             while len(self._retry_until) > self._max_entries:
                                 self._retry_until.popitem(last=False)
-                        if attempt or not retryable or (delay is not None and delay > 2):
+                        if attempt or reason in ('access_restricted', 'rate_limited') or not retryable or (delay is not None and delay > 2):
                             raise WidgetUnavailable(reason, delay) from error
                         await asyncio.sleep(delay if delay is not None else .25)
                 if not isinstance(payload, Mapping) or not isinstance(payload.get("data"), list):
                     raise WidgetUnavailable()
-                # Only a well-formed empty result verifies absence. Broken records
-                # and unsafe/missing images remain retryable lookup failures.
+                # Widget absence cannot verify deletion of the public Pin.
                 data = payload["data"]
                 if data and not all(isinstance(item, Mapping) and "id" in item for item in data):
                     raise WidgetUnavailable()
                 url = _largest_image(payload, pin_id)
-                if data and not url:
+                if not url:
                     raise WidgetUnavailable()
             if self._closed:
                 raise WidgetUnavailable()

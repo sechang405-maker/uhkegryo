@@ -1,11 +1,11 @@
-export const ROLE_ORDER = ["body", "pose", "view", "perspective", "layout"];
+export const ROLE_ORDER = ["body", "pose", "composition", "perspective"];
+export const canonicalRole = role => ['view', 'layout'].includes(role) ? 'composition' : role;
 
 const ROLE_LABELS = {
   body: "체형",
   pose: "포즈",
-  view: "시점",
+  composition: "구도",
   perspective: "투시",
-  layout: "구도",
 };
 
 function isTermForRole(term, role) {
@@ -20,8 +20,9 @@ function isTermForRole(term, role) {
 export function createMindMapSlots(terms) {
   const termsByRole = new Map();
   for (const term of Array.isArray(terms) ? terms : []) {
-    if (ROLE_ORDER.includes(term?.role) && isTermForRole(term, term.role)) {
-      termsByRole.set(term.role, [...(termsByRole.get(term.role) || []), term]);
+    const role = canonicalRole(term?.role);
+    if (ROLE_ORDER.includes(role) && isTermForRole(term, term.role)) {
+      termsByRole.set(role, [...(termsByRole.get(role) || []), { ...term, role }]);
     }
   }
 

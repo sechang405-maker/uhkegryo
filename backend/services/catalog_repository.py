@@ -1,6 +1,6 @@
 """TERM_CARD JSON 카탈로그 로드·시작 검증·불변 스냅샷 (docs/specs/term-card-catalog.md 기준).
 
-- index.json과 index가 선언한 5개 역할 JSON(body·pose·view·perspective·layout)만 읽는다.
+- index.json과 index가 선언한 개개 역할 JSON(body·pose·composition·perspective)만 읽는다.
 - 활성 조건 `runtime_eligible=true && mvp_status=active_in_current_contract`를 통과한 카드만
   `term_id -> card` 사전과 역할별 목록으로 로드한다. 요청 처리 중 파일을 다시 읽지 않는다.
 - 검증 실패 시 `CatalogLoadError`(RuntimeError)를 던져 프로세스를 start 하지 않게 한다
@@ -133,7 +133,7 @@ class ImmutableCatalogSnapshot(CatalogSnapshot):
 
 
 def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
-    """카탈로그를 로드·검증하고 불변 스냅샷을 반환한다 (term-card-catalog AC-01~AC-05)."""
+    """카탈로그를 로드·검증하고 불변 스냅샷을 반환한다 (term-card-catalog AC-01~AC-0개)."""
     index_path = catalog_dir / "index.json"
     if not index_path.exists():
         raise CatalogLoadError(f"index.json not found at {index_path}")
@@ -152,6 +152,7 @@ def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
         raise CatalogLoadError("index.categories가 비어 있거나 잘못된 타입이다")
 
     declared_roles: list[Role] = []
+    source_roles: list[str] = []
     files: list[Path] = []
     for cat in categories:
         if not isinstance(cat, dict) or "role" not in cat or "file" not in cat:
@@ -160,16 +161,18 @@ def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
             role = Role(cat["role"])
         except ValueError as e:
             raise CatalogLoadError(f"허용되지 않은 role: {cat['role']}") from e
-        if role in declared_roles:
+        if cat["role"] in source_roles or (role in declared_roles and
+                (cat["role"] == "composition" or "composition" in source_roles)):
             raise CatalogLoadError(f"역할 중복 선언: {role}")
         declared_roles.append(role)
+        source_roles.append(cat["role"])
         files.append(catalog_dir / cat["file"])
 
     active_cards: dict[str, dict[str, Any]] = {}
     role_terms: dict[Role, list[str]] = {role: [] for role in declared_roles}
     seen_term_ids: set[str] = set()
 
-    for role, file_path in zip(declared_roles, files):
+    for role, source_role, file_path in zip(declared_roles, source_roles, files):
         if not file_path.exists():
             raise CatalogLoadError(f"role file not found: {file_path}")
         try:
@@ -184,7 +187,7 @@ def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
             term_id = card.get("term_id")
             _validate_card_required_fields(card, term_id, file_path.name)
 
-            if str(card["role"]) != role.value:
+            if str(card["role"]) != source_role:
                 raise CatalogLoadError(
                     f"카드 role이 선언된 역할과 다르다: term_id={term_id}, role={card['role']} != {role.value}"
                 )
@@ -207,6 +210,7 @@ def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
                 )
 
             active_cards[term_id] = dict(card)
+            active_cards[term_id]["role"] = role.value
             role_terms[role].append(term_id)
 
     # requires_all_of / requires_any_of 참조 ID가 활성 카탈로그에 존재 (구조 무결성)
@@ -222,7 +226,7 @@ def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
                     f"term_id={term_id}, ref={ref}"
                 )
 
-    # active_term_feedback 검증 (AC-05)
+    # active_term_feedback 검증 (AC-0개)
     feedback_raw = index_data.get("active_term_feedback", {}) or {}
     feedback: dict[str, dict[str, str]] = {}
     for term_id, fb in feedback_raw.items():
@@ -254,7 +258,7 @@ def load_catalog(catalog_dir: Path) -> CatalogSnapshot:
         dataset_version=str(index_data.get("dataset_version", "unknown")),
         active_cards=active_cards,
         role_terms=role_terms,
-        roles_order=tuple(declared_roles),
+        roles_order=tuple(role for role in Role if role in declared_roles),
         feedback=feedback,
         direct_search_disabled=frozenset(direct_disabled),
     )

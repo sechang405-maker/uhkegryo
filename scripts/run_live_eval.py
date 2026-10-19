@@ -14,7 +14,7 @@ from urllib.parse import urlsplit, urlunsplit
 import asyncpg
 from pydantic import ValidationError
 
-from backend.schemas.enums import JobStatus, ReasonCode
+from backend.schemas.enums import JobStatus, ReasonCode, Role
 from backend.schemas.models import PinResult
 from backend.services.agent_worker import AgentJobWorker
 from backend.services.catalog_repository import load_catalog
@@ -142,8 +142,8 @@ def assess(case, submitted, terminal, searches):
     result = terminal.get("result") or {}
     plan = result.get("reference_plan")
     terms = (plan or {}).get("terms", [])
-    selected = {(t["role"], t["term_id"]) for t in terms}
-    required = {(t["role"], t["term_id"]) for t in expected.get("required_selections", [])}
+    selected = {(Role(t["role"]).value, t["term_id"]) for t in terms}
+    required = {(Role(t["role"]).value, t["term_id"]) for t in expected.get("required_selections", [])}
     checks = {"submission_envelope": submitted["job_status"] == "queued" and submitted["poll_after_ms"] == 1000,
               "terminal_status": terminal["job_status"] == expected["terminal"]["job_status"],
               "required_selections": required <= selected,

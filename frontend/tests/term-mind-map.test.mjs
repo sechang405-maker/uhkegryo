@@ -8,7 +8,7 @@ test("AC-10: 역할 순서의 5개 방사형 위치를 만들고 없는 역할�
     { role: "pose", term_id: "pose_contrapposto", label_ko: "콘트라포스토" },
   ]);
 
-  assert.deepEqual(slots.map((slot) => slot.role), ["body", "pose", "view", "perspective", "layout"]);
+  assert.deepEqual(slots.map((slot) => slot.role), ["body", "pose", "composition", "perspective"]);
   assert.equal(slots[0].term, null);
   assert.equal(slots[1].term.label_ko, "콘트라포스토");
   assert.equal(slots[3].term.label_ko, "로우 앵글");

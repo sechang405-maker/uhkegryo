@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 
 from backend.schemas.models import InterpretationOutput
+from backend.schemas.enums import Role
 
 
 def strict_schema(schema):
@@ -31,8 +32,8 @@ def response_format(active_cards_json: str = "") -> dict:
         for name in ("InterpretationSelection", "ContextUpdate"):
             original = schema["$defs"][name]
             references = {}
-            for role in ("body", "pose", "view", "perspective", "layout"):
-                ids = [c["term_id"] for c in cards if c["role"] == role]
+            for role in ("body", "pose", "composition", "perspective"):
+                ids = [c["term_id"] for c in cards if Role(c["role"]).value == role]
                 if not ids:
                     continue
                 variant = json.loads(json.dumps(original))

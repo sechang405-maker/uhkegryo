@@ -210,3 +210,30 @@ def test_ac06_application_startup_installs_search_limiter(search_setup, monkeypa
         assert response.status_code == 200
         assert "set-cookie" not in response.headers
         assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize('exclusions', [['1'] * 65, ['../bad'], ['x' * 500], [1], ['e1_'], ['https://pinterest.com/pin/1/']])
+def test_refill_rejects_unbounded_or_invalid_exclusions_before_io(search_setup, exclusions):
+    response = TestClient(app).post('/api/term-search', json={
+        'term_id': 'pose_standing', 'exclude_pin_ids': exclusions})
+    assert response.status_code == 422
+    assert search_setup.queries == search_setup.widgets == []
+
+
+def test_refill_excludes_ids_at_source_and_uses_next_candidates(search_setup, monkeypatch):
+    async def load(url, params):
+        search_setup.queries.append(params)
+        return search_setup.payload
+    async def widget(url):
+        search_setup.widgets.append(url)
+        pin_id = url.rsplit('=', 1)[1]
+        return {'data': [{'id': pin_id, 'images': {'large': {
+            'url': f'https://i.pinimg.com/{pin_id}.jpg', 'width': 100, 'height': 200}}}]}
+    monkeypatch.setattr(term_search, 'get_search_provider', lambda suffix, **kwargs: PinterestWidgetProvider(
+        SearXNGPinterestSearchProvider(base_url='http://search', json_loader=load,
+            candidate_limit=24, **kwargs), PinterestWidgetClient(json_loader=widget)))
+    response = TestClient(app).post('/api/term-search', json={
+        'term_id': 'pose_standing', 'exclude_pin_ids': ['1', '2']})
+    assert response.status_code == 200
+    assert [pin['pin_id'] for pin in response.json()['pins']] == list(map(str, range(3, 11)))
+    assert len(search_setup.queries) == 1 and len(search_setup.widgets) == 8

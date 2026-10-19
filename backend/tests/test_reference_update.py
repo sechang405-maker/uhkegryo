@@ -30,14 +30,14 @@ def run_worker(monkeypatch, snapshot_factory, card_factory, *, refresh=False, pr
                inherited=False, failure=False, clear=False, old_pins=False, changed_role="pose",
                refresh_roles=None, clarification=False, request_text="체형 제외 앉은 모습 옆모습"):
     previous = prior() if previous is None else previous
-    selected_id = {"body": "body_muscular", "pose": "pose_sitting", "view": "view_profile"}[changed_role]
+    selected_id = {"body": "body_muscular", "pose": "pose_sitting", "composition": "view_profile"}[changed_role]
     search_terms = [(t["role"], t["term_id"]) for t in (previous.get("reference_plan") or {}).get("terms", [])]
     if refresh_roles is not None:
         search_terms = [(role, term_id) for role, term_id in search_terms if role in refresh_roles]
     elif not refresh:
         search_terms = [(changed_role, selected_id)]
     output = InterpretationOutput(interpretation_state="select_terms", selections=[
-        {"role": changed_role, "term_id": selected_id, "evidence": ["옆모습" if changed_role == "view" else "앉은 모습"], "confidence": 1}],
+        {"role": changed_role, "term_id": selected_id, "evidence": ["옆모습" if changed_role == "composition" else "앉은 모습"], "confidence": 1}],
         answer_text="앉은 포즈로 바꿨어요.")
     if not refresh and refresh_roles is None:
         output.context_updates = [ContextUpdate(role=changed_role, term_id=selected_id,
@@ -67,7 +67,7 @@ def run_worker(monkeypatch, snapshot_factory, card_factory, *, refresh=False, pr
     adapter.memory = classify
     snapshot = snapshot_factory([card_factory(term_id, role=role, query_fragments=[term_id])
         for role, term_id in [('body', 'body_slim'), ('body', 'body_muscular'), ('pose', 'pose_standing'), ('pose', 'pose_sitting'),
-                             ('view', 'view_front'), ('view', 'view_profile')]])
+                             ('composition', 'view_front'), ('composition', 'view_profile')]])
     jobs, recovery = FakeJobs({**JOB, "request_text": request_text}), FakeRecovery()
     roles = [role for role, _ in search_terms]
     gateway = FakeMcpGateway([{"role": role, "code": "PIN_SEARCH_UNAVAILABLE" if failure else None,
@@ -95,17 +95,17 @@ def test_pose_only_search_preserves_body(monkeypatch, snapshot_factory, card_fac
     assert result.reference_plan.terms[0].pins[0].pin_id == "11"
 
 
-@pytest.mark.parametrize("changed_role,refresh", [("body", False), ("pose", False), ("view", False), ("pose", True)])
+@pytest.mark.parametrize("changed_role,refresh", [("body", False), ("pose", False), ("composition", False), ("pose", True)])
 def test_body_pose_view_board_updates_only_requested_roles(monkeypatch, snapshot_factory, card_factory, changed_role, refresh):
     previous = prior()
     previous["reference_plan"]["terms"].append({**previous["reference_plan"]["terms"][0],
-        "role": "view", "term_id": "view_front", "pins": [pin("55").model_dump(mode="json")]})
+        "role": "composition", "term_id": "view_front", "pins": [pin("55").model_dump(mode="json")]})
     result, calls, _ = run_worker(monkeypatch, snapshot_factory, card_factory,
         previous=previous, refresh=refresh, changed_role=changed_role)
-    assert [args["role"] for _, args in calls] == (["body", "pose", "view"] if refresh else [changed_role])
+    assert [args["role"] for _, args in calls] == (["body", "pose", "composition"] if refresh else [changed_role])
     assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
-        "replaced_roles": ["body", "pose", "view"] if refresh else [changed_role],
-        "preserved_roles": [] if refresh else [role for role in ["body", "pose", "view"] if role != changed_role],
+        "replaced_roles": ["body", "pose", "composition"] if refresh else [changed_role],
+        "preserved_roles": [] if refresh else [role for role in ["body", "pose", "composition"] if role != changed_role],
         "removed_roles": []}
     for term, original in zip(result.reference_plan.terms, previous["reference_plan"]["terms"]):
         if refresh:
@@ -149,7 +149,7 @@ def test_worker_rejects_old_pins_even_when_returned_under_another_role(monkeypat
     assert "찾지 못" in result.answer_text
 
 
-@pytest.mark.parametrize("action,roles", [("refresh_all", []), ("refresh_roles", ["view"]), ("update", [])])
+@pytest.mark.parametrize("action,roles", [("refresh_all", []), ("refresh_roles", ["composition"]), ("update", [])])
 def test_adapter_preserves_refresh_action_when_normalizing_unused_filters(monkeypatch, action, roles):
     from backend.tests.test_llm_adapter import _adapter, _FakeCompletions, _FakeResponse
     transport = _FakeCompletions([_FakeResponse(json.dumps({"mode": "none", "reference_action": action, "refresh_roles": roles}))])
@@ -157,7 +157,7 @@ def test_adapter_preserves_refresh_action_when_normalizing_unused_filters(monkey
     from pathlib import Path
     monkeypatch.setattr(adapter, "_resolve_prompt_path", lambda: Path(__file__).parents[2] / "prompts/uhkegryo-interpreter-v4.md")
     result = asyncio.run(adapter.memory("classify", {"request_text": "전부 새 레퍼런스",
-        "current_reference_roles": ["body", "pose", "view"]}, RecallQuery,
+        "current_reference_roles": ["body", "pose", "composition"]}, RecallQuery,
         job_id=str(uuid4()), session_id=str(uuid4()), attempt=1, max_attempts=3))
     assert result.reference_action == action and result.refresh_roles == roles
     rules = transport.calls[0]["messages"][0]["content"]
@@ -185,25 +185,25 @@ def test_new_reference_request_keeps_action_classification():
 def test_remaining_images_refresh_only_view_and_report_decisions(monkeypatch, snapshot_factory, card_factory, old_pins, failure):
     previous = prior()
     previous["reference_plan"]["terms"].append({**previous["reference_plan"]["terms"][0],
-        "role": "view", "term_id": "view_front", "pins": [pin("55").model_dump(mode="json")]})
+        "role": "composition", "term_id": "view_front", "pins": [pin("55").model_dump(mode="json")]})
     result, calls, adapter = run_worker(monkeypatch, snapshot_factory, card_factory,
-        previous=previous, refresh_roles=["view"], old_pins=old_pins, failure=failure,
+        previous=previous, refresh_roles=["composition"], old_pins=old_pins, failure=failure,
         request_text="체형·포즈 이미지는 그대로 두고 나머지만 다른 레퍼런스로 찾아줘")
-    assert [args["role"] for _, args in calls] == ["view"] * (3 if failure else 1)
+    assert [args["role"] for _, args in calls] == ["composition"] * (3 if failure else 1)
     assert all(args["exclude_pin_ids"] == ["55"] for _, args in calls)
     assert [term.model_dump(mode="json") for term in result.reference_plan.terms[:2]] == previous["reference_plan"]["terms"][:2]
     view = result.reference_plan.terms[2]
     assert view.term_id == "view_front"
     assert [p.pin_id for p in view.pins] == ([] if old_pins or failure else ["44"])
     assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
-        "replaced_roles": ["view"], "preserved_roles": ["body", "pose"], "removed_roles": []}
+        "replaced_roles": ["composition"], "preserved_roles": ["body", "pose"], "removed_roles": []}
     assert not adapter.calls
-    assert adapter.classification_data["current_reference_roles"] == ["body", "pose", "view"]
+    assert adapter.classification_data["current_reference_roles"] == ["body", "pose", "composition"]
     assert "pin_url" not in json.dumps(adapter.classification_data)
     assert "pin_id" not in json.dumps(adapter.classification_data)
 
 
-@pytest.mark.parametrize("roles,previous", [([], None), (["view"], None), (["body"], {})])
+@pytest.mark.parametrize("roles,previous", [([], None), (["composition"], None), (["body"], {})])
 def test_invalid_refresh_scope_preserves_board_without_search(monkeypatch, snapshot_factory, card_factory, roles, previous):
     result, calls, _ = run_worker(monkeypatch, snapshot_factory, card_factory,
         previous=previous, refresh_roles=roles)
@@ -216,7 +216,7 @@ def test_invalid_refresh_scope_preserves_board_without_search(monkeypatch, snaps
 def test_multiple_image_roles_refresh_preserves_remaining_role(monkeypatch, snapshot_factory, card_factory):
     previous = prior()
     original_view = {**previous["reference_plan"]["terms"][0],
-        "role": "view", "term_id": "view_front", "pins": [pin("55").model_dump(mode="json")]}
+        "role": "composition", "term_id": "view_front", "pins": [pin("55").model_dump(mode="json")]}
     previous["reference_plan"]["terms"].append(original_view)
     result, calls, _ = run_worker(monkeypatch, snapshot_factory, card_factory,
         previous=previous, refresh_roles=["body", "pose"])
@@ -224,7 +224,7 @@ def test_multiple_image_roles_refresh_preserves_remaining_role(monkeypatch, snap
     assert [term.term_id for term in result.reference_plan.terms] == ["body_slim", "pose_standing", "view_front"]
     assert result.reference_plan.terms[2].model_dump(mode="json") == original_view
     assert result.reference_update.model_dump(mode="json", include={"replaced_roles", "preserved_roles", "removed_roles"}) == {
-        "replaced_roles": ["body", "pose"], "preserved_roles": ["view"], "removed_roles": []}
+        "replaced_roles": ["body", "pose"], "preserved_roles": ["composition"], "removed_roles": []}
 
 
 def test_clarification_keeps_board_even_if_model_suggests_clear(monkeypatch, snapshot_factory, card_factory):
@@ -248,9 +248,9 @@ def test_initial_board_and_legacy_payload_metadata(monkeypatch, snapshot_factory
     with pytest.raises(ValueError):
         ReferenceUpdate(replaced_roles=["pose"], preserved_roles=["pose"])
     with pytest.raises(ValueError):
-        RecallQuery(mode="none", reference_action="refresh_roles", refresh_roles=["view", "view"])
+        RecallQuery(mode="none", reference_action="refresh_roles", refresh_roles=["composition", "composition"])
     with pytest.raises(ValueError):
-        RecallQuery(mode="none", reference_action="refresh_all", refresh_roles=["view"])
+        RecallQuery(mode="none", reference_action="refresh_all", refresh_roles=["composition"])
 
 
 @pytest.mark.parametrize("new_pin", [True, False])

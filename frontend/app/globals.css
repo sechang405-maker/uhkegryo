@@ -25,7 +25,7 @@
 .term-graph-controls { display:flex; align-items:center; justify-content:flex-end; gap:6px; margin:18px 0 0; }
 .term-graph-controls span { min-width:40px; text-align:center; font-size:11px; color:var(--text-secondary); }
 .term-graph-controls button { min-width:40px; }
-.term-graph-scene { height:clamp(320px,43vh,500px); position:relative; overflow:hidden; touch-action:none; cursor:grab; border-radius:14px; background:radial-gradient(ellipse at center, var(--surface) 0, var(--canvas) 70%); }
+.term-graph-scene { height:clamp(480px,60vh,680px); position:relative; overflow:hidden; touch-action:none; cursor:grab; border-radius:14px; background:radial-gradient(ellipse at center, var(--surface) 0, var(--canvas) 70%); }
 .term-graph-scene:active { cursor:grabbing; }
 .term-graph-scene > svg { position:absolute; width:100%; height:100%; pointer-events:none; }
 .term-graph-scene line { stroke:var(--border); stroke-width:1.3; opacity:.45; vector-effect:non-scaling-stroke; }

@@ -1,9 +1,9 @@
 """Read-only card searches; docs/specs/term-search-api.md."""
 import asyncio
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from backend.schemas.enums import FailureCode, ReasonCode, Role
 from backend.schemas.models import TermResult
@@ -23,15 +23,17 @@ class TermSearchRequest(BaseModel):
 
     term_id: str = Field(min_length=1, max_length=120, strict=True)
     suffix: Literal["drawing", "sketch", "mannequinization"] = "drawing"
+    exclude_pin_ids: list[Annotated[str, StringConstraints(strict=True, pattern=r'^(?:[0-9]{1,64}|e1_[A-Za-z0-9_-]{1,200})$')]] = Field(default_factory=list, max_length=64)
 
 
-def get_search_provider(suffix: str) -> PinterestWidgetProvider:
+def get_search_provider(suffix: str, *, exclude_pin_ids=()) -> PinterestWidgetProvider:
     from backend.services.public_http import current_resources
     resources = current_resources()
     if resources is not None:
-        return resources.search_provider(get_settings().searxng_base_url, suffix)
+        return resources.search_provider(get_settings().searxng_base_url, suffix, exclude_pin_ids=exclude_pin_ids)
     return PinterestWidgetProvider(
-        SearXNGPinterestSearchProvider(base_url=get_settings().searxng_base_url, suffix=suffix),
+        SearXNGPinterestSearchProvider(base_url=get_settings().searxng_base_url, suffix=suffix,
+                                      exclude_pin_ids=exclude_pin_ids, candidate_limit=24),
         PinterestWidgetClient(),
     )
 
@@ -55,7 +57,9 @@ async def search_term(payload: TermSearchRequest, request: Request, response: Re
     role = Role(card["role"])
     try:
         async with asyncio.timeout(SEARCH_TIMEOUT_SECONDS):
-            outcome = await get_search_provider(payload.suffix).search(role, tuple(card["query_fragments"]))
+            provider = get_search_provider(payload.suffix, **(
+                {'exclude_pin_ids': tuple(payload.exclude_pin_ids)} if payload.exclude_pin_ids else {}))
+            outcome = await provider.search(role, tuple(card["query_fragments"]))
     except TimeoutError:
         outcome = RoleSearchOutcome(role=role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE,
                                     search_failure='temporary', retryable=True)

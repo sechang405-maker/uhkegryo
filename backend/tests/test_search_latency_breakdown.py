@@ -35,7 +35,7 @@ def test_parallel_phases_and_generation_purpose(monkeypatch, snapshot_factory):
                                              "width": 10, "height": 10}})
 
         worker, adapter = setup(monkeypatch, snapshot_factory,
-                                [[search("pose"), search("view")]] * 2 + [[], []], handler,
+                                [[search("pose"), search("composition")]] * 2 + [[], []], handler,
                                 PinterestWidgetClient(json_loader=widget))
         client = FakeLangfuse()
         worker._tracer = JobTracer(client)
@@ -48,21 +48,21 @@ def test_parallel_phases_and_generation_purpose(monkeypatch, snapshot_factory):
         adapter.request_mcp_tool_calls = generate
         async def execute(job_id):
             with worker._tracer.attempt(_job(1, job_id)):
-                return await worker._search_outcomes(resolution(["pose", "view"]), request_text="private request")
+                return await worker._search_outcomes(resolution(["pose", "composition"]), request_text="private request")
         outcomes = (await asyncio.gather(execute("job-1"), execute("job-2")))[0]
         records = client.records
         assert {r["trace_id"] for r in records} == {"trace:job-1", "trace:job-2"}
         for trace_id in ("trace:job-1", "trace:job-2"):
             assert {r["metadata"]["role"] for r in records
-                    if r["trace_id"] == trace_id and r["name"] == "mcp-search-call"} == {"pose", "view"}
+                    if r["trace_id"] == trace_id and r["name"] == "mcp-search-call"} == {"pose", "composition"}
         selection = next(r for r in records if r["name"] == "mcp-tool-selection")
-        assert selection["metadata"] == {"call_round": 1, "purpose": "tool_selection", "pending_term_ids": ["pose", "view"]}
-        assert selection["output"]["selected_roles"] == ["pose", "view"]
+        assert selection["metadata"] == {"call_round": 1, "purpose": "tool_selection", "pending_term_ids": ["pose", "composition"]}
+        assert selection["output"]["selected_roles"] == ["composition", "pose"]
         final = next(r for r in records if r["name"] == "mcp-post-search-decision")
         assert final["metadata"]["call_round"] == 2 and final["output"]["call_count"] == 0
         for name in ("search-slot-wait", "mcp-search-call", "widget-enrichment"):
             spans = [r for r in records if r["name"] == name]
-            assert {r["metadata"]["role"] for r in spans} == {"pose", "view"}
+            assert {r["metadata"]["role"] for r in spans} == {"pose", "composition"}
             assert all(r["metadata"]["search_attempt"] == 1 and r["output"]["elapsed_ms"] >= 0 for r in spans)
         widgets = [r for r in records if r["name"] == "widget-enrichment"]
         assert all(r["output"]["available_count"] == r["output"]["unavailable_count"] == 1 for r in widgets)

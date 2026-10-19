@@ -284,7 +284,7 @@ def test_codex_combined_invalid_once_with_safe_diagnostics(monkeypatch,payload):
 
 @pytest.mark.parametrize('count',[10,11])
 def test_combined_mixed_categories_card_limit_before_search(monkeypatch,snapshot_factory,card_factory,count):
-    categories=['pose']*5+['view']*5
+    categories=['pose']*5+['composition']*5
     selected=[selection(f'{role}_{i}',role=role) for i,role in enumerate(categories)]
     context={'state':{},'recent':[],'sources':[]}
     cards=[card_factory(item['term_id'],role=item['role']) for item in selected]

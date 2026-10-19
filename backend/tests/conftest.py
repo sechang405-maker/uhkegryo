@@ -62,7 +62,7 @@ def snapshot_factory():
         dsd: tuple[str, ...] = (),
         roles_order: tuple[Role, ...] | None = None,
     ) -> CatalogSnapshot:
-        active = {c["term_id"]: dict(c) for c in cards}
+        active = {c["term_id"]: {**c, "role": Role(c["role"]).value} for c in cards}
         role_terms: dict[Role, list[str]] = {}
         for c in cards:
             role = Role(c["role"])

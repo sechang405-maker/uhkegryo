@@ -103,7 +103,7 @@ async def search_pinterest_pins(role: Role, query_fragments: list[str], exclude_
     완성 검색어, 사용자 원문, 추가 검색 조건은 전달하지 않는다.
 
     Args:
-        role: 결과를 연결할 역할. `body`, `pose`, `view`, `perspective`, `layout` 중 하나.
+        role: 결과를 연결할 역할. `body`, `pose`, `composition`, `perspective` 중 하나.
         query_fragments: 활성 TERM_CARD에서 가져온 비어 있지 않은 검색어 조각 배열.
         exclude_pin_ids: 전체 교체 시 서버가 전달하는 이전 보드 Pin ID, 최대 40개.
 

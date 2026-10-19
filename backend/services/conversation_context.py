@@ -2,7 +2,7 @@
 import re
 from copy import deepcopy
 
-from backend.schemas.enums import AgentStatus, ReasonCode
+from backend.schemas.enums import AgentStatus, ReasonCode, Role
 from backend.services.clarification_policy import repeated_question, REPEATED_FALLBACK
 from backend.schemas.models import AgentResult, InterpretationOutput, InterpretationSelection
 from backend.schemas.memory import RecallQuery, RecallAnswer, MemorySource, NO_RECORDS, TOO_MANY
@@ -11,7 +11,10 @@ from backend.services.llm import LLMInvalidStructuredOutput
 from backend.services.resolver import resolve, ResolutionResult, STATUS_CLARIFY, STATUS_ALL_INVALID, STATUS_PROCEED
 
 async def prepare(memory, job, adapter, trace):
-    return await memory.load(job)
+    context = await memory.load(job)
+    if context.get("previous_result"):
+        context["previous_result"] = AgentResult.model_validate(context["previous_result"]).model_dump(mode="json")
+    return context
 
 
 def prompt_context(context):
@@ -105,7 +108,7 @@ async def validate(memory, job, interpretation, snapshot, *, context=None):
                                              feedback=[{"path": [], "code": "selection_evidence_invalid"}])
         if selection.source_job_id:
             verified_source_texts[str(selection.source_job_id)] = tuple(allowed)
-    known = {term['term_id']: term['role'] for term in
+    known = {term['term_id']: Role(term['role']).value for term in
              (((context or {}).get('previous_result') or {}).get('reference_plan') or {}).get('terms', [])}
     known.update({key: value['role'] for key, value in normalize_constraints(
         (context or {}).get('state', {}).get('constraints', {})).items()})

@@ -2,7 +2,7 @@
 import json
 from uuid import UUID
 
-from backend.schemas.enums import JobStatus
+from backend.schemas.enums import JobStatus, Role
 from backend.services.job_repository import JobRepository, StaleJobAttempt
 from backend.services.llm import LLMInvalidStructuredOutput
 
@@ -25,6 +25,8 @@ def record(row):
                            for term in (payload.get("reference_plan") or {}).get("terms", [])[:10]]
         result["question"] = (payload.get("clarifying_question") or "")[:500]
         result["message"] = (payload.get("user_message") or "")[:1000]
+        for term in result["terms"]:
+            term["role"] = Role(term["role"]).value
     # Retain whole fields: never cut serialized JSON or expose provider payloads.
     while len(json.dumps(result, ensure_ascii=False)) > RECORD_LIMIT and result["terms"]:
         result["terms"].pop()
@@ -39,7 +41,7 @@ def evidence_text(item):
 
 def normalize_constraints(constraints):
     """Read historical role keys and current term keys into one card-indexed map."""
-    return {value["term_id"]: {**value, "role": value.get("role", key)}
+    return {value["term_id"]: {**value, "role": Role(value.get("role", key)).value}
             for key, value in constraints.items()}
 
 
@@ -72,8 +74,10 @@ class ConversationMemory:
                ORDER BY created_at DESC,job_id DESC LIMIT 1""",
             job["session_id"], job["created_at"], job["job_id"],
         )
+        from backend.schemas.models import AgentResult
+        previous_result = AgentResult.model_validate(decode(previous)).model_dump(mode="json") if previous else {}
         return {"state": state, "recent": [record(r) for r in reversed(rows)],
-                "sources": sources, "previous_result": decode(previous)}
+                "sources": sources, "previous_result": previous_result}
 
     async def records(self, job, ids):
         rows = await self.pool.fetch(
@@ -95,7 +99,7 @@ class ConversationMemory:
                AND final_payload_json->>'agent_status' NOT IN ('unsafe_input','out_of_scope','memory_answer')
                AND ($4::text IS NULL OR EXISTS(SELECT 1 FROM jsonb_array_elements(
                     COALESCE(final_payload_json->'reference_plan'->'terms','[]'::jsonb)) t
-                    WHERE t->>'role'=$4))
+                    WHERE t->>'role'=$4 OR ($4='composition' AND t->>'role' IN ('view','layout'))))
                AND ($5::text IS NULL OR EXISTS(SELECT 1 FROM jsonb_array_elements(
                     COALESCE(final_payload_json->'reference_plan'->'terms','[]'::jsonb)) t
                     WHERE t->>'term_id'=$5))

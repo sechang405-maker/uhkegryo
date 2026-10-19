@@ -81,7 +81,7 @@ def test_only_verified_missing_is_deleted_and_total_budget_is_bounded():
         pins = [PinResult(pin_id=str(i),pin_url=f'https://www.pinterest.com/pin/{i}/',status=PinStatus.AVAILABLE) for i in range(1,4)]
         client = PinterestWidgetClient(json_loader=load,total_timeout_seconds=.05)
         result = await asyncio.wait_for(client.enrich_outcome(RoleSearchOutcome(role=Role.POSE,pins=pins)),1)
-        assert [p.status.value for p in result.pins] == ['deleted','unavailable','unavailable']
+        assert [p.status.value for p in result.pins] == ['unavailable','unavailable','unavailable']
         assert not client._slots.locked()
     asyncio.run(run())
 

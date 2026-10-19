@@ -301,7 +301,7 @@ class LLMInterpretationAdapter:
         if self.prompt_version == "uhkegryo-interpreter-v4" and active_cards_json:
             try:
                 payload = json.loads(content)
-                roles = ("body", "pose", "view", "perspective", "layout")
+                roles = ("body", "pose", "composition", "perspective")
                 for field in ("selections", "context_updates"):
                     slots = payload.get(field) if isinstance(payload, dict) else None
                     if isinstance(slots, dict):
@@ -515,8 +515,8 @@ class LLMInterpretationAdapter:
                 "'체형과 포즈는 그대로 두면서 나머지는 전부 다른 레퍼런스로 찾아줘' is NEVER refresh_all: "
                 "use refresh_roles for current_reference_roles minus body and pose. "
                 "'체형·포즈 이미지는 그대로 두고 나머지만 다른 레퍼런스로 찾아줘' follows the same rule. "
-                "With current_reference_roles=[body,pose,view], both remaining-only examples use refresh_roles=[view]. "
-                "'시점 이미지만 새로 찾아줘' uses reference_action=refresh_roles and refresh_roles=[view]. "
+                "With current_reference_roles=[body,pose,composition], both remaining-only examples use refresh_roles=[composition]. "
+                "'구도 이미지만 새로 찾아줘' uses reference_action=refresh_roles and refresh_roles=[composition]. "
                 "Use only existing current_reference_roles for image refresh. If the scope is unclear or empty, "
                 "use reference_action=refresh_roles and refresh_roles=[] so the server asks for clarification. "
                 "Never expand an empty remaining scope to refresh_all. "

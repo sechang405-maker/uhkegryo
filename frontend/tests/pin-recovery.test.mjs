@@ -33,7 +33,7 @@ test('partial results survive and preview recovery retains every healthy old pin
   const result={pins:[good('2')],reason_codes:['PIN_SEARCH_UNAVAILABLE']};
   assert.equal(applySketchResult(term,result).pins.length,1);
   assert.deepEqual(applyPreviewRecovery(term,result).pins.map(p=>p.pin_id),['1','2']);
-  assert.throws(()=>applyPreviewRecovery(term,{pins:[],reason_codes:['PIN_RESULTS_EMPTY']}),/검색 결과가 없습니다.*기존 이미지/);
+  assert.deepEqual(applyPreviewRecovery(term,{pins:[],reason_codes:['PIN_RESULTS_EMPTY']}).pins,[good('1')]);
   assert.equal(term.pins[0].pin_id,'1');
 });
 test('expired and restricted pins have distinct notices and only canonical original links',()=>{

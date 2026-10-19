@@ -15,7 +15,7 @@ from backend.tests.test_llm_adapter import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-ROLES = ("body", "pose", "view", "perspective", "layout")
+ROLES = ("body", "pose", "composition", "perspective")
 TYPES = {"selections": "InterpretationSelection", "context_updates": "ContextUpdate"}
 
 
