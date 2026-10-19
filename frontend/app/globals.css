@@ -75,7 +75,7 @@ button { color: var(--text); background: var(--surface-raised); border: 1px soli
 a { color: var(--accent); }
 :where(button, a, summary, [tabindex]):focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 ::selection { background: var(--accent); color: var(--on-accent); }
-.workspace { display: grid; grid-template-columns: 200px minmax(0, 1fr) clamp(280px, 28vw, 400px); height: 100vh; min-height: 0; overflow: hidden; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) clamp(280px, 28vw, 400px); height: 100vh; min-height: 0; overflow: hidden; }
 .reference-board { position: relative; min-width: 0; overflow: hidden; container-type: inline-size; border-right: 3px solid var(--accent); background: var(--canvas); color: var(--text); }
 .board-header { display: flex; align-items: center; justify-content: center; height: 72px; padding: 0 24px; border-bottom: 3px solid var(--accent); background: var(--surface); }
 .brand-identity { display: flex; align-items: center; gap: 12px; }
@@ -346,3 +346,16 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
   .pin-gallery-card { transition: none; }
   .pin-gallery-card:hover, .pin-gallery-card:focus-visible { transform: none; }
 }
+
+/* Modal history occupies no workspace column. Native dialog makes the background inert. */
+.history-logo { flex-shrink:0; border:0; padding:8px; background:transparent; cursor:pointer; min-height:44px; }
+.board-header { gap:16px; justify-content:flex-start; padding-left:12px; }
+.history-drawer { position:fixed; inset:0 auto 0 0; margin:0; padding:0; width:min(340px, 90vw); max-width:none; height:100dvh; max-height:100dvh; border:0; border-right:3px solid var(--accent); background:var(--surface); color:var(--text); overflow:hidden; overscroll-behavior:contain; }
+.history-drawer[open] { display:flex; flex-direction:column; animation:history-enter 180ms ease-out; }
+.history-drawer::backdrop { background:rgba(0,0,0,.64); }
+.history-drawer-header { display:flex; align-items:center; justify-content:space-between; flex-shrink:0; min-height:72px; padding:0 10px; border-bottom:3px solid var(--accent); }
+.history-close { min-width:44px; min-height:44px; border:0; background:transparent; font-size:26px; cursor:pointer; }
+.history-drawer .history-sidebar-list { border-right:0; overscroll-behavior:contain; }
+@keyframes history-enter { from { transform:translateX(-100%); } to { transform:translateX(0); } }
+@media (prefers-reduced-motion:reduce) { .history-drawer[open] { animation:none; } }
+@media (max-width:760px) { .desktop-history-logo { display:none; } .mobile-workspace-nav .history-logo { flex:0 0 auto; padding:0 8px; } .mobile-workspace-nav .brand-name { display:none; } .mobile-workspace-nav .brand-mark { height:30px; width:30px; } }

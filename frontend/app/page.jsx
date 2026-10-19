@@ -16,6 +16,7 @@ import { stopTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from ".
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
 import TermGraph from "../components/TermGraph";
+import HistoryDrawer, { HistoryLogo } from "../components/HistoryDrawer";
 import { toggleTerm, appendTerms } from "../lib/term-graph.mjs";
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
 
@@ -295,18 +296,6 @@ export default function HomePage() {
     };
   }, [boardView, galleryRows]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    function closeOnEscape(event) {
-      if (event.key === "Escape") {
-        setMenuOpen(false);
-        menuButtonRef.current?.focus();
-      }
-    }
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [menuOpen]);
-
   async function handleSubmit(event) {
     event.preventDefault();
     if (composingRef.current) return;
@@ -340,9 +329,6 @@ export default function HomePage() {
   function toggleMenu(event) {
     menuButtonRef.current = event.currentTarget;
     setMenuOpen((open) => !open);
-    if (!window.matchMedia("(max-width: 760px)").matches) {
-      document.querySelector(".history-sidebar-entry")?.focus();
-    }
   }
 
   async function openTermSearch(term) {
@@ -514,13 +500,14 @@ export default function HomePage() {
   }
 
   async function openSession(session) {
-    if (deleteInFlightRef.current || submitInFlightRef.current || isSubmitting || session.session_id === sessionIdRef.current) return;
+    if (deleteInFlightRef.current || submitInFlightRef.current || isSubmitting) return;
+    setMenuOpen(false);
+    if (session.session_id === sessionIdRef.current) return;
     if (uiDemoEnabled) {
       const selected = demoStoreRef.current.select(session.session_id);
       if (!selected) return;
       navigateBoard("results");
       showDemoSession(selected);
-      setRequestText("");
       setError("");
       return;
     }
@@ -660,21 +647,16 @@ export default function HomePage() {
   return (
     <main className="workspace" data-mobile-panel={mobilePanel}>
       <nav className="mobile-workspace-nav" aria-label="작업 화면">
-        <button type="button" aria-label="UH케그려 홈" onClick={() => navigateBoard("home")}>UH</button>
+        <HistoryLogo open={menuOpen} onClick={toggleMenu} />
         <button type="button" aria-pressed={mobilePanel === "reference"} aria-controls="reference-panel"
           onClick={() => setMobilePanel("reference")}>레퍼런스</button>
         <button type="button" aria-pressed={mobilePanel === "conversation"} aria-controls="conversation-panel"
           onClick={() => setMobilePanel("conversation")}>대화</button>
-        <button type="button" aria-expanded={menuOpen} aria-controls="history-sidebar" onClick={toggleMenu}>세션</button>
       </nav>
-      <aside id="history-sidebar" className="history-sidebar" data-open={menuOpen} aria-label="세션 목록">
+      <HistoryDrawer open={menuOpen} onClose={() => setMenuOpen(false)} triggerRef={menuButtonRef}>
         {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
-        <button className="brand-identity brand-home-button" type="button" aria-label="UH케그려 홈"
-          onClick={() => navigateBoard("home")}>
-          <span className="brand-mark" aria-hidden="true">UH</span>
-          <span className="brand-name">UH케그려</span>
-        </button>
         <nav className="history-sidebar-list" aria-label="세션 목록">
+          <button className="history-sidebar-entry" type="button" onClick={() => navigateBoard("home")}>홈 · 용어 그래프</button>
           <button className="history-sidebar-entry" type="button" disabled={!conversationReady || isSubmitting || Boolean(deletingId)} onClick={startNewSession}>새 세션</button>
           {sessions.map((session) => (
               <div className="history-sidebar-row" key={session.session_id}>
@@ -694,18 +676,11 @@ export default function HomePage() {
           {!uiDemoEnabled && !sessions.length && <p className="history-sidebar-empty">아직 대화 세션이 없습니다.</p>}
           {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
         </nav>
-      </aside>
-      {menuOpen && <button className="history-sidebar-dismiss" type="button" aria-label="세션 목록 닫기"
-        onClick={() => { setMenuOpen(false); menuButtonRef.current?.focus(); }} />}
+      </HistoryDrawer>
       <section id="reference-panel" className="reference-board" aria-label="레퍼런스">
         <header className="board-header">
           {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
-          <button className="brand-identity brand-mobile-home" type="button" aria-label="UH케그려 홈"
-            onClick={() => navigateBoard("home")}>
-            <span className="brand-mark" aria-hidden="true">UH</span><span className="brand-name">UH케그려</span>
-          </button>
-          <button className="history-sidebar-toggle" type="button" aria-expanded={menuOpen}
-            aria-controls="history-sidebar" onClick={toggleMenu}>세션</button>
+          <HistoryLogo className="desktop-history-logo" open={menuOpen} onClick={toggleMenu} />
           {!uiDemoEnabled && recommendedSearchQuery && (
             <div className="recommended-query" aria-label="즉시 검색">
               <div className="query-value">
