@@ -84,8 +84,31 @@ def test_provider_does_not_fallback_when_pinterest_fails_or_has_no_valid_pins(pa
     ).search(Role.POSE, ("standing",)))
     assert len(calls) == 1 and calls[0].startswith("!pin ")
     assert outcome.pins == []
-    assert outcome.code is (ReasonCode.PIN_SEARCH_UNAVAILABLE if "unresponsive_engines" in payload
-                            else ReasonCode.PIN_RESULTS_EMPTY)
+    assert outcome.code is ReasonCode.PIN_SEARCH_UNAVAILABLE
+
+
+def test_unpatched_engine_source_links_are_contract_failure_not_empty_search():
+    attempts = []
+    async def load(url, params):
+        return {"results": [{"url": "https://example.com/drawing.jpg",
+                             "img_src": "https://i.pinimg.com/originals/public.jpg",
+                             "engine": "pinterest"}], "unresponsive_engines": []}
+    outcome = asyncio.run(SearXNGPinterestSearchProvider(
+        base_url="http://localhost:8080", json_loader=load, engine_attempts=attempts,
+    ).search(Role.BODY, ("inverted triangle",)))
+    assert outcome.pins == []
+    assert outcome.code is ReasonCode.PIN_SEARCH_UNAVAILABLE
+    assert attempts[0]["failure_reason"] == "invalid_pin_urls"
+
+
+def test_valid_pins_excluded_as_already_seen_remain_successful_empty_search():
+    async def load(url, params):
+        return {"results": [{"url": "https://www.pinterest.com/pin/123/"}]}
+    outcome = asyncio.run(SearXNGPinterestSearchProvider(
+        base_url="http://localhost:8080", json_loader=load, exclude_pin_ids=("123",),
+    ).search(Role.BODY, ("inverted triangle",)))
+    assert outcome.pins == []
+    assert outcome.code is ReasonCode.PIN_RESULTS_EMPTY
 
 
 @pytest.mark.parametrize("engine_error", ["timeout", "CAPTCHA", "too many requests"])

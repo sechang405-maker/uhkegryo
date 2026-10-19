@@ -14,6 +14,7 @@ from backend.schemas.enums import JobStatus, PinStatus, Role
 from backend.schemas.models import JobEnvelope, PinResult
 from backend.services.pinterest_provider import PinterestProvider
 from backend.services.response_assembler import RoleSearchOutcome
+from backend.services.public_pin_urls import is_opaque_pin_id, public_search_image
 
 WIDGET_URL = "https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids={pin_id}"
 JsonLoader = Callable[[str], Awaitable[object]]
@@ -106,6 +107,21 @@ class PinterestWidgetClient:
         return results
 
     async def _lookup(self, pin: PinResult) -> PinResult:
+        # Public search now also returns opaque e1 IDs, unsupported by Widget.
+        # Use only its validated public CDN URL in this response/bounded cache.
+        # Persisted results still strip thumbnails; expiry is unavailable, not deleted.
+        if is_opaque_pin_id(pin.pin_id):
+            url = None if self._closed else public_search_image(pin.thumbnail_url)
+            cached = self._cache.pop(pin.pin_id, None)
+            if url:
+                self._cache[pin.pin_id] = (self._clock() + self._ttl, url)
+                while len(self._cache) > self._max_entries:
+                    self._cache.popitem(last=False)
+            elif not self._closed and cached and cached[0] > self._clock():
+                self._cache[pin.pin_id] = cached
+                url = cached[1]
+            return PinResult(pin_id=pin.pin_id, pin_url=pin.pin_url, thumbnail_url=url,
+                             status=PinStatus.AVAILABLE if url else PinStatus.UNAVAILABLE)
         url = None
         status = PinStatus.DELETED
         if len(pin.pin_id) <= 64 and pin.pin_id.isascii() and pin.pin_id.isdigit():

@@ -11,7 +11,7 @@ from backend.schemas.models import AgentResult, JobEnvelope, PinResult, Referenc
 from backend.services.job_repository import _dump
 from backend.services.pinterest_widget import PinterestWidgetClient, PinterestWidgetProvider, WIDGET_URL
 from backend.services.pinterest_provider import FakePinterestProvider
-from backend.services.searxng_pinterest_search import SearXNGPinterestSearchProvider
+from backend.services.searxng_pinterest_search import SearXNGPinterestSearchProvider, parse_search_results
 from backend.services.response_assembler import RoleSearchOutcome
 from backend.shared.auth import SESSION_COOKIE_NAME
 
@@ -24,6 +24,57 @@ def _pin(pin_id: str) -> PinResult:
 def _payload(pin_id: str, images: dict) -> dict:
     return {"data": [{"id": pin_id, "images": images, "description": "private body",
                       "pinner": {"name": "private author"}}]}
+
+
+def test_public_opaque_pin_uses_validated_search_image_without_widget_and_expires():
+    async def run():
+        clock = [0]
+        calls = []
+        async def search(url, params):
+            return {"results": [{"url": "https://www.pinterest.com/pin/e1_public-ABC_123/",
+                "img_src": "https://i.pinimg.com/originals/public.jpg"}]}
+        async def widget(url):
+            calls.append(url)
+            raise AssertionError("Widget does not accept opaque search IDs")
+        client = PinterestWidgetClient(json_loader=widget, clock=lambda: clock[0])
+        source = SearXNGPinterestSearchProvider(base_url="http://localhost:8080", json_loader=search)
+        result = await PinterestWidgetProvider(source, client).search(Role.BODY, ("triangle",))
+        assert len(result.pins) == 1
+        pin = result.pins[0]
+        assert pin.pin_id == "e1_public-ABC_123"
+        assert pin.thumbnail_url == "https://i.pinimg.com/originals/public.jpg"
+        persisted = pin.model_copy(update={"thumbnail_url": None})
+        cached = await client.enrich_outcome(RoleSearchOutcome(role=Role.BODY, pins=[persisted]))
+        assert cached.pins[0].thumbnail_url == pin.thumbnail_url
+        clock[0] = 61
+        expired = await client.enrich_outcome(RoleSearchOutcome(role=Role.BODY, pins=[persisted]))
+        assert expired.pins[0].status is PinStatus.UNAVAILABLE
+        assert expired.pins[0].thumbnail_url is None
+        assert not calls
+    asyncio.run(run())
+
+
+def test_opaque_pin_rejects_untrusted_images_and_unsafe_ids():
+    for url in ("http://i.pinimg.com/a.jpg", "https://i.pinimg.com.evil.test/a.jpg",
+                "https://user@i.pinimg.com/a.jpg", "https://i.pinimg.com:8443/a.jpg",
+                "https://127.0.0.1/a.jpg", "data:image/png;base64,AA"):
+        pins = parse_search_results(
+            {"results": [{"url": "https://www.pinterest.com/pin/e1_public-ABC_123/", "img_src": url}]})
+        assert len(pins) == 1
+        assert pins[0].thumbnail_url is None
+    for pin_id in ("e1_../other", "e1_a%2Fb", "e1_" + "a" * 201, "e2_other"):
+        assert not parse_search_results({"results": [{"url": f"https://www.pinterest.com/pin/{pin_id}/"}]})
+
+
+def test_opaque_search_thumbnail_is_not_persisted():
+    job = _completed_job()
+    job.result.reference_plan.terms[0].pins = [PinResult(pin_id="e1_public-ABC_123",
+        pin_url="https://www.pinterest.com/pin/e1_public-ABC_123/",
+        thumbnail_url="https://i.pinimg.com/originals/public.jpg", status=PinStatus.AVAILABLE)]
+    saved = _dump(job.result)
+    assert "e1_public-ABC_123" in saved
+    assert "thumbnail_url" not in saved
+    assert "i.pinimg.com" not in saved
 
 
 def test_widget_selects_largest_image_and_preserves_order_and_limit():

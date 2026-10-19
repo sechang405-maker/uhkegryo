@@ -1,7 +1,7 @@
 param(
     [string]$Python = 'python',
     [string]$SearchUrl = 'http://127.0.0.1:8080',
-    [string]$SearchContainer = 'pr106-local-searxng-1'
+    [string]$SearchContainer = 'uhkegryo-local-searxng'
 )
 $ErrorActionPreference = 'Stop'
 $repository = Split-Path -Parent $PSScriptRoot
@@ -46,7 +46,7 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
 }
 if ($dbHealth -ne 'healthy') { throw 'Personal DB did not become healthy; API was not started.' }
 
-# Reuse this PC's existing public-search container; no image pull, configuration or secret changes.
+# Reuse the dedicated patched search container; never auto-create containers or secrets.
 if ($SearchUrl) {
     $searchOrigin = [uri]$SearchUrl
     if ($searchOrigin.Scheme -ne 'http' -or $searchOrigin.Host -notin @('127.0.0.1', 'localhost', '[::1]') -or

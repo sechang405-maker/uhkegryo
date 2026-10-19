@@ -104,7 +104,7 @@ DELETE `/api/sessions/{id}`는 기존 쿠키 소유권과 `X-Conversation-Action
 
 저장소 루트의 PowerShell에서 `./scripts/start-local.ps1 -Python '<기존 가상환경의 python.exe 절대 경로>'`를 실행한다. 의존성 설치와 프런트 production 빌드는 기존 절차대로 먼저 완료해야 한다. 예: 이 PC에서는 `C:\Users\user\Documents\Codex\2026-10-13\task\.venv-stage1-clean\Scripts\python.exe`를 사용한다.
 
-스크립트는 기존 개인 DB와 이 PC의 공개 검색 컨테이너 `pr106-local-searxng-1`을 재사용하고, API와 프런트를 Windows의 별도 숨김 프로세스로 시작한다. 검색 주소 기본값은 `http://127.0.0.1:8080`이다. 다른 기존 로컬 검색 서비스를 쓰면 `-SearchUrl`과 `-SearchContainer`를 지정한다. Docker 컨테이너를 관리하지 않으려면 `-SearchContainer ''`, 답변 전용으로 시작하려면 `-SearchUrl ''`를 사용한다. 새 컨테이너·비밀값은 만들지 않는다.
+스크립트는 기존 개인 DB와 이 PC의 공개 검색 컨테이너 `uhkegryo-local-searxng`을 재사용하고, API와 프런트를 Windows의 별도 숨김 프로세스로 시작한다. 검색 주소 기본값은 `http://127.0.0.1:8080`이다. 다른 기존 로컬 검색 서비스를 쓰면 `-SearchUrl`과 `-SearchContainer`를 지정한다. Docker 컨테이너를 관리하지 않으려면 `-SearchContainer ''`, 답변 전용으로 시작하려면 `-SearchUrl ''`를 사용한다. 새 컨테이너·비밀값은 만들지 않는다.
 
 명령이 끝나도 프로세스는 유지되며 `.local-run/`에 시작·오류 로그를 남긴다. 이미 포트를 사용하는 서버는 종료하거나 중복 실행하지 않는다. 따라서 옵션이나 코드를 바꾼 경우에는 아래 절차로 기존 API를 종료한 뒤 실행해야 한다. DB 초기화·마이그레이션·대화 삭제·모델 평가를 수행하지 않지만, 정상 API 워커는 기존 대기 작업과 사용자가 새로 보낸 요청을 처리할 수 있다.
 
@@ -112,3 +112,6 @@ OS 자동시작·예약작업·서비스 등록은 하지 않는다. PC 재부�
 
 2026-10-14 접속 거부 조사: DB는 healthy였지만 API/프런트 리스너와 이전 도구 실행 세션이 사라져 있었다. 이전 종료 로그가 없어 정확한 종료 주체는 확정하지 못했다. 도구 세션 수명과 서버 수명을 분리하고 로그를 지속 보관하도록 실행 방식을 보완했다.
 
+
+
+검색 컨테이너 교체와 현재 공개 핀 식별자 지원, 복구 방법은 [로컬 검색 복구](local-search-repair.md)를 참고한다. 전용 컨테이너는 미리 준비되어 있어야 하며 실행 스크립트가 인증값이나 컨테이너를 자동 생성하지 않는다.

@@ -15,11 +15,12 @@ from backend.schemas.models import PinResult
 from backend.services.failure_mapping import OperationalFailure, classify_failure
 from backend.services.response_assembler import RoleSearchOutcome
 from backend.services.search_url_builder import SEARCH_SUFFIXES
+from backend.services.public_pin_urls import is_opaque_pin_id, public_search_image
 
 logger = logging.getLogger(__name__)
 
 JsonLoader = Callable[[str, Mapping[str, str]], Awaitable[object]]
-_PIN_PATH_PATTERN = re.compile(r"^/pin/(?P<pin_id>[0-9]+)/?$")
+_PIN_PATH_PATTERN = re.compile(r"^/pin/(?P<pin_id>[0-9]+|e1_[A-Za-z0-9_-]{1,200})/?$")
 _CANONICAL_PIN_URL = "https://www.pinterest.com/pin/{pin_id}/"
 
 
@@ -116,6 +117,14 @@ class SearXNGPinterestSearchProvider:
             return RoleSearchOutcome(
                 role=role, pins=pins, code=ReasonCode.PIN_SEARCH_UNAVAILABLE
             )
+        # An unpatched engine replaces Pin URLs with external source links.
+        # Those results cannot identify Pins for Widget enrichment. Do not
+        # disguise this contract failure as a successful empty search, and do
+        # not accept arbitrary image/source URLs as Pinterest Pin identities.
+        if payload["results"] and not parse_search_results(payload, limit=1):
+            record["failure_reason"] = "invalid_pin_urls"
+            logger.warning("SearXNG Pinterest results contain no valid Pin URLs")
+            return RoleSearchOutcome(role=role, pins=[], code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
         return RoleSearchOutcome(
             role=role,
             pins=pins,
@@ -143,7 +152,9 @@ def parse_search_results(payload: object, limit: int = 8, *, exclude_pin_ids=fro
             PinResult(
                 pin_id=pin_id,
                 pin_url=_CANONICAL_PIN_URL.format(pin_id=pin_id),
-                thumbnail_url=None,
+                thumbnail_url=(public_search_image(result.get("img_src"))
+                               or public_search_image(result.get("thumbnail_src")))
+                               if is_opaque_pin_id(pin_id) else None,
                 status=PinStatus.AVAILABLE,
             )
         )
@@ -158,6 +169,13 @@ def _pin_id_from_url(url: str) -> str | None:
     except ValueError:
         return None
     host = (parsed.hostname or "").lower()
+    if parsed.username or parsed.password or parsed.netloc.endswith(":"):
+        return None
+    try:
+        if parsed.port is not None:
+            return None
+    except ValueError:
+        return None
     if parsed.scheme != "https" or not (host == "pinterest.com" or host.endswith(".pinterest.com")):
         return None
     match = _PIN_PATH_PATTERN.fullmatch(parsed.path)
