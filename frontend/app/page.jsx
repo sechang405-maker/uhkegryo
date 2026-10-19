@@ -10,7 +10,7 @@ import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
 import { sessionTitle } from "../lib/session-title.mjs";
 import { HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
-import { getRecommendedSearchQuery } from "../lib/recommended-query.mjs";
+import { getRecommendedSearchQuery, combineRecommendedSearchQueries } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode, applySketchResult, applyPreviewRecovery } from "../lib/term-search.mjs";
 import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
 import { usableGalleryPins } from "../lib/gallery-pins.mjs";
@@ -30,6 +30,8 @@ const homeSlots = createMindMapSlots(HOME_TERMS);
 export default function HomePage() {
   const [requestText, setRequestText] = useState("");
   const [graphTermIds, setGraphTermIds] = useState([]);
+  const [graphFocusId, setGraphFocusId] = useState(HOME_TERMS[0]?.term_id);
+  const [graphList, setGraphList] = useState(false);
   const [error, setError] = useState("");
   const [job, setJob] = useState(() => (uiDemoEnabled ? DEMO_JOB : null));
   const [selectedTermId, setSelectedTermId] = useState(null);
@@ -113,12 +115,15 @@ export default function HomePage() {
   const hasGalleryRows = galleryRows.length > 0;
   const galleryTerm = galleryRows.find((row) => row.term.term_id === activeGalleryTermId)?.term || galleryRows[0]?.term || null;
   const queryTerm = ["results", "term-results"].includes(boardView) && hasGalleryRows ? galleryTerm : homeTerm;
-  const recommendedSearchQuery = getRecommendedSearchQuery(queryTerm);
+  const showingGraph = !(boardView === "results" && historyTurnId) && !( ["results", "term-results"].includes(boardView) && hasGalleryRows );
+  const recommendedSearchQuery = showingGraph && graphTermIds.length
+    ? combineRecommendedSearchQueries(HOME_TERMS.filter(term => graphTermIds.includes(term.term_id)))
+    : getRecommendedSearchQuery(queryTerm);
   const pendingTurnIds = turns.filter(isTurnPending).map((turn) => turn.id).join(",");
   const conversationBusy = !conversationReady || isSubmitting || Boolean(pendingTurnIds) || Boolean(deletingId);
   const requestLength = countCharacters(requestText);
   const inputError = error || (requestLength > 500 ? validateRequestText(requestText) : "");
-  screenSnapshotRef.current = { boardView, requestText, graphTermIds, mobilePanel, job, historyTurnId,
+  screenSnapshotRef.current = { boardView, requestText, graphTermIds, graphFocusId, graphList, mobilePanel, job, historyTurnId,
     termSearch, termGuide, sessionId, turns, historyPage, referenceJob, activeGalleryTermId, selectedTermId,
     sketchSearches, failedThumbnails, error, pollError, restoreError, conversationReady, isSubmitting,
     recoveryBudget: recoveryBudgetRef.current };
@@ -263,7 +268,7 @@ export default function HomePage() {
         ? "home" : snapshot.boardView === "term-results" ? `term:${snapshot.termSearch?.term?.term_id}`
         : snapshot.historyTurnId ? `turn:${snapshot.sessionId}:${snapshot.historyTurnId}`
         : snapshot.job ? `result:${snapshot.sessionId}:${snapshot.job.job_id || "demo"}` : null,
-      fallback:()=>({boardView:"home",requestText:"",graphTermIds:[],mobilePanel:"reference",
+      fallback:()=>({boardView:"home",requestText:"",graphTermIds:[],graphFocusId:HOME_TERMS[0]?.term_id,graphList:false,mobilePanel:"reference",
         job:null,historyTurnId:null,termSearch:null,termGuide:null,sessionId:null,turns:[],
         historyPage:{hasMore:false,nextBeforeJobId:null},referenceJob:null,activeGalleryTermId:null,
         sketchSearches:{},failedThumbnails:{},selectedTermId:null,error:"",pollError:"",restoreError:"",conversationReady:true})});
@@ -307,6 +312,8 @@ export default function HomePage() {
     setBoardView(snapshot.boardView);
     setRequestText(snapshot.requestText);
     setGraphTermIds(snapshot.graphTermIds);
+    setGraphFocusId(snapshot.graphFocusId || HOME_TERMS[0]?.term_id);
+    setGraphList(Boolean(snapshot.graphList));
     setMobilePanel(snapshot.mobilePanel);
     setTurns(snapshot.turns);
     setHistoryPage(snapshot.historyPage);
@@ -954,7 +961,8 @@ export default function HomePage() {
           </div>
         ) : hasTerms ? (
           <TermGraph terms={HOME_TERMS} selectedIds={graphTermIds}
-            onToggle={(id) => setGraphTermIds((ids) => toggleTerm(ids, id))}
+            focusedId={graphFocusId} onFocus={setGraphFocusId} list={graphList} onListChange={setGraphList}
+            onToggle={(id) => {setGraphTermIds((ids) => toggleTerm(ids, id));setGraphFocusId(id);}}
             onSearch={openTermSearch}
             onAdd={(terms) => {
               const next = appendTerms(requestText, terms);

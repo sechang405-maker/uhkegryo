@@ -42,7 +42,7 @@ const assert=require('node:assert/strict');
    assert.match(await input.inputValue(),/모래시계형/);assert(await input.evaluate(e=>e===document.activeElement));
    assert.equal(await page.locator('#request-hint').isVisible(),!mobile);
    if(mobile)await page.getByRole('button',{name:'레퍼런스',exact:true}).click();
-   await page.getByRole('button',{name:'모래시계형 선택 해제',exact:true}).click();
+   await page.locator('.term-graph-chips').getByRole('button',{name:'모래시계형 선택 해제',exact:true}).click();
    assert.equal(await page.getByRole('button',{name:'선택 1개 입력에 추가',exact:true}).count(),0);
    await page.getByRole('button',{name:'목록 보기',exact:true}).click();
    const check=page.getByRole('checkbox',{name:'프론트 뷰',exact:true});await check.check();await check.uncheck();

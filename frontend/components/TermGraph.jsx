@@ -3,11 +3,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { buildTermGraph, projectGraph, INITIAL_VIEW, clamp } from '../lib/term-graph.mjs';
 
-export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch}) {
+export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch, focusedId, onFocus, list, onListChange}) {
   const graph=useMemo(()=>buildTermGraph(terms),[terms]);
   const [view,setView]=useState(INITIAL_VIEW);
-  const [list,setList]=useState(false);
-  const [focusedId,setFocusedId]=useState(terms[0]?.term_id);
   const [notice,setNotice]=useState('');
   const gesture=useRef(null);
   const pointers=useRef(new Map());
@@ -50,7 +48,7 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
     const remaining=pointers.current.values().next().value;
     gesture.current=remaining ? {...remaining,view:gesture.current?.latest||view,distance:null} : null;
   }
-  function pick(id) { if(!suppressClick.current) setFocusedId(id); }
+  function pick(id) { if(!suppressClick.current) onToggle(id); }
   function key(event) {
     if(event.target!==event.currentTarget) return;
     const actions={ArrowLeft:()=>rotate(-.16,0),ArrowRight:()=>rotate(.16,0),ArrowUp:()=>rotate(0,-.16),ArrowDown:()=>rotate(0,.16),'+':()=>zoom(.1),'=':()=>zoom(.1),'-':()=>zoom(-.1),Home:()=>setView(INITIAL_VIEW)};
@@ -60,13 +58,13 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
     <header className="term-graph-heading">
       <div><span className="term-graph-eyebrow">UH · 용어 탐색</span><h1>그림의 조건을 연결해 보세요</h1>
         <p>선은 카테고리 소속을 뜻해요. 같은 카테고리에서도 여러 용어를 고를 수 있어요.</p></div>
-      <button type="button" aria-pressed={list} onClick={()=>{setList(!list);suppressClick.current=false;}}>{list?'3D 보기':'목록 보기'}</button>
+      <button type="button" aria-pressed={list} onClick={()=>{onListChange(!list);suppressClick.current=false;}}>{list?'3D 보기':'목록 보기'}</button>
     </header>
     {list ? <div className="term-graph-list" aria-label="전체 예시 용어 목록">
       {graph.nodes.filter(n=>!n.term).map(category=><fieldset key={category.id}><legend>{category.label}</legend>
         {graph.nodes.filter(n=>n.term && n.role===category.role).map(node=><div key={node.id}>
           <label><input type="checkbox" checked={selectedIds.includes(node.id)} onChange={()=>onToggle(node.id)}/>{node.label}</label>
-          <button type="button" aria-label={`${node.label} 설명 보기`} onClick={()=>setFocusedId(node.id)}>설명</button>
+          <button type="button" aria-label={`${node.label} 설명 보기`} onClick={()=>onFocus(node.id)}>설명</button>
         </div>)}
       </fieldset>)}
     </div> : <>
@@ -97,8 +95,8 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
           return node.term ? <button type="button" key={node.id} style={style} className="term-graph-node"
             data-focused={focusedId===node.id} data-selected={selectedIds.includes(node.id)}
             data-node-id={node.id} data-depth={p.depth.toFixed(3)} data-distant={p.depth < -40}
-            aria-label={`${node.label} 설명 보기`} aria-pressed={focusedId===node.id}
-            onFocus={()=>{suppressClick.current=false;setFocusedId(node.id);}} onClick={()=>pick(node.id)}>
+            aria-label={`${node.label} ${selectedIds.includes(node.id)?'선택 해제':'선택'}`} aria-pressed={selectedIds.includes(node.id)}
+            onFocus={()=>{suppressClick.current=false;onFocus(node.id);}} onClick={()=>pick(node.id)}>
             <span className="term-graph-dot" aria-hidden="true">{selectedIds.includes(node.id)?'✓':''}</span>
             <span className="term-graph-label">{node.label}</span>
           </button> : <span key={node.id} style={style} data-node-id={node.id} data-depth={p.depth.toFixed(3)} className="term-graph-category">{node.label}</span>;
@@ -106,7 +104,7 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
       </div>
       <details className="term-graph-help-disclosure">
         <summary>조작 도움말</summary>
-        <p id="term-graph-help" className="term-graph-help">드래그로 회전 · 버튼/두 손가락으로 확대 · 공간에 초점을 두고 방향키로 회전 · Tab으로 용어 이동</p>
+        <p id="term-graph-help" className="term-graph-help">노드 클릭으로 선택·해제 · 드래그로 회전 · 버튼/두 손가락으로 확대 · 공간에 초점을 두고 방향키로 회전 · Tab으로 용어 이동</p>
       </details>
     </>}
     {focused && <article className="term-graph-detail" aria-label="선택한 용어 설명">
