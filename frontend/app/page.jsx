@@ -22,6 +22,7 @@ import TermGraph from "../components/TermGraph";
 import MasonryGallery from "../components/MasonryGallery";
 import HistoryDrawer, { HistoryLogo } from "../components/HistoryDrawer";
 import { toggleTerm, appendTerms } from "../lib/term-graph.mjs";
+import { createScreenHistory } from "../lib/screen-history.mjs";
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
@@ -88,8 +89,12 @@ export default function HomePage() {
   const inputRef = useRef(null);
   const galleryRef = useRef(null);
   const submissionRef = useRef(null);
+  const submissionRequestRef = useRef(null);
   const pollerRef = useRef(null);
   const selectedJobRef = useRef(null);
+  const screenHistoryRef = useRef(null);
+  const screenSnapshotRef = useRef(null);
+  const screenGenerationRef = useRef(0);
   const mindMapSlots = useMemo(
     () => createMindMapSlots(historyTurnId ? resultTerms(job) : renderedResultTerms(job, turns, referenceJob)),
     [job, turns, historyTurnId, referenceJob],
@@ -111,6 +116,12 @@ export default function HomePage() {
   const recommendedSearchQuery = getRecommendedSearchQuery(queryTerm);
   const pendingTurnIds = turns.filter(isTurnPending).map((turn) => turn.id).join(",");
   const conversationBusy = !conversationReady || isSubmitting || Boolean(pendingTurnIds) || Boolean(deletingId);
+  const requestLength = countCharacters(requestText);
+  const inputError = error || (requestLength > 500 ? validateRequestText(requestText) : "");
+  screenSnapshotRef.current = { boardView, requestText, graphTermIds, mobilePanel, job, historyTurnId,
+    termSearch, termGuide, sessionId, turns, historyPage, referenceJob, activeGalleryTermId, selectedTermId,
+    sketchSearches, failedThumbnails, error, pollError, restoreError, conversationReady, isSubmitting,
+    recoveryBudget: recoveryBudgetRef.current };
   if (!submissionRef.current) submissionRef.current = createSubmissionController();
 
   useEffect(() => {
@@ -246,13 +257,72 @@ export default function HomePage() {
   }, [pendingTurnIds, conversationReady, sessionId]);
 
   useEffect(() => {
-    const cancelHistory = () => navigateBoard("home");
-    window.addEventListener("popstate", cancelHistory);
+    screenHistoryRef.current = createScreenHistory({history:window.history,target:window,
+      read:()=>screenSnapshotRef.current,restore:restoreScreen,
+      keyForSnapshot:snapshot=>snapshot.boardView === "home" || (snapshot.boardView === "results" && !snapshot.job && !snapshot.turns.length && !snapshot.isSubmitting)
+        ? "home" : snapshot.boardView === "term-results" ? `term:${snapshot.termSearch?.term?.term_id}`
+        : snapshot.historyTurnId ? `turn:${snapshot.sessionId}:${snapshot.historyTurnId}`
+        : snapshot.job ? `result:${snapshot.sessionId}:${snapshot.job.job_id || "demo"}` : null,
+      fallback:()=>({boardView:"home",requestText:"",graphTermIds:[],mobilePanel:"reference",
+        job:null,historyTurnId:null,termSearch:null,termGuide:null,sessionId:null,turns:[],
+        historyPage:{hasMore:false,nextBeforeJobId:null},referenceJob:null,activeGalleryTermId:null,
+        sketchSearches:{},failedThumbnails:{},selectedTermId:null,error:"",pollError:"",restoreError:"",conversationReady:true})});
     return () => {
-      window.removeEventListener("popstate", cancelHistory);
+      screenHistoryRef.current?.dispose();
+      screenHistoryRef.current = null;
       gallerySelectionRef.current.dispose();
     };
   }, []);
+
+  useLayoutEffect(() => { screenHistoryRef.current?.capture(); });
+
+  function visitScreen(key) { ++screenGenerationRef.current; screenHistoryRef.current?.visit(key); }
+
+  function cancelSubmission() {
+    submissionRequestRef.current?.abort();
+    submissionRequestRef.current = null;
+    submissionRef.current = createSubmissionController();
+    submitInFlightRef.current = false;
+    setIsSubmitting(false);
+  }
+
+  function restoreScreen(snapshot) {
+    ++screenGenerationRef.current;
+    cancelSubmission();
+    cancelHistory();
+    ++sessionLoadRef.current;
+    if(sessionIdRef.current !== snapshot.sessionId)pollerRef.current?.stop();
+    termSearchControllerRef.current?.abort();
+    resetSketchSearches(false);
+    previewDialogRef.current?.close();
+    setPreviewPin(null);
+    setMenuOpen(false);
+    sessionIdRef.current = snapshot.sessionId;
+    if(uiDemoEnabled && snapshot.sessionId)demoStoreRef.current?.select(snapshot.sessionId);
+    setSessionId(snapshot.sessionId);
+    selectedJobRef.current = snapshot.job;
+    setSelectedTermId(snapshot.selectedTermId);
+    gallerySelectionRef.current.restore(snapshot.job, snapshot.historyTurnId, snapshot.sessionId);
+    setHistoryState({loading:false,error:snapshot.historyTurnId && !snapshot.job ? "검색 기록을 불러오지 못했습니다. 다시 시도해 주세요." : ""});
+    setBoardView(snapshot.boardView);
+    setRequestText(snapshot.requestText);
+    setGraphTermIds(snapshot.graphTermIds);
+    setMobilePanel(snapshot.mobilePanel);
+    setTurns(snapshot.turns);
+    setHistoryPage(snapshot.historyPage);
+    setReferenceJob(snapshot.referenceJob);
+    setActiveGalleryTermId(snapshot.activeGalleryTermId);
+    setSketchSearches(Object.fromEntries(Object.entries(snapshot.sketchSearches).map(([id,value])=>
+      [id,value.loading?{...value,loading:false,error:"검색이 중단되었습니다. 다시 찾아 주세요."}:value])));
+    setFailedThumbnails(snapshot.failedThumbnails);
+    setTermGuide(snapshot.termGuide);
+    setTermSearch(snapshot.termSearch?.loading ? {...snapshot.termSearch,loading:false,error:"검색이 중단되었습니다. 다시 찾아 주세요."} : snapshot.termSearch);
+    setError(snapshot.error);
+    setPollError(snapshot.pollError);
+    setRestoreError(snapshot.conversationReady ? snapshot.restoreError : RESTORE_ERROR);
+    setConversationReady(true);
+    if(snapshot.recoveryBudget)recoveryBudgetRef.current=snapshot.recoveryBudget;
+  }
 
   useEffect(() => () => termSearchControllerRef.current?.abort(), []);
   useEffect(() => {
@@ -311,6 +381,7 @@ export default function HomePage() {
 
   function openTurn(turn) {
     if (!conversationReady || turn.job?.job_status !== "completed") return;
+    visitScreen(`turn:${turn.job.session_id || sessionIdRef.current}:${turn.id}`);
     termSearchControllerRef.current?.abort();
     resetSketchSearches(false);
     setTermSearch(null);
@@ -339,6 +410,7 @@ export default function HomePage() {
   }
 
   async function openTermSearch(term) {
+    visitScreen(`term:${term.term_id}`);
     gallerySelectionRef.current.reset(sessionIdRef.current);
     setTermGuide(term);
     resetSketchSearches();
@@ -455,6 +527,12 @@ export default function HomePage() {
       setError(validationError);
       return;
     }
+    visitScreen(`request:${crypto.randomUUID()}`);
+    const submitLoadId = sessionLoadRef.current;
+    const submitScreenId = screenGenerationRef.current;
+    const submitRequest = new AbortController();
+    submissionRequestRef.current = submitRequest;
+    const submissionController = submissionRef.current;
     submitInFlightRef.current = true;
     gallerySelectionRef.current.reset(sessionIdRef.current);
     termSearchControllerRef.current?.abort();
@@ -463,6 +541,7 @@ export default function HomePage() {
     setTermGuide(null);
 
     if (uiDemoEnabled) {
+      if(!sessionIdRef.current)showDemoSession(demoStoreRef.current.create());
       const turn = demoStoreRef.current.submit(text);
       if (turn) {
         showDemoSession(demoStoreRef.current.current());
@@ -473,7 +552,7 @@ export default function HomePage() {
         setError(DEMO_INPUT_ERROR);
         setMobilePanel("conversation");
       }
-      queueMicrotask(() => { submitInFlightRef.current = false; });
+      queueMicrotask(() => { if(submissionRequestRef.current === submitRequest) { submissionRequestRef.current = null; submitInFlightRef.current = false; } });
       return;
     }
 
@@ -488,14 +567,16 @@ export default function HomePage() {
     try {
       let activeSession = sessionIdRef.current;
       if (!activeSession) {
-        const created = await createConversation();
+        const created = await createConversation({signal:submitRequest.signal});
+        if(submitLoadId !== sessionLoadRef.current || submitScreenId !== screenGenerationRef.current)return;
         activeSession = created.session_id;
         setSessions((items) => [created, ...items.filter((item) => item.session_id !== created.session_id)]);
       }
       setSessionId(activeSession);
       sessionIdRef.current = activeSession;
       gallerySelectionRef.current.reset(activeSession);
-      const result = await submissionRef.current.submit(text, { sessionId: activeSession });
+      const result = await submissionController.submit(text, { sessionId: activeSession, signal:submitRequest.signal });
+      if(submitLoadId !== sessionLoadRef.current || submissionRequestRef.current !== submitRequest)return;
       if (result.ok) {
         setSessions((items) => {
           const selected = items.find((item) => item.session_id === activeSession);
@@ -505,18 +586,23 @@ export default function HomePage() {
           job: { job_id: result.jobId, session_id: activeSession,
             job_status: "queued", poll_after_ms: result.pollAfterMs }, demo: false }));
         refreshSessions();
-        setRequestText("");
+        if(submitScreenId === screenGenerationRef.current)setRequestText("");
       }
       else {
+        if(submitScreenId !== screenGenerationRef.current)return;
         setError(result.error);
         setMobilePanel("conversation");
       }
     } catch {
+      if(submitLoadId !== sessionLoadRef.current || submitScreenId !== screenGenerationRef.current)return;
       setError("대화 요청을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요.");
       setMobilePanel("conversation");
     } finally {
-      submitInFlightRef.current = false;
-      setIsSubmitting(false);
+      if(submissionRequestRef.current === submitRequest) {
+        submissionRequestRef.current = null;
+        submitInFlightRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   }
 
@@ -542,7 +628,9 @@ export default function HomePage() {
     }
   }
 
-  function navigateBoard(view) {
+  function navigateBoard(view, record = true) {
+    if(record)visitScreen(view);
+    cancelSubmission();
     gallerySelectionRef.current.reset(sessionIdRef.current);
     previewDialogRef.current?.close();
     setPreviewPin(null);
@@ -559,11 +647,13 @@ export default function HomePage() {
   async function openSession(session) {
     if (deleteInFlightRef.current || submitInFlightRef.current || isSubmitting) return;
     setMenuOpen(false);
-    if (session.session_id === sessionIdRef.current) return;
+    if (session.session_id === sessionIdRef.current && boardView === "results") return;
+    visitScreen(`session:${session.session_id}`);
+    const navigationId = screenGenerationRef.current;
     if (uiDemoEnabled) {
       const selected = demoStoreRef.current.select(session.session_id);
       if (!selected) return;
-      navigateBoard("results");
+      navigateBoard("results", false);
       showDemoSession(selected);
       setError("");
       return;
@@ -600,8 +690,10 @@ export default function HomePage() {
       gallerySelectionRef.current.live(restored.referenceJob || restored.turns.at(-1)?.job || null, restored.sessionId);
       setConversationReady(true);
       setActiveGalleryTermId(null);
-      setBoardView("results");
-      setMobilePanel("reference");
+      if(navigationId === screenGenerationRef.current) {
+        setBoardView("results");
+        setMobilePanel("reference");
+      }
     } catch {
       if (loadId === sessionLoadRef.current) {
         setRestoreError(RESTORE_ERROR);
@@ -612,8 +704,10 @@ export default function HomePage() {
 
   async function startNewSession() {
     if (deleteInFlightRef.current || submitInFlightRef.current || isSubmitting) return;
+    visitScreen(`new:${crypto.randomUUID()}`);
+    const navigationId = screenGenerationRef.current;
     if (uiDemoEnabled) {
-      navigateBoard("results");
+      navigateBoard("results", false);
       showDemoSession(demoStoreRef.current.create());
       setRequestText("");
       setError("");
@@ -651,8 +745,10 @@ export default function HomePage() {
       setConversationReady(true);
       setRestoreError("");
       setTermGuide(null);
-      setBoardView("results");
-      setMobilePanel("reference");
+      if(navigationId === screenGenerationRef.current) {
+        setBoardView("results");
+        setMobilePanel("reference");
+      }
       setMenuOpen(false);
     } catch {
       if (loadId === sessionLoadRef.current) {
@@ -671,9 +767,11 @@ export default function HomePage() {
     try {
       if (uiDemoEnabled) {
         showDemoSession(demoStoreRef.current.remove(session.session_id));
-        navigateBoard("results");
+        screenHistoryRef.current?.forgetSession(session.session_id);
+        navigateBoard("results", false);
       } else {
         await deleteConversation(session.session_id);
+        screenHistoryRef.current?.forgetSession(session.session_id);
         setSessions(items => items.filter(item => item.session_id !== session.session_id));
         refreshSessions();
         if (sessionIdRef.current === session.session_id) {
@@ -685,7 +783,7 @@ export default function HomePage() {
           setTurns([]);
           setJob(null);
           gallerySelectionRef.current.reset(null);
-          navigateBoard("results");
+          navigateBoard("results", false);
           setRequestText("");
           setError("");
           setPollError("");
@@ -713,6 +811,9 @@ export default function HomePage() {
       <HistoryDrawer open={menuOpen} onClose={() => setMenuOpen(false)} triggerRef={menuButtonRef}>
         {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
         <nav className="history-sidebar-list" aria-label="세션 목록">
+          <p className="conversation-notice">{uiDemoEnabled
+            ? "고정 샘플 대화는 이 브라우저에만 저장됩니다. 최대 10개 세션·총 50개 답변을 보관하며 서버로 보내지 않습니다. 개인·민감 정보는 입력하지 마세요."
+            : persistentProfile ? "이 PC의 대화는 직접 삭제할 때까지 보관합니다. 로컬 프로필로 기록을 복원합니다." : "같은 브라우저의 쿠키로 최근 대화를 복원합니다. 쿠키 삭제·대화 만료 후에는 복원되지 않습니다."}</p>
           <button className="history-sidebar-entry" type="button" onClick={() => navigateBoard("home")}>홈 · 용어 그래프</button>
           <button className="history-sidebar-entry" type="button" disabled={!conversationReady || isSubmitting || Boolean(deletingId)} onClick={startNewSession}>새 세션</button>
           {sessions.map((session) => (
@@ -877,9 +978,6 @@ export default function HomePage() {
         <div className="panel-top" ref={chatScrollRef}>
           {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
           <h2 id="prompt-title">UH케 그릴 건가요?</h2>
-          <p className="conversation-notice">{uiDemoEnabled
-            ? "고정 샘플 대화는 이 브라우저에만 저장됩니다. 최대 10개 세션·총 50개 답변을 보관하며 서버로 보내지 않습니다. 개인·민감 정보는 입력하지 마세요."
-            : persistentProfile ? "이 PC의 대화는 직접 삭제할 때까지 보관합니다. 로컬 프로필로 기록을 복원합니다." : "같은 브라우저의 쿠키로 최근 대화를 복원합니다. 쿠키 삭제·대화 만료 후에는 복원되지 않습니다."}</p>
           {restoreError && <div role="alert"><p>{restoreError}</p>
             <button type="button" onClick={() => setRestoreAttempt((value) => value + 1)}>대화 다시 불러오기</button></div>}
           {storageFailed && <p className="form-error" role="status">브라우저 기록을 읽거나 쓰지 못했습니다. 일부 기록이 복원되지 않을 수 있지만 현재 대화는 계속 사용할 수 있습니다.</p>}
@@ -899,7 +997,7 @@ export default function HomePage() {
         </div>
 
         <form className="composer" onSubmit={handleSubmit} noValidate>
-          <div className="composer-input-frame" data-invalid={Boolean(error)}>
+          <div className="composer-input-frame" data-invalid={Boolean(inputError)}>
           <textarea
             id="request-text"
             ref={inputRef}
@@ -921,14 +1019,15 @@ export default function HomePage() {
               }
             }}
             placeholder="원하는 체형, 포즈, 구도을 적어 주세요"
-            aria-invalid={Boolean(error)}
-            aria-describedby={`request-hint request-count${error ? " request-error" : ""}`}
+            aria-invalid={Boolean(inputError)}
+            aria-describedby={`request-limit${requestLength >= 450 ? " request-count" : ""}${inputError ? " request-error" : ""}`}
           />
           </div>
-          {error && <p id="request-error" className="form-error" role="alert">{error}</p>}
+          <span id="request-limit" className="sr-only">최대 500자까지 입력할 수 있습니다.</span>
+          {inputError && <p id="request-error" className="form-error" role="alert">{inputError}</p>}
           <div className="composer-footer">
             <span id="request-hint" className="input-hint">Enter로 검색 · Shift+Enter로 줄바꿈</span>
-            <span id="request-count" className="character-count">{countCharacters(requestText)} / 500</span>
+            {requestLength >= 450 && <span id="request-count" className="character-count" role="status">{requestLength} / 500</span>}
             <button className="composer-submit" type="submit"
               disabled={conversationBusy || Boolean(validateRequestText(requestText))}>
               {isSubmitting ? "전송 중…" : "전송"}

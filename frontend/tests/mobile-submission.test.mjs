@@ -15,6 +15,8 @@ async function submitScenario(mode) {
   const noop = () => {};
   const context = {
     conversationBusy: false,
+    visitScreen: noop, crypto: { randomUUID: () => "navigation-test" }, sessionLoadRef: { current: 0 }, screenGenerationRef: { current: 0 },
+    AbortController, submissionRequestRef: { current: null },
     deleteInFlightRef: { current: false },
     submitInFlightRef: { current: false },
     gallerySelectionRef: { current: { reset: noop } },

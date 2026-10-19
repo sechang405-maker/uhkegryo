@@ -80,3 +80,18 @@ test("returning to live selection accepts only its session", () => {
   gallery.live(job("foreign", "session-b"), "session-b");
   assert.equal(state.job.job_id, "new");
 });
+
+test("browser restoration cancels stale history and protects the restored selection from live updates", async () => {
+  const { gallery, pending, state } = setup();
+  const loading = gallery.open(entry("pending"));
+  gallery.restore(job("restored"), "restored", sid);
+  gallery.live(job("new"), sid);
+  assert.equal(state.job.job_id, "restored");
+  assert.equal(state.selected, "restored");
+  pending[0].resolve(response(job("pending"))); await loading;
+  assert.equal(state.job.job_id, "restored");
+  assert.equal(pending[0].options.signal.aborted, true);
+  gallery.restore(job("live"), null, sid);
+  gallery.live(job("latest"), sid);
+  assert.equal(state.job.job_id, "latest");
+});

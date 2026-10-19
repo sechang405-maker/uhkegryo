@@ -30,6 +30,7 @@ const assert=require('node:assert/strict');
     await page.mouse.move(box.x+box.width*.4,box.y+box.height*.4);await page.mouse.down();
     await page.mouse.move(box.x+box.width*.55,box.y+box.height*.5,{steps:8});await page.mouse.up();
     assert.notEqual(await scene.getAttribute('data-yaw'),yaw,'drag rotation must remain');
+    await page.locator('.term-graph-tools > summary').click();
     await page.getByRole('button',{name:'확대',exact:true}).click();
     assert(Number(await scene.getAttribute('data-zoom'))>Number(zoom),'zoom button must remain');
     assert.deepEqual(errors,[]);

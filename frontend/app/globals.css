@@ -22,7 +22,10 @@
 .term-graph button { cursor:pointer; }
 .term-graph button:disabled { opacity:.45; cursor:default; }
 .term-graph-heading > button,.term-graph-controls button,.term-graph-actions button,.term-graph-selection > button { flex-shrink:0; border-radius:8px; min-height:40px; padding:8px 12px; font-size:12px; }
-.term-graph-controls { display:flex; align-items:center; justify-content:flex-end; gap:6px; margin:18px 0 0; }
+.term-graph-tools { margin-top:12px; }
+.term-graph-tools > summary { width:fit-content; margin-left:auto; }
+.term-graph-tools > summary,.term-graph-help-disclosure > summary { cursor:pointer; min-height:44px; padding:12px 8px; font-size:12px; color:var(--text-secondary); border-radius:8px; }
+.term-graph-controls { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:6px; margin:4px 0 8px; }
 .term-graph-controls span { min-width:40px; text-align:center; font-size:11px; color:var(--text-secondary); }
 .term-graph-controls button { min-width:40px; }
 .term-graph-scene { height:clamp(480px,60vh,680px); position:relative; overflow:hidden; touch-action:none; user-select:none; cursor:grab; border-radius:14px; background:radial-gradient(ellipse at center, var(--surface) 0, var(--canvas) 70%); }
@@ -52,6 +55,8 @@
 .term-graph-chips button { border-radius:20px; padding:7px 10px; min-height:36px; background:var(--accent-surface); border-color:var(--accent); font-size:12px; }
 .term-graph-selection > button { background:var(--accent); color:var(--on-accent); border-color:var(--accent); font-weight:700; }
 .term-graph-selection > p { font-size:12px; color:var(--accent); line-height:1.5; margin:8px 0 0; }
+.term-graph-selection:not(:has(button)):has(p:empty) { border:0; padding:0; }
+.term-graph-selection > p:empty { margin:0; }
 .term-graph-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; padding:20px 0; }
 .term-graph-list fieldset { min-width:0; border:1px solid var(--border); border-radius:10px; margin:0; }
 .term-graph-list legend { font-size:13px; color:var(--accent); padding:0 6px; }
@@ -254,7 +259,10 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 .form-error { margin: 0; color: var(--danger); font-size: 13px; line-height: 1.4; }
 .composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .character-count { color: var(--text-secondary); font-size: 12px; }
-.input-hint { color: var(--text-secondary); font-size: 12px; font-weight: 400; line-height: 1.5; }
+.input-hint { display:none; color: var(--text-secondary); font-size: 12px; font-weight: 400; line-height: 1.5; }
+.composer-submit { margin-left:auto; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+@media (min-width:761px) { .composer:has(textarea:focus) .input-hint { display:inline; } }
 .hub-menu-tip { position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%); padding: 8px 12px; border: 2px solid var(--border); border-radius: 10px; background: var(--accent-surface); color: var(--text); font-size: 12px; white-space: nowrap; visibility: hidden; }
 .mind-map-hub:hover .hub-menu-tip, .mind-map-hub:focus-visible .hub-menu-tip { visibility: visible; }
 .image-preview { width: min(92vw, 920px); max-height: 90vh; padding: 0; border: 3px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); }

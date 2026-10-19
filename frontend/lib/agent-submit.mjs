@@ -37,6 +37,7 @@ export async function submitAgentRequest(requestText, options = {}) {
         "Idempotency-Key": createId(),
       },
       body: JSON.stringify({ request_text: requestText, ...(options.sessionId ? { session_id: options.sessionId } : {}) }),
+      signal: options.signal,
     });
     const payload = await response.json();
     if (response.status !== 202) {

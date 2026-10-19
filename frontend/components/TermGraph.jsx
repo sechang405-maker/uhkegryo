@@ -70,14 +70,17 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
         </div>)}
       </fieldset>)}
     </div> : <>
-      <div className="term-graph-controls" role="group" aria-label="그래프 회전 조절">
+      <details className="term-graph-tools">
+        <summary>그래프 조작</summary>
+        <div className="term-graph-controls" role="group" aria-label="그래프 회전 조절">
         <button type="button" aria-label="왼쪽으로 회전" onClick={()=>rotate(-.2,0)}>↶</button>
         <button type="button" aria-label="오른쪽으로 회전" onClick={()=>rotate(.2,0)}>↷</button>
         <button type="button" aria-label="축소" disabled={view.zoom<=.65} onClick={()=>zoom(-.15)}>−</button>
         <span aria-live="off">{Math.round(view.zoom*100)}%</span>
         <button type="button" aria-label="확대" disabled={view.zoom>=1.6} onClick={()=>zoom(.15)}>+</button>
         <button type="button" onClick={()=>setView(INITIAL_VIEW)}>회전 초기화</button>
-      </div>
+        </div>
+      </details>
       <div className="term-graph-scene" tabIndex={0} role="group" aria-label="회전 가능한 용어 공간"
         aria-describedby="term-graph-help" onKeyDown={key} onPointerDown={start} onPointerMove={move}
         onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
@@ -101,7 +104,10 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
           </button> : <span key={node.id} style={style} data-node-id={node.id} data-depth={p.depth.toFixed(3)} className="term-graph-category">{node.label}</span>;
         })}
       </div>
-      <p id="term-graph-help" className="term-graph-help">드래그로 회전 · 버튼/두 손가락으로 확대 · 공간에 초점을 두고 방향키로 회전 · Tab으로 용어 이동</p>
+      <details className="term-graph-help-disclosure">
+        <summary>조작 도움말</summary>
+        <p id="term-graph-help" className="term-graph-help">드래그로 회전 · 버튼/두 손가락으로 확대 · 공간에 초점을 두고 방향키로 회전 · Tab으로 용어 이동</p>
+      </details>
     </>}
     {focused && <article className="term-graph-detail" aria-label="선택한 용어 설명">
       <div aria-live="polite"><h2>{focused.label_ko}</h2><p>{focused.plain_meaning_ko}</p></div>
@@ -111,10 +117,12 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
       </div>
     </article>}
     <footer className="term-graph-selection">
-      <div className="term-graph-chips" aria-label="선택한 용어">
-        {selected.length ? selected.map(term=><button key={term.term_id} type="button" aria-label={`${term.label_ko} 선택 해제`} onClick={()=>onToggle(term.term_id)}>{term.label_ko} <span aria-hidden="true">×</span></button>) : <span>용어를 고른 뒤 설명을 입력에 추가해 보세요.</span>}
-      </div>
-      <button type="button" disabled={!selected.length} onClick={()=>setNotice(onAdd(selected)?'선택한 용어를 입력에 추가했어요.':'500자 이내로 추가할 수 있도록 입력을 줄여 주세요.')}>선택 {selected.length}개 입력에 추가</button>
+      {selected.length > 0 && <>
+        <div className="term-graph-chips" aria-label="선택한 용어">
+          {selected.map(term=><button key={term.term_id} type="button" aria-label={`${term.label_ko} 선택 해제`} onClick={()=>onToggle(term.term_id)}>{term.label_ko} <span aria-hidden="true">×</span></button>)}
+        </div>
+        <button type="button" onClick={()=>setNotice(onAdd(selected)?'선택한 용어를 입력에 추가했어요.':'500자 이내로 추가할 수 있도록 입력을 줄여 주세요.')}>선택 {selected.length}개 입력에 추가</button>
+      </>}
       <p role="status">{notice}</p>
     </footer>
   </section>;

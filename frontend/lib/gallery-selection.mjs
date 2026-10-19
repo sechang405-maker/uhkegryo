@@ -23,6 +23,13 @@ export function createGallerySelection(options) {
     live(job, sessionId) {
       if (sessionId === session && selected === null) options.onJob(job);
     },
+    restore(job, selectionId, sessionId) {
+      loader.cancel();
+      session = sessionId;
+      selected = selectionId;
+      options.onSelection(selected);
+      options.onJob(job);
+    },
     dispose() { loader.cancel(); },
   };
 }
