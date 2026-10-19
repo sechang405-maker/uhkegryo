@@ -202,7 +202,7 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 .mind-map-group-3 { top: 61.2%; left: 11.5%; transform: translate(-50%, -50%); }
 .mind-map-group-4 { top: 37.8%; left: 30.9%; transform: translate(-50%, -50%); }
 .prompt-panel { display: flex; flex-direction: column; height: 100vh; min-height: 0; padding: 38px 28px 26px; overflow: hidden; background: var(--surface); color: var(--text); }
-.panel-top { flex: 1 1 auto; min-height: 0; padding-right: 4px; overflow-y: auto; }
+.panel-top { flex: 1 1 auto; min-height: 0; padding-right: 4px; padding-bottom: 16px; overflow-y: auto; }
 .panel-top { scrollbar-color: var(--accent) var(--accent-surface); }
 .panel-top::-webkit-scrollbar { width: 10px; }
 .panel-top::-webkit-scrollbar-track { background: var(--accent-surface); border-radius: 999px; }
