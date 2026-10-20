@@ -127,3 +127,55 @@ def test_existing_adapter_sends_dialogue_rules_context_and_accepts_chat():
     assert '둥근 고양이' in messages[1]['content'] and '더 쉽게' in messages[1]['content']
     root = Path(__file__).resolve().parents[2]
     assert 'COPY skills/drawing-dialogue/SKILL.md /app/skills/drawing-dialogue/SKILL.md' in (root/'Dockerfile').read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize('request_text', [
+    '뭐 그릴까?', '캐릭터 아이디어 추천해줘', '어떤 자세로 그릴지 잘 모르겠어',
+    '캐릭터에 어울리는 배경과 소품을 추천해줘', '앉아 있는 캐릭터 레퍼런스를 찾아줘',
+])
+def test_all_interpreter_intents_receive_character_scope_before_untrusted_context(request_text):
+    transport = _FakeCompletions([_FakeResponse(json.dumps(chat().model_dump(mode='json'), ensure_ascii=False))])
+    adapter = _adapter(transport)
+    asyncio.run(adapter.interpret(request_text, job_id='scope', session_id='synthetic', attempt=1,
+        max_attempts=1, session_context={'recent':[{'job_id':'synthetic-old','message':'창가와 우산을 더해 보세요.'}]}))
+    system, user = transport.calls[0]['messages'][:2]
+    assert system['role'] == 'system'
+    assert 'CHARACTER-FOCUSED SERVICE SCOPE' in system['content']
+    assert 'Never proactively suggest or introduce props, background objects, scenery, locations or scene dressing' in system['content']
+    assert 'Preserve explicit user posture requirements' in system['content']
+    assert 'clarifying_question' in system['content']
+    assert 'ordinary drawing worries' in system['content']
+    assert '창가와 우산' in user['content']
+
+
+def test_combined_route_uses_same_character_scope_for_short_followups():
+    from backend.services.codex_llm import CodexInterpretationAdapter
+    from backend.shared.config import Settings
+    adapter = CodexInterpretationAdapter(settings=Settings(_env_file=None,
+        database_url='sqlite:///./scope-test.db', interpreter_prompt_version='uhkegryo-interpreter-v4',
+        interpreter_prompt_path=str(Path(__file__).parents[2]/'prompts/uhkegryo-interpreter-v4.md')))
+    captured=[]
+    async def generate(settings,messages,schema):
+        captured.extend(messages)
+        return json.dumps({'route':RecallQuery(mode='none').model_dump(mode='json'),
+            'interpretation':chat().model_dump(mode='json')},ensure_ascii=False)
+    adapter._generate=generate
+    result=asyncio.run(adapter.route_and_interpret('다른 건?',job_id='scope',session_id='synthetic',
+        attempt=1,max_attempts=1,session_context={'recent':[]}))
+    assert result.interpretation.interpretation_state == 'drawing_chat'
+    assert 'CHARACTER-FOCUSED SERVICE SCOPE' in captured[0]['content']
+    assert 'Do not treat older assistant suggestions about props or backgrounds as permission' in captured[0]['content']
+
+
+@pytest.mark.parametrize('request_text,term_id,evidence', [
+    ('앉아 있는 캐릭터 레퍼런스를 찾아줘', 'pose_sitting', '앉아 있는'),
+    ('서 있는 캐릭터 레퍼런스를 찾아줘', 'pose_standing', '서 있는'),
+])
+def test_explicit_character_posture_survives_scope_without_a_fixed_sitting_fallback(request_text,term_id,evidence):
+    from backend.services.catalog_repository import load_catalog
+    snapshot=load_catalog(Path(__file__).parents[2]/'docs/domains/illustration-reference/term-cards')
+    interpreted=InterpretationOutput(interpretation_state='select_terms',answer_text='캐릭터의 몸 중심과 다리 방향을 살펴보세요.',
+        selections=[{'role':'pose','term_id':term_id,'evidence':[evidence],'confidence':1}])
+    resolution=resolve(interpreted,snapshot,request_text=request_text)
+    assert resolution.status=='proceed'
+    assert [term.selection.term_id for term in resolution.terms]==[term_id]
