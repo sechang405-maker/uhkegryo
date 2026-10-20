@@ -5,6 +5,7 @@ from uuid import UUID
 from backend.schemas.enums import JobStatus, Role
 from backend.services.job_repository import JobRepository, StaleJobAttempt
 from backend.services.llm import LLMInvalidStructuredOutput
+from backend.services.session_memory import STATE_KEYS, source_ids
 
 RECENT_LIMIT = 6
 RECORD_LIMIT = 4000
@@ -63,15 +64,20 @@ class ConversationMemory:
         )
         if memory is None:
             raise StaleJobAttempt
+        stored = decode(memory)
+        scope_id = stored.get('topic_scope_id')
         rows = await self.pool.fetch(
             """SELECT * FROM jobs WHERE session_id=$1 AND (created_at,job_id)<($2,$3)
-               AND status IN ('completed','failed') ORDER BY created_at DESC,job_id DESC LIMIT 6""",
-            job["session_id"], job["created_at"], job["job_id"],
+               AND status IN ('completed','failed')
+               AND ($4::uuid IS NULL OR (created_at,job_id)>=(SELECT created_at,job_id FROM jobs
+                    WHERE session_id=$1 AND job_id=$4))
+               ORDER BY created_at DESC,job_id DESC LIMIT 6""",
+            job["session_id"], job["created_at"], job["job_id"], UUID(scope_id) if scope_id else None,
         )
-        stored = decode(memory)
-        state = {key: stored[key] for key in ("constraints", "pending_question", "recommendation_group", "recommendation_adoption", "recommendation_pending_group_id") if key in stored}
+        state = {key: stored[key] for key in STATE_KEYS if key in stored}
+        state.setdefault('memory_version', 1)
         state["constraints"] = normalize_constraints(state.get("constraints", {}))
-        pinned = list(dict.fromkeys(value["source_job_id"] for value in state["constraints"].values()))
+        pinned = list(dict.fromkeys([*(value["source_job_id"] for value in state["constraints"].values() if value.get('source_job_id')), *source_ids(state)]))
         sources = await self.records(job, pinned) if pinned else []
         previous = await self.pool.fetchval(
             """SELECT final_payload_json FROM jobs WHERE session_id=$1
@@ -79,8 +85,10 @@ class ConversationMemory:
                AND final_payload_json->>'agent_status' IN ('success','partial_result')
                AND COALESCE(final_payload_json->'recommendation_adoption'->>'status','') <> 'search_failed'
                AND jsonb_typeof(final_payload_json->'reference_plan')='object'
+               AND ($4::uuid IS NULL OR (created_at,job_id)>=(SELECT created_at,job_id FROM jobs
+                    WHERE session_id=$1 AND job_id=$4))
                ORDER BY created_at DESC,job_id DESC LIMIT 1""",
-            job["session_id"], job["created_at"], job["job_id"],
+            job["session_id"], job["created_at"], job["job_id"], UUID(scope_id) if scope_id else None,
         )
         from backend.schemas.models import AgentResult
         previous_result = AgentResult.model_validate(decode(previous)).model_dump(mode="json") if previous else {}
@@ -140,7 +148,8 @@ class ConversationMemory:
                 )
                 if live is None:
                     raise StaleJobAttempt
-                state = {key: state[key] for key in ("constraints", "pending_question", "recommendation_group", "recommendation_adoption", "recommendation_pending_group_id") if key in state}
+                state = {key: state[key] for key in STATE_KEYS if key in state}
+                state.setdefault('memory_version', 1)
                 await JobRepository(connection).update_status(
                     job_id=str(job["job_id"]), attempt=job["attempt"],
                     status=JobStatus.COMPLETED, result=result,

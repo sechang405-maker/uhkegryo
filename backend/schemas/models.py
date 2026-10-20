@@ -45,6 +45,10 @@ class AgentRequest(BaseModel):
 class SubmissionResponse(BaseModel):
     """POST /api/agent 202 응답 본문 (HttpOnly cookie는 별도로 설정)."""
 
+    message_count: int | None = Field(default=None, ge=0)
+    message_limit: Literal[20] | None = None
+    remaining_messages: int | None = Field(default=None, ge=0)
+    can_submit: bool | None = None
     job_id: str
     job_status: Literal[JobStatus.QUEUED] = JobStatus.QUEUED
     poll_after_ms: int = PROGRESS_POLL_AFTER_MS
@@ -205,6 +209,7 @@ class AgentResult(BaseModel):
     sources: list[MemorySource] = Field(default_factory=list, max_length=20)
     recommendation_group: "RecommendationGroup | None" = None
     recommendation_adoption: "RecommendationAdoption | None" = None
+    context_reset: bool = False
 
     @model_validator(mode="before")
     @classmethod

@@ -11,7 +11,11 @@ from backend.schemas.enums import AgentStatus, JobStatus
 from backend.schemas.models import PROGRESS_POLL_AFTER_MS, RETRY_COUNT_MAX
 from backend.services.session_repository import SessionRepository
 
-IDEMPOTENCY_TTL_SECONDS = 10 * 60
+from backend.services.session_usage import SESSION_MESSAGE_LIMIT
+
+
+class SessionMessageLimitReached(Exception):
+    """The session has already accepted its lifetime message allowance."""
 
 
 class IdempotencyConflict(Exception):
@@ -117,7 +121,7 @@ class JobRepository:
     async def submit(
         self, *, session_id: str, request_text: str, idempotency_key: str
     ) -> tuple[JobEnvelope, bool]:
-        """Create a queued job or return its unexpired idempotent match."""
+        """Create a queued job or return its session-lifetime idempotent match."""
         async with self._pool.acquire() as connection:
             async with connection.transaction():
                 return await self._submit(
@@ -169,7 +173,6 @@ class JobRepository:
             SELECT * FROM jobs
             WHERE session_id = $1::uuid
               AND idempotency_key_hash = $2
-              AND idempotency_expires_at > now()
             ORDER BY created_at DESC
             LIMIT 1
             """,
@@ -180,6 +183,12 @@ class JobRepository:
             if existing["request_text_hash"] != text_hash:
                 raise IdempotencyConflict
             return _to_envelope(existing), False
+
+        message_count = await connection.fetchval(
+            "SELECT count(*) FROM jobs WHERE session_id=$1::uuid", session_id
+        )
+        if message_count >= SESSION_MESSAGE_LIMIT:
+            raise SessionMessageLimitReached
 
         row = await connection.fetchrow(
             """
@@ -311,8 +320,8 @@ class JobRepository:
         # their prior role fallback; fetch one preceding board for that compatibility.
         references = await self._pool.fetch(
             "SELECT j.* FROM jobs j WHERE j.session_id=$1::uuid AND status='completed'"
-            " AND final_payload_json->'reference_plan'->'terms' IS NOT NULL"
-            " AND jsonb_array_length(final_payload_json->'reference_plan'->'terms') > 0"
+            " AND (jsonb_typeof(final_payload_json->'reference_plan')='object'"
+            " OR final_payload_json->>'context_reset'='true')"
             " AND COALESCE(final_payload_json->'recommendation_adoption'->>'status','') <> 'search_failed'"
             " ORDER BY j.created_at DESC,j.job_id DESC LIMIT 2", session_id,
         )

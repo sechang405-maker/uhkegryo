@@ -56,6 +56,7 @@ test("AC-03: 요청 중 중복 제출을 막고 서버의 사용자 메시지만
   const first = controller.submit("앉은 캐릭터", options);
   assert.equal(controller.isPending(), true);
   assert.equal(await controller.submit("앉은 캐릭터", options), null);
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(calls, 1);
   release({ status: 422, json: async () => ({ user_message: "입력을 확인해 주세요." }) });
   assert.deepEqual(await first, { ok: false, error: "입력을 확인해 주세요." });

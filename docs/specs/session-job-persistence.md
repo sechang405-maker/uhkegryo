@@ -12,6 +12,12 @@
 
 ## What
 
+### Session-lifetime idempotency and admission limit (2026-10-20)
+
+This section supersedes older ten-minute key-expiry wording elsewhere in this document. A UUID `Idempotency-Key` remains the identity of its accepted request for the full retained lifetime of the session. The same key and `request_text_hash` return the original job without consuming another message; the same key with different text returns `409 IDEMPOTENCY_KEY_CONFLICT`.
+
+Admission is serialized under the per-session transaction lock. At most 20 unique jobs are accepted per session, including jobs that later fail. A 21st unique request returns `429 SESSION_MESSAGE_LIMIT_REACHED` and creates no job. Existing over-limit sessions remain readable.
+
 `sessions`는 `session_id` UUID PK, `owner_id` FK, `memory_json`, `created_at`, `last_activity_at`을 가진다. 로그인 계정은 없으며 `anonymous_owners.session_token_hash`가 익명 사용자를 식별하고 `default_session_id`는 기존 API용 기본 대화를 가리킨다. `jobs`는 `job_id` UUID PK, `session_id` FK `ON DELETE CASCADE`, `request_text`, `request_text_hash`, `idempotency_key_hash`, `idempotency_expires_at`, `status`, `attempt=0`, `max_attempts=3`, `lease_expires_at`, `next_retry_at nullable timestamptz`, `succeeded`, `final_payload_json`, `created_at`, `updated_at`, `completed_at`을 가진다. 신규 job의 `next_retry_at`은 `null`이다.
 
 DB의 `attempt=0`은 아직 실행되지 않은 job을 뜻한다. worker가 claim transaction에서 `attempt`를 1 증가시킨 뒤 해당 값을 실행 시도 번호로 사용한다. 따라서 API `JobEnvelope.attempt`와 Langfuse trace의 `attempt`에는 claim 이후 값인 `1..max_attempts`만 기록하며, `attempt=0`을 API에 노출하지 않는다.

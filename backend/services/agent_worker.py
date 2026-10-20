@@ -233,6 +233,8 @@ class AgentJobWorker:
                             pin_count=sum(len(outcome.pins) for outcome in search_outcomes.values()),
                         )
                 result = recommendations.finish(result, recommendation_decision)
+                if context.get('_recommendation_topic_reset'):
+                    result.context_reset = True
                 if recalled is not None:
                     result.memory_answer, result.sources = recalled.memory_answer, recalled.sources
             with trace.stage("rendering"):
@@ -241,7 +243,7 @@ class AgentJobWorker:
                     return
                 with self._tracer.phase("conversation-state-update") as metrics:
                     if not recall_only and not refresh:
-                        state = conversation_context.next_state(context, job, interpretation, result)
+                        state = conversation_context.next_state(context, job, interpretation, result, snapshot=self._snapshot)
                         state = recommendations.next_state(state, job, recommendation_decision)
                     await self._memory.complete(job, result, state)
                     metrics.update(state_saved=True)

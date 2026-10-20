@@ -9,7 +9,6 @@ from backend.shared.auth import session_cookie_max_age
 
 import json
 import hashlib
-import time
 import uuid
 from types import SimpleNamespace
 
@@ -41,6 +40,12 @@ class FakeSessionRepository:
     async def has_owner(self, token):
         return bool(await self.resolve_session(token))
 
+    async def get_session(self, token, session_id, *, touch=False):
+        if session_id != await self.resolve_session(token):
+            raise JobNotFound
+        count = sum(row["session_id"] == session_id for row in self.jobs.jobs.values())
+        return dict(message_count=count, message_limit=20, remaining_messages=max(0,20-count), can_submit=count<20)
+
     async def session_for_job(self, token, job_id):
         session_id = await self.resolve_session(token)
         if session_id is None:
@@ -62,7 +67,7 @@ class FakeJobRepository:
         key = (session_id, hashlib.sha256(idempotency_key.encode()).hexdigest())
         text_hash = hashlib.sha256(request_text.encode()).hexdigest()
         previous = self.idempotency.get(key)
-        if previous and previous["expires_at"] > time.monotonic():
+        if previous:
             if previous["text_hash"] != text_hash:
                 raise IdempotencyConflict
             return self._envelope(self.jobs[previous["job_id"]]), False
@@ -76,7 +81,6 @@ class FakeJobRepository:
         self.jobs[row["job_id"]] = row
         self.idempotency[key] = {
             "job_id": row["job_id"], "text_hash": text_hash,
-            "expires_at": time.monotonic() + 600,
         }
         return self._envelope(row), True
 
@@ -112,6 +116,7 @@ class FakeRepositories:
     def __init__(self):
         self.sessions = FakeSessionRepository()
         self.jobs = FakeJobRepository(self.sessions)
+        self.sessions.jobs = self.jobs
 
     async def get(self):
         return self.sessions, self.jobs
@@ -452,3 +457,51 @@ def test_new_session_and_failed_job_submit_leave_no_session(client: TestClient) 
     assert response.status_code == 503
     assert response.json()["failure_code"] == "DATABASE_UNAVAILABLE"
     assert client.repositories.sessions.sessions == {}
+
+
+def test_submission_exposes_actual_session_usage(client):
+    first = submit(client, "draw")
+    second = submit(client, "draw again")
+    assert first["body"]["message_count"] == 1
+    assert second["body"]["message_count"] == 2
+    assert second["body"]["message_limit"] == 20
+    assert second["body"]["remaining_messages"] == 18
+    assert second["body"]["can_submit"] is True
+
+
+def test_session_limit_is_structured_nonretryable_429(client):
+    from backend.services.job_repository import SessionMessageLimitReached
+    submit(client, "draw")
+    client.repositories.jobs.submit_error = SessionMessageLimitReached()
+    rejected = submit(client, "one too many")
+    assert rejected["status"] == 429
+    assert rejected["body"]["failure_code"] == "session_message_limit_reached"
+    assert rejected["body"]["retryable"] is False
+
+
+def test_post_commit_usage_failure_keeps_owner_cookie_and_replays_exact_job(client, monkeypatch):
+    sessions = client.repositories.sessions
+    original = sessions.get_session
+    captured = []
+
+    async def unavailable_after_commit(token, session_id, **kwargs):
+        captured.append((token, session_id))
+        assert len(client.repositories.jobs.jobs) == 1
+        raise asyncpg.PostgresConnectionError("private post-commit connection details")
+
+    monkeypatch.setattr(sessions, "get_session", unavailable_after_commit)
+    key = str(uuid.uuid4())
+    failed = submit(client, "first committed input", key=key)
+    assert failed["status"] == 503
+    assert failed["body"]["failure_code"] == "DATABASE_UNAVAILABLE"
+    committed_job = next(iter(client.repositories.jobs.jobs))
+    assert client.cookies.get(SESSION_COOKIE_NAME) == captured[0][0]
+    assert "private" not in str(failed["body"])
+
+    monkeypatch.setattr(sessions, "get_session", original)
+    recovered = submit(client, "first committed input", key=key)
+    assert recovered["status"] == 202
+    assert recovered["body"]["job_id"] == committed_job
+    assert recovered["body"]["message_count"] == 1
+    assert len(client.repositories.jobs.jobs) == 1
+    assert len(sessions.sessions) == 1

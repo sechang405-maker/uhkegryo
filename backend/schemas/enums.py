@@ -92,11 +92,10 @@ class FailureCode(StrEnum):
 
 
 class ApiErrorCode(StrEnum):
-    """HTTP 응답 자체가 실패할 때의 코드 4종.
+    """Request-stage HTTP errors; keep aligned with ``api-contract.md``.
 
-    `FailureCode`는 job이 종결 실패했을 때 `Failure.failure_code`로 노출되는 값이고,
-    여기는 요청이 종결 job에 도달하기 전에 거부된 경우다. `api-contract.md`의
-    18~19행이 정의하는 오류 표가 이 네임스페이스에 해당한다.
+    These are separate from terminal worker ``FailureCode`` values. The set
+    includes session lookup and the server-authoritative message-limit error.
     """
 
     INVALID_REQUEST_TEXT = "invalid_request_text"
@@ -104,6 +103,7 @@ class ApiErrorCode(StrEnum):
     SESSION_REQUIRED = "session_required"
     JOB_NOT_FOUND = "job_not_found"
     SESSION_NOT_FOUND = "session_not_found"
+    SESSION_MESSAGE_LIMIT_REACHED = "session_message_limit_reached"
 
 
 class PinStatus(StrEnum):

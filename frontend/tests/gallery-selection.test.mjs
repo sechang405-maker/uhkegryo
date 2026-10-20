@@ -105,6 +105,20 @@ test("pending and conversational results preserve the last valid reference board
   ]) { gallery.live(incoming, sid); assert.equal(state.job, reference); }
 });
 
+test("an empty final board or server-confirmed context reset clears the live gallery", () => {
+  const { gallery, state } = setup();
+  const reference = job("reference"); gallery.live(reference, sid);
+
+  const emptied = job("emptied", sid, { agent_status: "success", reference_plan: { terms: [] } });
+  gallery.begin(sid); gallery.live(emptied, sid);
+  assert.equal(state.job.job_id, "emptied");
+
+  const replacement = job("replacement"); gallery.begin(sid); gallery.live(replacement, sid);
+  const reset = job("reset", sid, { agent_status: "drawing_chat", answer_text: "Fresh topic", context_reset: true });
+  gallery.begin(sid); gallery.live(reset, sid);
+  assert.equal(state.job.job_id, "reset");
+});
+
 test("beginning another request retains a restored board while allowing a new explicit result", () => {
   const { gallery, state } = setup();
   const reference = job("restored"); gallery.restore(reference, "restored", sid);

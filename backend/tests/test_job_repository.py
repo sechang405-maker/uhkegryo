@@ -25,8 +25,9 @@ from backend.shared.auth import hash_session_token
 
 class FakeConnection:
     def __init__(
-        self, rows=(), update_row=True, fail_job_insert=False, status="rendering", attempt=1
+        self, rows=(), update_row=True, fail_job_insert=False, status="rendering", attempt=1, message_count=0
     ):
+        self.message_count = message_count
         self.rows = list(rows)
         self.update_row = update_row
         self.fail_job_insert = fail_job_insert
@@ -42,7 +43,7 @@ class FakeConnection:
 
     async def fetchval(self, query, *args):
         self.calls.append((query, args))
-        return args[0]
+        return self.message_count if "count(*)" in query else args[0]
 
     async def fetchrow(self, query, *args):
         self.calls.append((query, args))
@@ -131,8 +132,8 @@ def test_submit_creates_hashed_queued_job_under_session_lock():
     assert "pg_advisory_xact_lock" in lock_query
     assert lock_args == (SESSION_ID,)
     lookup_query, _ = connection.calls[2]
-    assert "idempotency_expires_at > now()" in lookup_query
-    insert_query, insert_args = connection.calls[3]
+    assert "idempotency_expires_at > now()" not in lookup_query
+    insert_query, insert_args = connection.calls[4]
     assert "INSERT INTO jobs" in insert_query
     assert insert_args[2] == "draw"
     assert insert_args[3] != "draw"
@@ -561,3 +562,34 @@ def test_concurrent_claims_return_a_job_to_only_one_worker_on_postgres():
             await admin.close()
 
     asyncio.run(verify_concurrent_claim())
+
+
+@pytest.mark.parametrize("count", [20, 25])
+def test_new_input_at_or_above_limit_is_rejected_without_insert(count):
+    from backend.services.job_repository import SessionMessageLimitReached
+    connection = FakeConnection(message_count=count)
+    with pytest.raises(SessionMessageLimitReached):
+        _run(JobRepository(FakePool(connection)).submit(
+            session_id=SESSION_ID, request_text="draw", idempotency_key=JOB_ID))
+    assert not any("INSERT INTO jobs" in query for query, _ in connection.calls)
+    assert connection.rolled_back
+
+
+def test_twentieth_input_is_accepted():
+    connection = FakeConnection(message_count=19)
+    job, created = _run(JobRepository(FakePool(connection)).submit(
+        session_id=SESSION_ID, request_text="draw", idempotency_key=JOB_ID))
+    assert created and job.job_status is JobStatus.QUEUED
+
+
+def test_expired_idempotency_key_still_replays_at_limit():
+    from backend.services.job_repository import _hash
+    from datetime import timedelta
+    existing = _job_row((JOB_ID, SESSION_ID, "draw", _hash("draw"), "key", None,
+                         "queued", 0, 3, None))
+    existing["idempotency_expires_at"] -= timedelta(days=1)
+    connection = FakeConnection([existing], message_count=20)
+    job, created = _run(JobRepository(FakePool(connection)).submit(
+        session_id=SESSION_ID, request_text="draw", idempotency_key=JOB_ID))
+    assert job.job_id == JOB_ID and not created
+    assert not any("count(*)" in query for query, _ in connection.calls)

@@ -9,17 +9,13 @@ from backend.schemas.memory import RecallQuery, RecallAnswer, MemorySource, NO_R
 from backend.services.conversation_memory import evidence_text, normalize_constraints, RECENT_LIMIT
 from backend.services.llm import LLMInvalidStructuredOutput
 from backend.services.reference_intent import wants_reference, current_action_text
+from backend.services import session_memory
 from backend.services.selection_grounding import has_affirmed_evidence
 from backend.services.resolver import resolve, ResolutionResult, STATUS_CLARIFY, STATUS_ALL_INVALID, STATUS_PROCEED
 
 # Narrow literal alternatives for existing catalog concepts, never a default or
 # semantic mapping from mood, props, or an unspecified character to a card.
-_REFERENCE_ALIASES = {
-    'pose_standing': ('서 있는', '서있는'),
-    'pose_sitting': ('앉아 있는', '앉아있는', '앉은'),
-    'view_front': ('정면', '앞모습'),
-    'view_three_quarter': ('3/4 방향', '3/4방향'),
-}
+_REFERENCE_ALIASES = session_memory.REFERENCE_ALIASES
 
 async def prepare(memory, job, adapter, trace):
     context = await memory.load(job)
@@ -44,6 +40,9 @@ def prompt_context(context):
         seen.append(source)
     output = {"constraints": normalize_constraints(state.get("constraints", {})), "pending_question": state.get("pending_question"),
             "recent": recent, "sources": sources}
+    for key in ('current_topic', 'excluded_conditions', 'topic_scope_id', 'recommendation_topic_scope'):
+        if key in state:
+            output[key] = state[key]
     for key in ('recommendation_group', 'recommendation_adoption'):
         if state.get(key):
             output[key] = ({field:value for field,value in state[key].items() if field != 'source_answer'}
@@ -119,6 +118,18 @@ async def validate(memory, job, interpretation, snapshot, *, context=None, updat
     verified_source_texts = {}
     for selection in interpretation.selections:
         if selection.source_job_id:
+            state = (context or {}).get('state', {})
+            if state.get('topic_scope_id'):
+                scoped_ids = {str(row.get('job_id')) for row in
+                    [*(context or {}).get('recent', []), *(context or {}).get('sources', [])]}
+                scoped_ids.update(map(str, session_memory.source_ids(state)))
+                scoped_ids.update(str(value['source_job_id']) for value in state.get('constraints', {}).values() if value.get('source_job_id'))
+                if str(selection.source_job_id) not in scoped_ids:
+                    raise LLMInvalidStructuredOutput('Source is outside the current topic scope',
+                        stage='conversation_validation', feedback=[{'path': [], 'code': 'selection_source_invalid'}])
+            if selection.term_id in ((context or {}).get('state', {}).get('excluded_conditions') or {}):
+                raise LLMInvalidStructuredOutput('Excluded conditions require fresh current-user evidence',
+                    stage='conversation_validation', feedback=[{'path': [], 'code': 'selection_evidence_invalid'}])
             if (context or {}).get('_recommendation_topic_reset') or interpretation.topic_reset_evidence:
                 raise LLMInvalidStructuredOutput('Prior-topic sources cannot support a new topic',
                     stage='conversation_validation', feedback=[{'path': [], 'code': 'selection_source_invalid'}])
@@ -156,6 +167,8 @@ async def validate(memory, job, interpretation, snapshot, *, context=None, updat
              (((context or {}).get('previous_result') or {}).get('reference_plan') or {}).get('terms', [])}
     known.update({key: value['role'] for key, value in normalize_constraints(
         (context or {}).get('state', {}).get('constraints', {})).items()})
+    known.update({term['term_id']: Role(term['role']).value for term in
+        (((context or {}).get('state', {}).get('current_topic') or {}).get('terms', []))})
     resulting = dict(known)
     seen = set()
     for update in interpretation.context_updates:
@@ -191,6 +204,10 @@ async def validate(memory, job, interpretation, snapshot, *, context=None, updat
     if len(resulting) > 10:
         raise LLMInvalidStructuredOutput('Conversation cannot contain more than ten cards',
             stage='conversation_validation', feedback=[{'path': [], 'code': 'context_card_limit'}])
+    if (not interpretation.selections and interpretation.context_updates
+            and interpretation.interpretation_state.value == 'select_terms'
+            and all(update.term_id is None for update in interpretation.context_updates)):
+        return ResolutionResult(status=STATUS_PROCEED, terms=[], unresolved_roles=list(Role))
     resolution = resolve(interpretation, snapshot, request_text=str(job["request_text"]),
                          verified_source_texts=verified_source_texts)
     if resolution.status == STATUS_CLARIFY and repeated_question(resolution.clarifying_question, context):
@@ -247,7 +264,11 @@ def related_reference_record(recent):
             r'(?:그리고|그려\s*보고|보고)\s*싶(?:어|어요|습니다)|'
             r'(?:그걸로|그거|그대로)?\s*(?:찾아\s*(?:줘|주세요)|검색\s*해\s*(?:줘|주세요)))'
             r'[.!?\s]*', row.get('request_text', ''))
-        if (not row.get('terms') and pointer_only and row.get('question')
+        bare_desire = re.fullmatch(
+            r'\s*(?:\uadf8\ub9ac\uace0|\uadf8\ub824\s*\ubcf4\uace0)\s*'
+            r'\uc2f6(?:\uc5b4|\uc5b4\uc694|\ub2e4|\uc2b5\ub2c8\ub2e4)[.!?\s]*',
+            row.get('request_text', ''))
+        if (not row.get('terms') and (pointer_only or bare_desire) and row.get('question')
                 and not (row.get('message') or '').strip()):
             continue
         return row
@@ -264,9 +285,10 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
     from backend.schemas.memory import ContextUpdate
     from backend.services.recommendations import _condition_slot
     text = job['request_text']
-    if (not wants_reference(text)
+    editing = interpretation.interpretation_state is InterpretationState.SELECT_TERMS
+    if ((not wants_reference(text) and not editing)
             or interpretation.interpretation_state not in (
-                InterpretationState.DRAWING_CHAT, InterpretationState.NEEDS_CLARIFICATION)
+                InterpretationState.DRAWING_CHAT, InterpretationState.NEEDS_CLARIFICATION, InterpretationState.SELECT_TERMS)
             or interpretation.clarification_type in (
                 ClarificationType.CONFLICTING_CONSTRAINTS, ClarificationType.CATALOG_LIMITATION)):
         return interpretation
@@ -274,13 +296,16 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
     removed = {term_id for update in updates for term_id in update.remove_term_ids}
     cleared = {update.role.value for update in updates if update.term_id is None and not update.remove_term_ids}
     current = current_action_text(text)
-    selections = {}
+    selections = {item.term_id: item for item in interpretation.selections}
     def labels(source, source_id=None):
-        for term_id, card in snapshot.active_cards.items():
+        for term_id, match in session_memory.literal_terms(source, snapshot, _REFERENCE_ALIASES).items():
+            card = snapshot.active_cards[term_id]
+            if editing and card['role'] not in {item.role.value for item in interpretation.selections}:
+                continue
             if (term_id in removed or card['role'] in cleared or card.get('component') == 'composite'
                     or snapshot.is_direct_search_disabled(term_id)):
                 continue
-            for label in (card['label_ko'], card['label_en'], *_REFERENCE_ALIASES.get(term_id, ())):
+            for label in (match['evidence'],):
                 if explicitly_excluded(source, label):
                     continue
                 if len(label.strip()) > 1 and label in source and has_affirmed_evidence(label, [source]):
@@ -288,6 +313,15 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
                         evidence=[label], confidence=1, source_job_id=source_id)
                     break
     labels(current)
+    topic = context.get('state', {}).get('current_topic') or {}
+    topic_terms = {item['term_id']: item for item in topic.get('terms', [])}
+    # A generic pointer ("그런 구도로") cannot supersede the specific topic.
+    contextual = list(topic_terms.values()) + list(normalize_constraints(context.get('state', {}).get('constraints', {})).values())
+    specific = [InterpretationSelection(role=item['role'],term_id=item['term_id'],
+        evidence=[item['evidence']],confidence=1,source_job_id=item['source_job_id']) for item in contextual
+        if snapshot.get_active(item['term_id']) and item.get('source_job_id') and item.get('evidence')]
+    surviving = {item.term_id for item in session_memory.prune_nested([*selections.values(), *specific], snapshot)}
+    selections = {key:value for key,value in selections.items() if key in surviving}
     current_selections = dict(selections)
     current_slots = {_condition_slot(item.role, item.term_id, snapshot) for item in current_selections.values()}
     reset = context.get('_recommendation_topic_reset') or interpretation.topic_reset_evidence
@@ -296,20 +330,25 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
     pointer = pointer or re.fullmatch(r'\s*(?:찾아\s*(?:줘|주세요)|검색\s*해\s*(?:줘|주세요)|'
         r'(?:please\s+)?(?:find|search)(?:\s+(?:it|references?))?)[.!?\s]*', current, re.I)
     constraints = normalize_constraints(context.get('state', {}).get('constraints', {}))
+    pointer = pointer or re.fullmatch(r'\s*(?:그리고|그려\s*보고)\s*싶(?:어|어요|다|습니다)[.!?\s]*', current) or editing
+    excluded = context.get('state', {}).get('excluded_conditions') or {}
     if pointer and not reset:
-        ids = list(dict.fromkeys(value['source_job_id'] for value in constraints.values()))
+        ids = list(dict.fromkeys(value['source_job_id'] for value in constraints.values() if value.get('source_job_id')))
+        ids = list(dict.fromkeys([*ids, *session_memory.source_ids(context.get('state', {}))]))
         recent = context.get('recent') or []
         related = related_reference_record(recent)
         # At most one bounded related user source; never search older DB history.
-        if not ids and related:
+        if not ids and related and not editing:
             ids = [related['job_id']]
         originals = await memory.records(job, ids) if ids else []
         by_id = {str(row['job_id']): row for row in originals}
-        for term_id, condition in constraints.items():
+        for term_id, condition in {**topic_terms, **constraints}.items():
+            if not condition.get('source_job_id'):
+                continue
             original = by_id.get(str(condition['source_job_id']))
             card = snapshot.get_active(term_id)
             evidence = condition.get('evidence', '')
-            if (not original or not card or term_id in removed or card['role'] in cleared
+            if (not original or not card or term_id in removed or term_id in excluded or card['role'] in cleared
                     or _condition_slot(card['role'], term_id, snapshot) in current_slots
                     or snapshot.is_direct_search_disabled(term_id)
                     or explicitly_excluded(current, evidence)
@@ -322,7 +361,7 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
             if has_affirmed_evidence(evidence, [value.casefold() for value in allowed]):
                 selections.setdefault(term_id, InterpretationSelection(role=card['role'], term_id=term_id,
                     evidence=[evidence], confidence=1, source_job_id=condition['source_job_id']))
-        if not constraints and related:
+        if not constraints and not topic_terms and related:
             original = by_id.get(str(related['job_id']))
             if original:
                 # Replace only the stated dimension, retaining independent framing.
@@ -335,12 +374,17 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
                     if value.source_job_id is None
                     or _condition_slot(value.role, value.term_id, snapshot) not in current_slots}
                 selections.update(before)
+    selections = {item.term_id:item for item in session_memory.prune_nested(list(selections.values()), snapshot)
+        if item.term_id not in excluded or item.source_job_id is None}
     # Merge preservation also needs explicit removal of superseded known cards.
     # Do not invent prior IDs when only immediate dialogue exists without a board.
     known = {term['term_id']: term['role'] for term in
         ((context.get('previous_result') or {}).get('reference_plan') or {}).get('terms', [])}
     known.update({term_id: value['role'] for term_id, value in constraints.items()})
     for item in current_selections.values():
+        if editing and any(update.role == item.role and (update.remove_term_ids or update.term_id is None)
+                           for update in interpretation.context_updates):
+            continue
         slot = _condition_slot(item.role, item.term_id, snapshot)
         superseded = [term_id for term_id, role in known.items() if term_id != item.term_id
             and term_id not in removed and _condition_slot(role, term_id, snapshot) == slot]
@@ -355,7 +399,7 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
     if len(selections) > 10:
         return interpretation
     labels_text = ', '.join(snapshot.get_active(term_id)['label_ko'] for term_id in selections)
-    explanation = f'말씀하신 조건 중 {labels_text} 기준으로 참고 자료를 찾았어요.'
+    explanation = interpretation.answer_text if editing else f'말씀하신 조건 중 {labels_text} 기준으로 참고 자료를 찾았어요.'
     if interpretation.unresolved_constraints:
         explanation += ' 아직 확정되지 않은 조건은 검색에 추가하지 않았어요.'
     candidate = InterpretationOutput(interpretation_state='select_terms',
@@ -366,8 +410,11 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
     return candidate if resolution.status == STATUS_PROCEED else interpretation
 
 
-def next_state(context, job, interpretation, result):
+def next_state(context, job, interpretation, result, *, snapshot=None):
     state = deepcopy(context["state"])
+    if snapshot is not None and result.agent_status in (AgentStatus.DRAWING_CHAT, AgentStatus.SUCCESS,
+            AgentStatus.PARTIAL_RESULT, AgentStatus.NEEDS_CLARIFICATION, AgentStatus.REFERENCE_GUIDANCE):
+        state = session_memory.observe(state, job, snapshot)
     if result.agent_status is AgentStatus.REFERENCE_GUIDANCE:
         state['pending_question'] = None
         return state
@@ -377,20 +424,45 @@ def next_state(context, job, interpretation, result):
         state['pending_question'] = result.clarifying_question
         return state
     constraints = normalize_constraints(state.get("constraints", {}))
+    topic = deepcopy(state.get('current_topic'))
+    topic_terms = list((topic or {}).get('terms', []))
     for update in interpretation.context_updates if result.agent_status is not AgentStatus.NEEDS_CLARIFICATION else []:
+        topic_removals = set(update.remove_term_ids)
+        if update.term_id is None and not update.remove_term_ids:
+            topic_removals.update(term['term_id'] for term in topic_terms
+                                  if term['role'] == update.role.value)
+        for term in topic_terms:
+            if term['term_id'] in topic_removals:
+                state.setdefault('excluded_conditions', {})[term['term_id']] = dict(
+                    role=term['role'], term_id=term['term_id'], evidence=update.evidence,
+                    source_job_id=str(job['job_id']))
+        topic_terms = [term for term in topic_terms if term['term_id'] not in topic_removals]
         for term_id in update.remove_term_ids:
+            state.setdefault('excluded_conditions', {})[term_id] = dict(role=update.role.value,
+                term_id=term_id, evidence=update.evidence, source_job_id=str(job['job_id']))
             constraints.pop(term_id, None)
         if update.term_id is None and not update.remove_term_ids:
+            for term_id, condition in constraints.items():
+                if condition['role'] == update.role.value:
+                    state.setdefault('excluded_conditions', {})[term_id] = dict(role=update.role.value,
+                        term_id=term_id, evidence=update.evidence, source_job_id=str(job['job_id']))
             constraints = {key: value for key, value in constraints.items() if value["role"] != update.role.value}
         elif update.term_id is not None:
             constraints[update.term_id] = {"role": update.role.value, "term_id": update.term_id,
                 "evidence": update.evidence, "source_job_id": str(job["job_id"])}
+    if topic is not None:
+        if topic_terms:
+            topic['terms'] = topic_terms
+            state['current_topic'] = topic
+        else:
+            state['current_topic'] = None
     final_ids = {term.term_id for term in result.reference_plan.terms} if result.reference_plan else set()
     removed = {term_id for update in interpretation.context_updates for term_id in update.remove_term_ids}
     cleared = {update.role for update in interpretation.context_updates
         if update.term_id is None and not update.remove_term_ids}
     for selection in getattr(interpretation, 'selections', []) if not result.recommendation_group else []:
         if selection.term_id in final_ids and selection.term_id not in removed and selection.role not in cleared:
+            state.setdefault('excluded_conditions', {}).pop(selection.term_id, None)
             constraints[selection.term_id] = dict(role=selection.role.value, term_id=selection.term_id,
                 evidence=selection.evidence[0], source_job_id=str(selection.source_job_id or job['job_id']))
     if len(constraints) > 10:

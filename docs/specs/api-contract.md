@@ -12,6 +12,16 @@
 
 ## What
 
+### Session usage contract (2026-10-20)
+
+This section supersedes older ten-minute idempotency wording elsewhere in this document.
+
+- `POST /api/agent` returns `202 {job_id, job_status:"queued", poll_after_ms:1000, message_count, message_limit:20, remaining_messages, can_submit}`.
+- Session responses expose the same four root usage fields: `message_count`, `message_limit`, `remaining_messages`, and `can_submit`.
+- A UUID `Idempotency-Key` identifies an accepted request for the full retained lifetime of its session. Retrying the same key and text returns the original job without another charge; using the key for different text returns non-retryable `409 IDEMPOTENCY_KEY_CONFLICT`.
+- Each accepted unique request counts once, even if its job later fails. The 20th request completes normally. A 21st unique request creates no job and returns non-retryable `429 {failure_code:"session_message_limit_reached", user_message, retryable:false}`.
+- Existing over-limit sessions remain readable. Only a server-created new session starts again at zero; resetting conversation context inside the same session does not reset usage.
+
 | Endpoint | Method | 성공 | 오류 |
 | --- | --- | --- |
 | `/health` | GET | `200 {"status":"ok"}` | — |

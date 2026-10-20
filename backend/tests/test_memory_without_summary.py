@@ -11,7 +11,7 @@ from backend.services.agent_worker import AgentJobWorker
 from backend.services.conversation_memory import ConversationMemory
 from backend.services.job_repository import JobRepository
 from backend.services.llm import PromptConfigurationError
-from backend.tests.test_conversation_memory import MemoryAdapter
+from backend.tests.test_conversation_memory import MemoryAdapter, insert_legacy_accepted_job
 from backend.tests.test_conversation_sessions import database_case
 from backend.tests.test_llm_adapter import _adapter, _FakeCompletions, REPO_PROMPT_FILE
 from backend.tests.test_memory_latency import seed
@@ -108,19 +108,20 @@ def test_oldest_reference_is_recalled_after_40_turns_and_other_session_is_exclud
                 assert operation == "answer" and [row["job_id"] for row in data["records"]] == [str(oldest)]
                 return await super().memory(operation, data, output_type, **kwargs)
         jobs, adapter = JobRepository(pool), Historical()
-        request, _ = await jobs.submit(session_id=str(session), request_text="초기에 서 있는 자세를 찾았지?",
-                                       idempotency_key=str(uuid.uuid4()))
+        request_id = await insert_legacy_accepted_job(pool, str(session), "초기에 서 있는 자세를 찾았지?")
         worker = AgentJobWorker(pool, snapshot_factory([card_factory("pose_standing")]), adapter=adapter)
         assert await worker.run_once()
-        result = (await jobs.get(session_id=str(session), job_id=request.job_id)).result
+        result = (await jobs.get(session_id=str(session), job_id=request_id)).result
         assert result.agent_status == "memory_answer" and result.sources[0].job_id == oldest
         assert result.sources[0].href == "/api/jobs/" + str(oldest) and not adapter.contexts
         assert await pool.fetchval("SELECT count(*) FROM jobs WHERE session_id=$1", session) == 41
         assert json.loads(await pool.fetchval("SELECT final_payload_json FROM jobs WHERE job_id=$1", oldest)) == payload
         history = await jobs.history(str(session), limit=1)
         assert history[0]["result"]["reference_plan"]["terms"][0]["pins"][0]["pin_url"] == "https://www.pinterest.com/pin/123/"
-        state = await ConversationMemory(pool).load(await pool.fetchrow("SELECT * FROM jobs WHERE job_id=$1", request.job_id))
-        assert set(state["state"]) <= {"constraints", "pending_question"}
-        assert state["previous_result"] == payload
+        state = await ConversationMemory(pool).load(await pool.fetchrow("SELECT * FROM jobs WHERE job_id=$1", request_id))
+        assert set(state["state"]) <= {"memory_version", "constraints", "pending_question"}
+        assert state['state']['memory_version'] == 1
+        from backend.schemas.models import AgentResult
+        assert state["previous_result"] == AgentResult.model_validate(payload).model_dump(mode='json')
         assert "oldest_recent" not in state
     asyncio.run(database_case(case))

@@ -29,7 +29,11 @@ export function createGallerySelection(options) {
     },
     live(job, sessionId) {
       const failedRecommendation = job?.result?.recommendation_adoption && job.result.agent_status === "partial_result";
-      if (sessionId === session && selected === null && resultTerms(job).length && !failedRecommendation) options.onJob(job);
+      const result = job?.job_status === "completed" ? job.result : null;
+      const finalBoard = ["success", "partial_result"].includes(result?.agent_status)
+        && Array.isArray(result?.reference_plan?.terms);
+      if (sessionId === session && selected === null && !failedRecommendation
+          && (finalBoard || result?.context_reset === true)) options.onJob(job);
     },
     restore(job, selectionId, sessionId) {
       loader.cancel();

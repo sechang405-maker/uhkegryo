@@ -1,5 +1,6 @@
 import { upsertTurn, isTurnPending, mergeHistoryTurns } from "./conversation.mjs";
 import { createJobPoller, STATUS_LABELS } from "./job-polling.mjs";
+import { sessionUsage } from './session-usage.mjs';
 
 export const RESTORE_ERROR = "대화를 복원하지 못했습니다. 다시 불러온 뒤 요청해 주세요.";
 export const DELETE_CONFIRM = "이 대화를 영구 삭제할까요? 연결된 입력·답변·참고링크가 함께 삭제되며 복구할 수 없습니다. 다른 대화와 외부 Pinterest 원본은 삭제하지 않습니다.";
@@ -76,6 +77,10 @@ export async function createConversation(options = {}) {
   validateSessions([created]);
   return created;
 }
+export async function readConversationUsage(options = {}) {
+  const id = sessionId(options.sessionId);
+  return sessionUsage(await read(`/api/sessions/${id}`, options));
+}
 export async function restoreConversation(options = {}) {
   let id = options.sessionId;
   if (id) sessionId(id);
@@ -113,7 +118,7 @@ export async function restoreConversation(options = {}) {
   }
   if (!referenceJob?.result?.reference_update?.preserved_roles?.length) previousReferenceJob = null;
   if (previousReferenceJob) previousReferenceJob = await hydrate(previousReferenceJob.job_id);
-  return { sessionId: id, session, ...page, turns, referenceJob, previousReferenceJob };
+  return { sessionId: id, session, usage: sessionUsage(session), ...page, turns, referenceJob, previousReferenceJob };
 }
 
 export function resumeConversation(turns, options) {

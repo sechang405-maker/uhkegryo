@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 from backend.shared.auth import hash_session_token
+from backend.services.session_usage import USAGE_COUNT_SQL, session_usage
 
 LIVE = "(s.retained OR s.last_activity_at + interval '3 months' > now())"
 EXPIRY = "CASE WHEN s.retained THEN NULL ELSE s.last_activity_at + interval '3 months' END"
@@ -70,7 +71,7 @@ class SessionRepository:
 
     async def list_sessions(self, token: str, limit=20, offset=0) -> list[dict]:
         rows = await self._pool.fetch(
-            f"""SELECT s.*, {EXPIRY} AS expires_at,
+            f"""SELECT s.*, {EXPIRY} AS expires_at, {USAGE_COUNT_SQL},
                 (SELECT j.final_payload_json #> '{{reference_plan,terms}}'
                  FROM jobs j WHERE j.session_id=s.session_id AND j.status='completed'
                  AND COALESCE(j.final_payload_json->'recommendation_adoption'->>'status','') <> 'search_failed'
@@ -91,9 +92,9 @@ class SessionRepository:
             query = f"""UPDATE sessions s SET last_activity_at=now()
                         FROM anonymous_owners o WHERE o.owner_id=s.owner_id
                         AND o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}
-                        RETURNING s.*, {EXPIRY} AS expires_at"""
+                        RETURNING s.*, {EXPIRY} AS expires_at, {USAGE_COUNT_SQL}"""
         else:
-            query = f"""SELECT s.*, {EXPIRY} AS expires_at
+            query = f"""SELECT s.*, {EXPIRY} AS expires_at, {USAGE_COUNT_SQL}
                         FROM sessions s JOIN anonymous_owners o USING(owner_id)
                         WHERE o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}"""
         row = await self._pool.fetchrow(query, hash_session_token(token), session_id)
@@ -159,6 +160,7 @@ def session_view(row) -> dict:
     from backend.services.session_titles import title_terms
     result = {key: str(row[key]) if key == "session_id" else row[key]
             for key in ("session_id", "created_at", "last_activity_at", "expires_at")}
+    result.update(session_usage(row['message_count']))
     if 'title_terms' in row:
         result['title_terms'] = title_terms(row['title_terms'])
     return result

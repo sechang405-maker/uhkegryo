@@ -14,6 +14,11 @@
   --danger: #ffb3aa;
   --focus: #ffd2df;
 }
+.session-usage { margin-bottom: 8px; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+.session-usage-count { display: block; text-align: right; }
+.session-limit-notice { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.session-limit-notice p { margin: 0; flex: 1; }
+.session-limit-notice button { flex-shrink: 0; padding: 6px 9px; font-size: 11px; }
 .term-graph { height: calc(100dvh - 72px); overflow-y: auto; overflow-x: hidden; padding: 22px 24px 28px; font-weight: 400; scrollbar-color: var(--accent) var(--canvas); }
 .term-graph-heading { display:flex; align-items:start; justify-content:space-between; gap:16px; }
 .term-graph-eyebrow { color:var(--accent); font-size:11px; letter-spacing:.12em; font-weight:700; }

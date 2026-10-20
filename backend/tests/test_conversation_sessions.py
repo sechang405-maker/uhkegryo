@@ -155,14 +155,15 @@ def test_default_submit_is_atomic_and_idempotent():
     asyncio.run(database_case(case))
 
 def test_latest_history_keyset_same_timestamp_and_foreign_cursor():
+    from backend.tests.test_conversation_memory import insert_legacy_accepted_job
     async def case(pool):
         sessions,jobs=SessionRepository(pool),JobRepository(pool)
         sid=await sessions.create_session('paged-owner')
         other=await sessions.create_session('other-owner')
         ids=[]
         for i in range(21):
-            item,_=await jobs.submit(session_id=sid,request_text=f'fixture {i}',idempotency_key=str(uuid.uuid4()))
-            ids.append(item.job_id)
+            # Pagination must also read historical sessions accepted before the cap.
+            ids.append(await insert_legacy_accepted_job(pool,sid,f'fixture {i}'))
         foreign,_=await jobs.submit(session_id=other,request_text='foreign',idempotency_key=str(uuid.uuid4()))
         await pool.execute("UPDATE jobs SET created_at='2026-10-01T00:00:00Z' WHERE session_id=$1",uuid.UUID(sid))
         latest=await jobs.history_page(sid,20)

@@ -17,6 +17,7 @@ from backend.services.resolver import ResolutionResult, resolve, STATUS_PROCEED
 from backend.services.selection_grounding import has_affirmed_evidence
 from backend.services.reference_intent import (current_action_text,
     search_forbidden as _search_forbidden, wants_reference)
+from backend.services import session_memory
 
 
 @dataclass
@@ -74,13 +75,8 @@ def _current_action_text(text):
 
 
 def reset_context(job, context):
-    text = job['request_text']
-    if re.search(r'새\s*주제|다른\s*주제|주제.{0,8}바[꾸꿀꿀]|추천.{0,8}잊|\b(new topic|forget (that|the recommendation))\b', text, re.I):
-        context['state'].update(constraints={}, pending_question=None,
-            recommendation_group=None, recommendation_adoption=None, recommendation_pending_group_id=None)
-        context['previous_result'] = {}
-        context['sources'] = []
-        context['recent'] = []
+    if session_memory.explicit_reset(job['request_text']):
+        session_memory.clear_scope(context, str(job.get('job_id', '')))
 
 
 def _apply_topic_evidence(job, interpretation, context):
@@ -88,12 +84,11 @@ def _apply_topic_evidence(job, interpretation, context):
     if evidence is None:
         return
     if (not evidence.strip() or evidence not in job['request_text']
+            or not session_memory.reset_is_affirmed(job['request_text'], evidence)
+            or not has_affirmed_evidence(evidence, [job['request_text']])
             or not re.search(r'주제|캐릭터|인물|동물|배경|풍경|그림|\b(subject|topic|character|animal|landscape)\b', evidence, re.I)):
         raise invalid('recommendation_topic_evidence_invalid')
-    context['state'].update(constraints={}, pending_question=None,
-        recommendation_group=None, recommendation_adoption=None, recommendation_pending_group_id=None)
-    context['previous_result'] = {}
-    context['_recommendation_topic_reset'] = True
+    session_memory.clear_scope(context, str(job.get('job_id', '')))
 
 
 def _group(context):
@@ -494,6 +489,9 @@ def finish(result, decision):
 def next_state(state, job, decision):
     state = deepcopy(state)
     if decision and decision.group:
+        if not state.get('topic_scope_id'):
+            state['topic_scope_id'] = str(job['job_id'])
+        state['recommendation_topic_scope'] = state.get('topic_scope_id')
         state['recommendation_group'] = decision.group.model_dump(mode='json')
         state['recommendation_adoption'] = decision.adoption.model_dump(mode='json') if decision.adoption else None
         state['recommendation_pending_group_id'] = decision.group.group_id if (

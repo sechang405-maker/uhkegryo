@@ -24,6 +24,9 @@ import MasonryGallery from "../components/MasonryGallery";
 import HistoryDrawer, { HistoryLogo } from "../components/HistoryDrawer";
 import { toggleTerm, appendTerms } from "../lib/term-graph.mjs";
 import { createScreenHistory } from "../lib/screen-history.mjs";
+import { sessionUsage } from '../lib/session-usage.mjs';
+import { readConversationUsage } from '../lib/server-conversation.mjs';
+import SessionUsageNotice from '../components/SessionUsageNotice.mjs';
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
@@ -51,6 +54,10 @@ export default function HomePage() {
   const [conversationReady, setConversationReady] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const sessionIdRef = useRef(null);
+  const [usage, setUsage] = useState(null);
+  const activeUsageRef = useRef(null);
+  const [pendingRetry, setPendingRetry] = useState(false);
+  const usageRefreshRef = useRef(0);
   const sessionLoadRef = useRef(0);
   const [sessions, setSessions] = useState([]);
   const [sessionPage, setSessionPage] = useState({ hasMore: false, nextOffset: 0 });
@@ -130,6 +137,47 @@ export default function HomePage() {
     recoveryBudget: recoveryBudgetRef.current };
   if (!submissionRef.current) submissionRef.current = createSubmissionController();
 
+  function applyUsage(value, id) {
+    const next = sessionUsage(value);
+    if (id !== sessionIdRef.current || !next) return;
+    if (activeUsageRef.current?.message_count > next.message_count) return;
+    activeUsageRef.current = next;
+    setUsage(next);
+    setSessions(items => items.map(item => item.session_id === id ? { ...item, ...next } : item));
+  }
+
+  async function refreshUsage(id = sessionIdRef.current) {
+    if (uiDemoEnabled || !id) return;
+    const generation = ++usageRefreshRef.current;
+    try {
+      const next = await readConversationUsage({ sessionId: id });
+      if (generation === usageRefreshRef.current) applyUsage(next, id);
+    } catch { /* Keep the latest server receipt; submission still enforces the limit. */ }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setPendingRetry(false);
+    if (!uiDemoEnabled && sessionId && requestText) {
+      submissionRef.current.canRetry(requestText, { sessionId }).then(value => {
+        if (!cancelled) setPendingRetry(value);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [sessionId, requestText, isSubmitting]);
+
+  useEffect(() => {
+    if (uiDemoEnabled) return;
+    const onFocus = () => refreshUsage();
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshUsage(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
   useEffect(() => {
     if (!uiDemoEnabled) return;
     let storage;
@@ -156,6 +204,7 @@ export default function HomePage() {
       if (!restored || controller.signal.aborted || loadId !== sessionLoadRef.current) return;
       setSessionId(restored.sessionId);
       sessionIdRef.current = restored.sessionId;
+      applyUsage(restored.usage, restored.sessionId);
       if (restored.session?.created_at) setSessions(current => mergeSessions(current, [restored.session]));
       setHistoryPage(restored);
       setReferenceJob(restored.previousReferenceJob);
@@ -170,6 +219,8 @@ export default function HomePage() {
   function showDemoSession(session) {
     sessionIdRef.current = session.session_id;
     setSessionId(session.session_id);
+    activeUsageRef.current = null;
+    applyUsage({ message_count: session.turns.length }, session.session_id);
     setSessions(demoStoreRef.current.list());
     setTurns(session.turns);
     gallerySelectionRef.current.reset(session.session_id);
@@ -245,6 +296,8 @@ export default function HomePage() {
       const page = await listConversationPage();
       if (generation !== sessionsGeneration.current) return;
       setSessions(current => mergeSessions(current.filter(item => item.session_id === sessionIdRef.current), page.items));
+      const selected = page.items.find(item => item.session_id === sessionIdRef.current);
+      if (selected) applyUsage(selected, selected.session_id);
       setSessionPage(page);
     } catch { if (generation === sessionsGeneration.current) setDeleteError(RESTORE_ERROR); }
     finally { if (generation === sessionsGeneration.current) setSessionsLoading(false); }
@@ -342,6 +395,7 @@ export default function HomePage() {
   }
 
   function restoreScreen(snapshot) {
+    const sameSession = sessionIdRef.current === snapshot.sessionId;
     ++screenGenerationRef.current;
     cancelSubmission();
     cancelHistory();
@@ -353,6 +407,12 @@ export default function HomePage() {
     setPreviewPin(null);
     setMenuOpen(false);
     sessionIdRef.current = snapshot.sessionId;
+    if (!sameSession) {
+      activeUsageRef.current = null;
+      setUsage(null);
+    }
+    if (uiDemoEnabled) applyUsage({ message_count: snapshot.turns.length }, snapshot.sessionId);
+    else refreshUsage(snapshot.sessionId);
     if(uiDemoEnabled && snapshot.sessionId)demoStoreRef.current?.select(snapshot.sessionId);
     setSessionId(snapshot.sessionId);
     selectedJobRef.current = snapshot.job;
@@ -597,6 +657,12 @@ export default function HomePage() {
     setTermGuide(null);
 
     if (uiDemoEnabled) {
+      if (activeUsageRef.current?.can_submit === false) {
+        setError('이 대화의 메시지 20회를 모두 사용했습니다. 새 대화에서 이어가세요.');
+        submissionRequestRef.current = null;
+        submitInFlightRef.current = false;
+        return;
+      }
       if(!sessionIdRef.current)showDemoSession(demoStoreRef.current.create());
       const turn = demoStoreRef.current.submit(text);
       if (turn) {
@@ -622,13 +688,17 @@ export default function HomePage() {
         const created = await createConversation({signal:submitRequest.signal});
         if(submitLoadId !== sessionLoadRef.current || submitScreenId !== screenGenerationRef.current)return;
         activeSession = created.session_id;
+        sessionIdRef.current = activeSession;
+        applyUsage(created, activeSession);
         setSessions((items) => [created, ...items.filter((item) => item.session_id !== created.session_id)]);
       }
       setSessionId(activeSession);
       sessionIdRef.current = activeSession;
       gallerySelectionRef.current.begin(activeSession);
-      const result = await submissionController.submit(text, { sessionId: activeSession, signal:submitRequest.signal });
+      const result = await submissionController.submit(text, { sessionId: activeSession, usage: activeUsageRef.current, signal:submitRequest.signal });
       if(submitLoadId !== sessionLoadRef.current || submissionRequestRef.current !== submitRequest)return;
+      applyUsage(result.usage, activeSession);
+      if (result.failureCode === 'session_message_limit_reached' && !result.usage) refreshUsage(activeSession);
       if (result.ok) {
         setSessions((items) => {
           const selected = items.find((item) => item.session_id === activeSession);
@@ -726,6 +796,9 @@ export default function HomePage() {
     setPollError("");
     setSessionId(session.session_id);
     sessionIdRef.current = session.session_id;
+    activeUsageRef.current = null;
+    setUsage(null);
+    applyUsage(session, session.session_id);
     setSessions((items) => [session, ...items.filter((item) => item.session_id !== session.session_id)]);
     refreshSessions();
     setTurns([]);
@@ -735,6 +808,7 @@ export default function HomePage() {
       restoreController.current = controller;
       const restored = await restoreConversation({ sessionId: session.session_id, signal: controller.signal });
       if (loadId !== sessionLoadRef.current) return;
+      applyUsage(restored.usage, restored.sessionId);
       if (restored.session?.created_at) setSessions(current => mergeSessions(current, [restored.session]));
       setHistoryPage(restored);
       setReferenceJob(restored.previousReferenceJob);
@@ -766,29 +840,26 @@ export default function HomePage() {
       setMobilePanel("conversation");
       return;
     }
-    cancelHistory();
     const loadId = ++sessionLoadRef.current;
-    gallerySelectionRef.current.reset(null);
-    sessionIdRef.current = null;
-    setSessionId(null);
-    setTurns([]);
-    setJob(null);
-    setTermSearch(null);
-    setTermGuide(null);
-    setBoardView("results");
-    resetSketchSearches();
-    termSearchControllerRef.current?.abort();
-    previewDialogRef.current?.close();
-    setPreviewPin(null);
-    pollerRef.current?.stop();
     setConversationReady(false);
     setRestoreError("");
     try {
       const created = await createConversation();
       if (loadId !== sessionLoadRef.current) return;
+      cancelHistory();
+      setTermSearch(null);
+      resetSketchSearches();
+      termSearchControllerRef.current?.abort();
+      previewDialogRef.current?.close();
+      setPreviewPin(null);
+      pollerRef.current?.stop();
       setSessions((items) => [created, ...items.filter((item) => item.session_id !== created.session_id)]);
       setSessionId(created.session_id);
       sessionIdRef.current = created.session_id;
+      activeUsageRef.current = null;
+      applyUsage(created, created.session_id);
+      setRequestText('');
+      setError('');
       refreshSessions();
       gallerySelectionRef.current.reset(created.session_id);
       setTurns([]);
@@ -832,6 +903,8 @@ export default function HomePage() {
           pollerRef.current?.stop();
           sessionIdRef.current = null;
           setSessionId(null);
+          activeUsageRef.current = null;
+          setUsage(null);
           setTurns([]);
           setJob(null);
           gallerySelectionRef.current.reset(null);
@@ -1047,6 +1120,7 @@ export default function HomePage() {
         </div>
 
         <form className="composer" onSubmit={handleSubmit} noValidate>
+          <SessionUsageNotice usage={usage} busy={!conversationReady || isSubmitting || Boolean(deletingId)} onNewSession={startNewSession} />
           <div className="composer-input-frame" data-invalid={Boolean(inputError)}>
           <textarea
             id="request-text"
@@ -1073,7 +1147,7 @@ export default function HomePage() {
             aria-describedby={`request-limit${requestLength >= 450 ? " request-count" : ""}${inputError ? " request-error" : ""}`}
           />
             <button className="composer-submit" type="submit" aria-label="전송" aria-busy={isSubmitting}
-              disabled={conversationBusy || Boolean(validateRequestText(requestText))}>
+              disabled={conversationBusy || (usage?.can_submit === false && !pendingRetry) || Boolean(validateRequestText(requestText))}>
               <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 15 6-6 6 6" /></svg>
             </button>
           </div>

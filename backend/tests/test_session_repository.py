@@ -115,3 +115,13 @@ def _run(awaitable):
     import asyncio
 
     return asyncio.run(awaitable)
+
+
+@pytest.mark.parametrize("count,remaining,can_submit", [(0,20,True),(19,1,True),(20,0,False),(27,0,False)])
+def test_session_view_exposes_actual_usage(count, remaining, can_submit):
+    from backend.services.session_repository import session_view
+    row = dict(session_id=uuid.uuid4(), created_at=None, last_activity_at=None,
+               expires_at=None, message_count=count)
+    view = session_view(row)
+    assert {key: view[key] for key in ("message_count", "message_limit", "remaining_messages", "can_submit")} == dict(
+        message_count=count, message_limit=20, remaining_messages=remaining, can_submit=can_submit)

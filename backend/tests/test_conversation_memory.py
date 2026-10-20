@@ -14,6 +14,19 @@ from backend.schemas.memory import RecallQuery, RecallAnswer, ContextUpdate
 from backend.tests.test_conversation_sessions import database_case
 
 
+async def insert_legacy_accepted_job(pool, session_id, request_text):
+    """Seed a queued job accepted before the cap, preserving today's public quota.
+
+    Historical sessions can exceed the new limit; accepted jobs must still run.
+    """
+    job_id = uuid.uuid4()
+    await pool.execute('''INSERT INTO jobs(job_id,session_id,request_text,request_text_hash,
+        idempotency_key_hash,idempotency_expires_at,status)
+        VALUES($1,$2::uuid,$3,md5($3),$4,now()+interval '10 minutes','queued')''',
+        job_id, session_id, request_text, uuid.uuid4().hex)
+    return str(job_id)
+
+
 def test_memory_answer_contract():
     assert "memory_answer" in AgentResult.model_fields
     result = AgentResult(agent_status="memory_answer", memory_answer="이 대화 기록에서 해당 내용을 확인할 수 없습니다.")
@@ -126,12 +139,12 @@ def test_worker_uses_recent_records_without_summary_in_long_history(snapshot_fac
         jobs, adapter = JobRepository(pool), MemoryAdapter()
         worker = agent_worker.AgentJobWorker(pool, snapshot_factory([
             card_factory("pose_standing", label_ko="서 있는 자세")]), adapter=adapter)
-        new, _ = await jobs.submit(session_id=session, request_text="서 있는 자세", idempotency_key=str(uuid.uuid4()))
+        legacy_job_id = await insert_legacy_accepted_job(pool, session, "서 있는 자세")
         assert await worker.run_once()
         assert "summarize" not in adapter.memory_operations
         assert len(adapter.contexts[0]["recent"]) == 6
         assert set(adapter.contexts[0]) == {"constraints", "pending_question", "recent", "sources"}
-        assert (await jobs.get(session_id=session, job_id=new.job_id)).job_status == "completed"
+        assert (await jobs.get(session_id=session, job_id=legacy_job_id)).job_status == "completed"
 
     asyncio.run(database_case(case))
 
@@ -203,11 +216,12 @@ def test_mixed_request_still_interprets_when_recall_is_empty(snapshot_factory, c
         adapter, jobs = Mixed(), JobRepository(pool)
         session = await SessionRepository(pool).create_session("owner")
         worker = agent_worker.AgentJobWorker(pool, snapshot_factory([card_factory("pose_standing")]), adapter=adapter)
-        new, _ = await jobs.submit(session_id=session, request_text="지난 추천은? 이번에는 서 있는 자세",
+        new, _ = await jobs.submit(session_id=session, request_text="지난 추천은? 이번에는 서 있는 자세 찾아줘",
                                    idempotency_key=str(uuid.uuid4()))
         await worker.run_once()
         result = (await jobs.get(session_id=session, job_id=new.job_id)).result
         assert adapter.contexts
+        assert result.reference_plan is not None, result.model_dump(mode="json")
         assert result.reference_plan.terms[0].term_id == "pose_standing"
         assert result.memory_answer and not result.sources
     asyncio.run(database_case(case))
@@ -269,9 +283,9 @@ def test_recall_decisions_preserve_source_boundary(snapshot_factory, card_factor
         session = await SessionRepository(pool).create_session("user")
         worker = agent_worker.AgentJobWorker(pool, snapshot_factory([card_factory("pose_standing")]), adapter=adapter)
         for _ in range(21 if mode == "too_many" else 1):
-            await jobs.submit(session_id=session, request_text="서 있는 자세", idempotency_key=str(uuid.uuid4()))
+            await insert_legacy_accepted_job(pool, session, "서 있는 자세")
             await worker.run_once()
-        await jobs.submit(session_id=session, request_text="전에 포즈는? 서 있는 자세로", idempotency_key=str(uuid.uuid4()))
+        await insert_legacy_accepted_job(pool, session, "전에 포즈는? 서 있는 자세로")
         job = await jobs.claim_next()
         memory = ConversationMemory(pool)
         context = await memory.load(job)

@@ -29,6 +29,7 @@ from backend.shared.config import get_settings
 from backend.shared.database import close_pool, create_pool
 from backend.services.job_repository import (
     IdempotencyConflict,
+    SessionMessageLimitReached,
     JobNotFound,
 )
 from backend.services.job_repository import JobRepository
@@ -134,6 +135,7 @@ async def close_database_pool() -> None:
 IDEMPOTENCY_KEY_HEADER = "Idempotency-Key"
 
 MESSAGES = {
+    ApiErrorCode.SESSION_MESSAGE_LIMIT_REACHED: "이 대화에서 질문 20개를 모두 사용했습니다. 새 대화를 시작해 주세요.",
     ApiErrorCode.INVALID_REQUEST_TEXT: "1~500자의 설명을 보내 주세요. 공백만으로는 접수할 수 없습니다.",
     ApiErrorCode.IDEMPOTENCY_KEY_CONFLICT: "같은 요청 번호로 다른 내용을 보냈습니다. 처음 요청의 결과를 확인해 주세요.",
     ApiErrorCode.SESSION_REQUIRED: "이 브라우저에서 시작한 요청의 세션이 없습니다. 처음부터 다시 시도해 주세요.",
@@ -142,6 +144,7 @@ MESSAGES = {
 }
 
 STATUS_CODES = {
+    ApiErrorCode.SESSION_MESSAGE_LIMIT_REACHED: 429,
     ApiErrorCode.INVALID_REQUEST_TEXT: 422,
     ApiErrorCode.IDEMPOTENCY_KEY_CONFLICT: 409,
     ApiErrorCode.SESSION_REQUIRED: 401,
@@ -229,6 +232,7 @@ def _parse_idempotency_key(raw: str | None) -> str:
     status_code=202,
     summary="해석 요청을 접수하고 비동기 job을 만든다",
     responses={
+        429: {"model": ApiError, "description": "Session message allowance exhausted"},
         409: {"model": ApiError, "description": "같은 요청 번호에 다른 원문"},
         422: {"model": ApiError, "description": "형식이 잘못된 본문 또는 Idempotency-Key"},
         503: {"model": Failure, "description": "데이터 저장소를 사용할 수 없음"},
@@ -280,6 +284,8 @@ async def submit_agent(
                     idempotency_key=key,
                 )
             )
+    except SessionMessageLimitReached:
+        raise ApiContractError(ApiErrorCode.SESSION_MESSAGE_LIMIT_REACHED, token) from None
     except IdempotencyConflict:
         raise ApiContractError(
             ApiErrorCode.IDEMPOTENCY_KEY_CONFLICT, session_token=token
@@ -291,7 +297,15 @@ async def submit_agent(
     # 토큰을 그대로 내보내 식별자가 바뀌지 않는다(`session-job-persistence.md:25`).
     set_session_cookie(response, token, get_settings())
 
-    return SubmissionResponse(job_id=job.job_id)
+    try:
+        usage = await _database_call(sessions.get_session(token, job.session_id))
+    except ApiContractError as error:
+        # Admission already committed. Preserve the owner on the replacement error
+        # response so retrying this key can recover the same accepted job.
+        raise ApiContractError(error.code, session_token=token) from None
+    return SubmissionResponse(job_id=job.job_id, **{
+        key: usage[key] for key in ("message_count", "message_limit", "remaining_messages", "can_submit")
+    })
 
 
 @router.get(
