@@ -107,14 +107,15 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
         <p id="term-graph-help" className="term-graph-help">노드 클릭으로 선택·해제 · 드래그로 회전 · 버튼/두 손가락으로 확대 · 공간에 초점을 두고 방향키로 회전 · Tab으로 용어 이동</p>
       </details>
     </>}
-    {focused && <article className="term-graph-detail" aria-label="선택한 용어 설명">
+    <div className="term-graph-lower-overlay">
+      {focused && <article className="term-graph-detail" aria-label="선택한 용어 설명">
       <div aria-live="polite"><h2>{focused.label_ko}</h2><p>{focused.plain_meaning_ko}</p></div>
       <div className="term-graph-actions">
         <button type="button" aria-pressed={selectedIds.includes(focused.term_id)} onClick={()=>onToggle(focused.term_id)}>{selectedIds.includes(focused.term_id)?'선택 해제':'용어 선택'}</button>
         <button type="button" onClick={()=>onSearch(focused)}>레퍼런스 검색</button>
       </div>
-    </article>}
-    <footer className="term-graph-selection">
+      </article>}
+      <footer className="term-graph-selection">
       {selected.length > 0 && <>
         <div className="term-graph-chips" aria-label="선택한 용어">
           {selected.map(term=><button key={term.term_id} type="button" aria-label={`${term.label_ko} 선택 해제`} onClick={()=>onToggle(term.term_id)}>{term.label_ko} <span aria-hidden="true">×</span></button>)}
@@ -122,6 +123,7 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
         <button type="button" onClick={()=>setNotice(onAdd(selected)?'선택한 용어를 입력에 추가했어요.':'500자 이내로 추가할 수 있도록 입력을 줄여 주세요.')}>선택 {selected.length}개 입력에 추가</button>
       </>}
       <p role="status">{notice}</p>
-    </footer>
+      </footer>
+    </div>
   </section>;
 }

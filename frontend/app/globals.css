@@ -393,3 +393,94 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 .pin-gallery-items[data-masonry="ready"] { display:block; }
 .pin-gallery-items[data-masonry="ready"] > .masonry-item { position:absolute; top:0; left:0; }
 .masonry-item { min-width:0; display:flow-root; }
+
+/* Let the graph use the whole panel while compact UI groups float above it. */
+.reference-board:has(> .term-graph > .term-graph-scene) > .board-header {
+  position:absolute; z-index:1300; inset:0 0 auto; height:0; min-height:0; padding:0; border:0; background:transparent;
+  pointer-events:none;
+}
+.reference-board:has(> .term-graph > .term-graph-scene) > .board-header .history-logo {
+  position:absolute; top:10px; left:10px; pointer-events:auto;
+}
+.reference-board:has(> .term-graph > .term-graph-scene) > .board-header .recommended-query {
+  left:58%; top:12px; width:min(430px,42%); transform:translateX(-50%); pointer-events:auto;
+}
+.term-graph:not(:has(> .term-graph-list)) {
+  position:absolute; inset:0; height:auto; padding:0; overflow:hidden;
+}
+.term-graph:not(:has(> .term-graph-list)) .term-graph-scene {
+  position:absolute; inset:0; width:100%; height:100%; border-radius:0;
+}
+.term-graph:not(:has(> .term-graph-list)) .term-graph-heading {
+  position:absolute; z-index:1200; top:8px; left:158px; right:14px;
+  display:grid; grid-template-columns:minmax(190px,.8fr) minmax(320px,1.35fr) auto;
+  align-items:center; gap:12px; min-height:48px; padding:6px 8px;
+  border-radius:12px; background:linear-gradient(90deg,rgba(24,25,28,.92),rgba(24,25,28,.58),rgba(24,25,28,.88));
+  pointer-events:none;
+}
+.term-graph:not(:has(> .term-graph-list)) .term-graph-heading > div:first-child { min-width:0; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-heading > button { grid-column:3; pointer-events:auto; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-eyebrow { display:none; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-heading h1 { margin:0 0 2px; font-size:clamp(16px,1.6vw,20px); }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-heading p { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.4; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-tools {
+  position:absolute; z-index:1300; top:14px; right:104px; margin:0; pointer-events:none;
+}
+.term-graph:not(:has(> .term-graph-list)) .term-graph-tools > summary { margin:0; padding:8px; pointer-events:auto; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-tools[open] .term-graph-controls {
+  position:absolute; top:calc(100% + 4px); right:0; width:max-content; max-width:min(440px,calc(100vw - 32px));
+  padding:6px; border:1px solid var(--border); border-radius:10px; background:rgba(34,36,41,.96); pointer-events:auto;
+}
+.term-graph:not(:has(> .term-graph-list)) .term-graph-help-disclosure {
+  position:absolute; z-index:1300; top:70px; right:18px; pointer-events:none;
+}
+.term-graph:not(:has(> .term-graph-list)) .term-graph-help-disclosure > summary { pointer-events:auto; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-help-disclosure[open] {
+  max-width:min(520px,calc(100% - 32px)); padding:6px 10px; border-radius:10px; background:rgba(24,25,28,.9);
+}
+.term-graph:not(:has(> .term-graph-list)) .term-graph-lower-overlay {
+  position:absolute; z-index:1200; left:18px; right:18px; bottom:14px;
+  display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:8px 12px;
+  pointer-events:none;
+}
+.term-graph:not(:has(> .term-graph-list)) .term-graph-detail,
+.term-graph:not(:has(> .term-graph-list)) .term-graph-selection {
+  min-width:0; padding:10px 12px; border:0; border-radius:12px; background:rgba(24,25,28,.9);
+}
+.term-graph:not(:has(> .term-graph-list)) .term-graph-detail { grid-column:1; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-selection { grid-column:2; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-detail :is(button,a,summary,[tabindex]),
+.term-graph:not(:has(> .term-graph-list)) .term-graph-selection :is(button,a,summary,[tabindex]) { pointer-events:auto; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-detail h2 { margin-bottom:2px; font-size:15px; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-detail p { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; font-size:12px; line-height:1.45; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-actions { flex-direction:row; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-selection:not(:has(button)) { display:none; }
+.term-graph:not(:has(> .term-graph-list)) .term-graph-chips { margin-bottom:6px; }
+.term-graph:has(> .term-graph-list) .term-graph-lower-overlay { display:contents; }
+
+@container (max-width:760px) {
+  .reference-board:has(> .term-graph > .term-graph-scene) > .board-header .history-logo { top:55px; }
+  .reference-board:has(> .term-graph > .term-graph-scene) > .board-header .recommended-query {
+    top:8px; left:8px; right:8px; width:auto; transform:none;
+  }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-heading {
+    top:55px; left:158px; right:8px; grid-template-columns:minmax(0,1fr) auto; gap:8px;
+    min-height:58px; padding:6px 8px; background:linear-gradient(90deg,rgba(24,25,28,.94),rgba(24,25,28,.72));
+  }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-heading > button { grid-column:2; }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-heading h1 { font-size:16px; }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-heading p { white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-tools { top:128px; right:10px; }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-tools[open] .term-graph-controls { right:-88px; flex-wrap:wrap; justify-content:flex-end; }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-lower-overlay {
+    left:8px; right:8px; bottom:8px; grid-template-columns:minmax(0,1fr); gap:6px;
+  }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-detail,
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-selection { grid-column:1; padding:8px 10px; }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-detail { align-items:flex-start; gap:8px; }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-actions { flex-direction:column; }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-help-disclosure { top:auto; right:10px; bottom:8px; }
+}
+@media (max-width:760px) {
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-heading { left:8px; }
+}
