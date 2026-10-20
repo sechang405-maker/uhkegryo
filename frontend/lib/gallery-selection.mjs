@@ -28,7 +28,8 @@ export function createGallerySelection(options) {
       await loader.open(entry);
     },
     live(job, sessionId) {
-      if (sessionId === session && selected === null && resultTerms(job).length) options.onJob(job);
+      const failedRecommendation = job?.result?.recommendation_adoption && job.result.agent_status === "partial_result";
+      if (sessionId === session && selected === null && resultTerms(job).length && !failedRecommendation) options.onJob(job);
     },
     restore(job, selectionId, sessionId) {
       loader.cancel();

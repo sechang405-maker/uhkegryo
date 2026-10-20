@@ -73,6 +73,7 @@ class SessionRepository:
             f"""SELECT s.*, {EXPIRY} AS expires_at,
                 (SELECT j.final_payload_json #> '{{reference_plan,terms}}'
                  FROM jobs j WHERE j.session_id=s.session_id AND j.status='completed'
+                 AND COALESCE(j.final_payload_json->'recommendation_adoption'->>'status','') <> 'search_failed'
                  AND CASE WHEN jsonb_typeof(j.final_payload_json #> '{{reference_plan,terms}}')='array'
                      THEN jsonb_array_length(j.final_payload_json #> '{{reference_plan,terms}}') > 0
                      ELSE FALSE END

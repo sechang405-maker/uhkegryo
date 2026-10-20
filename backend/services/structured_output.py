@@ -46,11 +46,14 @@ def response_format(active_cards_json: str = "") -> dict:
                 schema["$defs"][definition] = variant
                 references[role] = {"$ref": f"#/$defs/{definition}"}
             if references:
-                del schema["$defs"][name]
                 field = "selections" if name == "InterpretationSelection" else "context_updates"
                 schema["properties"][field] = {"type": "array", "maxItems": 10,
                     "items": {"anyOf": list(references.values())},
                     "description": "Independent cards; roles may repeat. Each selected term_id is unique."}
+                if name == 'InterpretationSelection':
+                    schema['$defs']['RecommendationDraft']['properties']['terms'] = {
+                        'type': 'array', 'maxItems': 10, 'items': {'anyOf': list(references.values())}}
+                del schema['$defs'][name]
     return {"type": "json_schema", "json_schema": {
         "name": "interpretation_output", "strict": True, "schema": schema,
     }}

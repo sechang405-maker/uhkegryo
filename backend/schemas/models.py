@@ -203,6 +203,8 @@ class AgentResult(BaseModel):
     answer_text: Annotated[str, Field(strict=True, max_length=4000)] = ""
     memory_answer: str | None = Field(default=None, min_length=1, max_length=2000)
     sources: list[MemorySource] = Field(default_factory=list, max_length=20)
+    recommendation_group: "RecommendationGroup | None" = None
+    recommendation_adoption: "RecommendationAdoption | None" = None
 
     @model_validator(mode="before")
     @classmethod
@@ -398,6 +400,65 @@ class InterpretationSelection(BaseModel):
         return self
 
 
+class RecommendationDraft(BaseModel):
+    """Model proposals, never search authority until explicitly adopted."""
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+    source_quote: str = Field(min_length=1, max_length=1200)
+    terms: list[InterpretationSelection] = Field(default_factory=list, max_length=10)
+    unsupported_constraints: list[str] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def bounded_constraints(self):
+        if any(not item.strip() or len(item) > 200 for item in self.unsupported_constraints):
+            raise ValueError("invalid unsupported recommendation constraint")
+        if not self.name.strip() or not self.source_quote.strip():
+            raise ValueError("recommendation requires a name and source quote")
+        if not self.terms and not self.unsupported_constraints:
+            raise ValueError("recommendation requires terms or explicit unsupported constraints")
+        if any(len(term.evidence) > 5 or any(len(phrase) > 300 for phrase in term.evidence) for term in self.terms):
+            raise ValueError("recommendation evidence is bounded")
+        return self
+
+
+class RecommendationCandidate(RecommendationDraft):
+    candidate_id: str = Field(min_length=1, max_length=100)
+    ordinal: int = Field(ge=1, le=3)
+
+
+class RecommendationGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    group_id: str = Field(min_length=1, max_length=100)
+    source_job_id: str = Field(min_length=1, max_length=100)
+    session_id: str = Field(min_length=1, max_length=100)
+    source_answer: str = Field(default='', max_length=4000)
+    candidates: list[RecommendationCandidate] = Field(min_length=1, max_length=3)
+
+    @model_validator(mode="after")
+    def unique_candidates(self):
+        if [c.ordinal for c in self.candidates] != list(range(1, len(self.candidates) + 1)):
+            raise ValueError("recommendation ordinals must be contiguous")
+        for values in ([c.candidate_id for c in self.candidates], [c.name.casefold() for c in self.candidates]):
+            if len(values) != len(set(values)):
+                raise ValueError("recommendation candidates must be unique")
+        return self
+
+
+class RecommendationAdoption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    group_id: str = Field(min_length=1, max_length=100)
+    source_job_id: str = Field(min_length=1, max_length=100)
+    candidate_id: str = Field(min_length=1, max_length=100)
+    adoption_job_id: str | None = Field(default=None, min_length=1, max_length=100)
+    request_text: str = Field(min_length=1, max_length=500)
+    source_quote: str = Field(min_length=1, max_length=1200)
+    status: Literal["searched", "search_failed", "blocked"]
+    search_term_ids: list[str] = Field(default_factory=list, max_length=10)
+
+
+AgentResult.model_rebuild()
+
+
 class InterpretationOutput(BaseModel):
     """LLM adapter의 유일한 반환 구조 (api-contract.md §How, prompt-interpreter-v0.md).
 
@@ -419,6 +480,8 @@ class InterpretationOutput(BaseModel):
     clarification_type: ClarificationType | None = None
     context_updates: list[ContextUpdate] = Field(default_factory=list, max_length=MAX_SELECTED_TERMS)
     answer_text: Annotated[str, Field(strict=True, max_length=4000)] = ""
+    recommendation_candidates: list[RecommendationDraft] = Field(default_factory=list, max_length=3)
+    topic_reset_evidence: str | None = Field(default=None, min_length=1, max_length=500)
 
     @model_validator(mode="after")
     def _validate_unresolved_constraints(self) -> "InterpretationOutput":
@@ -436,7 +499,8 @@ class InterpretationOutput(BaseModel):
                 raise ValueError("drawing_chat requires text and forbids reference selections, updates and questions")
             return self
         if self.interpretation_state is InterpretationState.SELECT_TERMS:
-            if not self.selections:
+            removal_only = bool(self.context_updates) and all(update.term_id is None for update in self.context_updates)
+            if not self.selections and not removal_only:
                 raise ValueError("select_terms는 selections가 최소 하나 있어야 한다")
             if not self.answer_text.strip():
                 raise ValueError("select_terms는 비어 있지 않은 answer_text가 필수다")

@@ -113,3 +113,18 @@ test("beginning another request retains a restored board while allowing a new ex
   assert.equal(state.job, reference);
   const next = job("new"); gallery.live(next, sid); assert.equal(state.job, next);
 });
+
+test("failed recommendation searches retain the last gallery until an explicit retry succeeds", () => {
+  const { gallery, state } = setup();
+  const reference = job("reference"); gallery.live(reference, sid);
+  const failed = job("failed-recommendation", sid, { agent_status: "partial_result",
+    recommendation_adoption: { candidate_id: "idea:2" },
+    reference_plan: { terms: [{ term_id: "pose_sitting", reason_codes: ["PIN_SEARCH_UNAVAILABLE"] }] } });
+  gallery.begin(sid); gallery.live(failed, sid);
+  assert.equal(state.job, reference);
+  const retry = job("retry", sid, { ...failed.result, agent_status: "success" });
+  gallery.live(retry, sid); assert.equal(state.job, retry);
+  const ordinaryPartial = job("ordinary", sid, { agent_status: "partial_result",
+    reference_plan: { terms: [{ term_id: "pose_standing" }] } });
+  gallery.live(ordinaryPartial, sid); assert.equal(state.job, ordinaryPartial);
+});

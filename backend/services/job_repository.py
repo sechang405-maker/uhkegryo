@@ -313,6 +313,7 @@ class JobRepository:
             "SELECT j.* FROM jobs j WHERE j.session_id=$1::uuid AND status='completed'"
             " AND final_payload_json->'reference_plan'->'terms' IS NOT NULL"
             " AND jsonb_array_length(final_payload_json->'reference_plan'->'terms') > 0"
+            " AND COALESCE(final_payload_json->'recommendation_adoption'->>'status','') <> 'search_failed'"
             " ORDER BY j.created_at DESC,j.job_id DESC LIMIT 2", session_id,
         )
         def view(row):

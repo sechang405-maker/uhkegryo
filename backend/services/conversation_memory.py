@@ -14,7 +14,7 @@ def decode(value):
     return json.loads(value) if isinstance(value, str) else (value or {})
 
 
-def record(row):
+def record(row, *, include_recommendations=False):
     payload = decode(row["final_payload_json"])
     safe = row["status"] == "completed" and payload.get("agent_status") not in ("unsafe_input", "out_of_scope")
     result = {"job_id": str(row["job_id"]), "request_text": row["request_text"] if safe else "",
@@ -25,10 +25,17 @@ def record(row):
                            for term in (payload.get("reference_plan") or {}).get("terms", [])[:10]]
         result["question"] = (payload.get("clarifying_question") or "")[:500]
         result["message"] = (payload.get("answer_text") or payload.get("user_message") or "")[:1000]
+        if include_recommendations and payload.get('recommendation_group'):
+            from backend.schemas.models import RecommendationGroup
+            result['recommendation_group'] = RecommendationGroup.model_validate(payload['recommendation_group']).model_dump(mode='json')
+            result['recommendation_answer'] = (result['recommendation_group'].get('source_answer') or payload.get('answer_text') or '')[:4000]
+        if include_recommendations and payload.get('recommendation_adoption'):
+            from backend.schemas.models import RecommendationAdoption
+            result['recommendation_adoption'] = RecommendationAdoption.model_validate(payload['recommendation_adoption']).model_dump(mode='json')
         for term in result["terms"]:
             term["role"] = Role(term["role"]).value
     # Retain whole fields: never cut serialized JSON or expose provider payloads.
-    while len(json.dumps(result, ensure_ascii=False)) > RECORD_LIMIT and result["terms"]:
+    while not include_recommendations and len(json.dumps(result, ensure_ascii=False)) > RECORD_LIMIT and result["terms"]:
         result["terms"].pop()
     return result
 
@@ -62,7 +69,7 @@ class ConversationMemory:
             job["session_id"], job["created_at"], job["job_id"],
         )
         stored = decode(memory)
-        state = {key: stored[key] for key in ("constraints", "pending_question") if key in stored}
+        state = {key: stored[key] for key in ("constraints", "pending_question", "recommendation_group", "recommendation_adoption", "recommendation_pending_group_id") if key in stored}
         state["constraints"] = normalize_constraints(state.get("constraints", {}))
         pinned = list(dict.fromkeys(value["source_job_id"] for value in state["constraints"].values()))
         sources = await self.records(job, pinned) if pinned else []
@@ -70,6 +77,7 @@ class ConversationMemory:
             """SELECT final_payload_json FROM jobs WHERE session_id=$1
                AND (created_at,job_id)<($2,$3) AND status='completed'
                AND final_payload_json->>'agent_status' IN ('success','partial_result')
+               AND COALESCE(final_payload_json->'recommendation_adoption'->>'status','') <> 'search_failed'
                AND jsonb_typeof(final_payload_json->'reference_plan')='object'
                ORDER BY created_at DESC,job_id DESC LIMIT 1""",
             job["session_id"], job["created_at"], job["job_id"],
@@ -88,7 +96,7 @@ class ConversationMemory:
         )
         if len(rows) != len(set(str(value) for value in ids)):
             raise LLMInvalidStructuredOutput("기억의 출처가 현재 대화의 선행 기록에 없습니다")
-        return [record(row) for row in rows]
+        return [record(row, include_recommendations=True) for row in rows]
 
     async def search(self, job, query):
         if query.source_job_ids:
@@ -132,7 +140,7 @@ class ConversationMemory:
                 )
                 if live is None:
                     raise StaleJobAttempt
-                state = {key: state[key] for key in ("constraints", "pending_question") if key in state}
+                state = {key: state[key] for key in ("constraints", "pending_question", "recommendation_group", "recommendation_adoption", "recommendation_pending_group_id") if key in state}
                 await JobRepository(connection).update_status(
                     job_id=str(job["job_id"]), attempt=job["attempt"],
                     status=JobStatus.COMPLETED, result=result,

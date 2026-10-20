@@ -19,16 +19,25 @@ async def prepare(memory, job, adapter, trace):
 
 def prompt_context(context):
     state = context["state"]
+    def prompt_record(row):
+        return {key:value for key,value in row.items() if key not in ('recommendation_group','recommendation_answer','recommendation_adoption')}
     sources = []
-    seen = list(context["recent"])
-    for source in context["sources"]:
+    recent = [prompt_record(row) for row in context['recent']]
+    seen = list(recent)
+    for original in context["sources"]:
+        source = prompt_record(original)
         job_id = source.get("job_id")
         if job_id is not None and any(row.get("job_id") == job_id and row == source for row in seen):
             continue
         sources.append(source)
         seen.append(source)
-    return {"constraints": normalize_constraints(state.get("constraints", {})), "pending_question": state.get("pending_question"),
-            "recent": context["recent"], "sources": sources}
+    output = {"constraints": normalize_constraints(state.get("constraints", {})), "pending_question": state.get("pending_question"),
+            "recent": recent, "sources": sources}
+    for key in ('recommendation_group', 'recommendation_adoption'):
+        if state.get(key):
+            output[key] = ({field:value for field,value in state[key].items() if field != 'source_answer'}
+                if key == 'recommendation_group' else state[key])
+    return output
 
 
 def trace_args(job):
@@ -89,7 +98,7 @@ def is_clear_new_request(text, context):
                 and re.search(r"찾아|그려|보여|검색|\b(find|draw|show|search)\b", text))
 
 
-async def validate(memory, job, interpretation, snapshot, *, context=None):
+async def validate(memory, job, interpretation, snapshot, *, context=None, updates_only=False):
     ids = [item.source_job_id for item in interpretation.selections if item.source_job_id]
     originals = await memory.records(job, ids) if ids else []
     by_id = {item["job_id"]: item for item in originals}
@@ -138,6 +147,12 @@ async def validate(memory, job, interpretation, snapshot, *, context=None):
                 raise LLMInvalidStructuredOutput("기억할 조건의 카드가 유효하지 않습니다", stage="conversation_validation",
                                                  feedback=[{"path": [], "code": "context_card_invalid"}])
     resulting.update({item.term_id: item.role.value for item in interpretation.selections})
+    if updates_only:
+        if interpretation.selections or not interpretation.context_updates or any(
+                update.term_id is not None for update in interpretation.context_updates):
+            raise LLMInvalidStructuredOutput('Update-only validation requires explicit removals',
+                stage='conversation_validation', feedback=[{'path': [], 'code': 'context_removal_invalid'}])
+        return None
     if len(resulting) > 10:
         raise LLMInvalidStructuredOutput('Conversation cannot contain more than ten cards',
             stage='conversation_validation', feedback=[{'path': [], 'code': 'context_card_limit'}])

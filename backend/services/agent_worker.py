@@ -13,6 +13,7 @@ from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.conversation_memory import ConversationMemory
 from backend.services import conversation_context
 from backend.services import reference_update
+from backend.services import recommendations
 from backend.services.input_safety import is_out_of_scope_input, is_unsafe_input
 from backend.services.job_repository import JobRepository, StaleJobAttempt
 from backend.services.job_retry_recovery import JobRetryRecovery
@@ -138,12 +139,15 @@ class AgentJobWorker:
                     self._adapter = LLMInterpretationAdapter()
             with trace.stage("memory-context"):
                 context = await conversation_context.prepare(self._memory, job, self._adapter, trace)
+                recommendations.reset_context(job, context)
+            recommendation_intent = recommendations.has_intent(job, context)
+            recommendation_decision = None
             feedback = job.get("validation_feedback_json")
             if isinstance(feedback, str):
                 feedback = json.loads(feedback)
             routed = None
             combined = getattr(self._adapter, "route_and_interpret", None)
-            if callable(combined) and not conversation_context.is_clear_new_request(job["request_text"], context):
+            if callable(combined) and not recommendation_intent and not conversation_context.is_clear_new_request(job["request_text"], context):
                 terms = ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])
                 routed = await combined(job["request_text"], **conversation_context.trace_args(job),
                     active_cards_json=format_active_cards_json(self._snapshot),
@@ -151,9 +155,12 @@ class AgentJobWorker:
                     current_reference_terms=[{key: term[key] for key in ("role", "term_id", "label_ko", "label_en")} for term in terms],
                     current_reference_roles=[term["role"] for term in terms],
                     **({"validation_feedback": feedback} if feedback else {}))
-            recalled, recall_only = await conversation_context.recall(
-                self._memory, job, context, self._adapter, trace,
-                **({"query": routed.route} if routed is not None else {}))
+            if recommendation_intent:
+                recalled, recall_only = None, False
+            else:
+                recalled, recall_only = await conversation_context.recall(
+                    self._memory, job, context, self._adapter, trace,
+                    **({"query": routed.route} if routed is not None else {}))
             state = context["state"]
             if recall_only:
                 result = recalled
@@ -173,10 +180,23 @@ class AgentJobWorker:
                                 session_context=conversation_context.prompt_context(context),
                                 **({"validation_feedback": feedback} if feedback else {}),
                             )
-                        resolution = await conversation_context.validate(
-                            self._memory, job, interpretation, self._snapshot, context=context)
-                        resolution = reference_update.select_searches(resolution, previous)
-                if resolution.status == 'chat':
+                        recommendation_decision = await recommendations.handle(
+                            self._memory, job, interpretation, self._snapshot, context)
+                        if context.get('_recommendation_topic_reset'):
+                            previous = {}
+                        if recommendation_decision:
+                            interpretation = recommendation_decision.interpretation
+                            resolution = recommendation_decision.resolution
+                            # A newly adopted candidate defines its own search board.
+                            if recommendation_decision.adoption:
+                                previous = {}
+                        else:
+                            resolution = await conversation_context.validate(
+                                self._memory, job, interpretation, self._snapshot, context=context)
+                            resolution = reference_update.select_searches(resolution, previous)
+                if recommendation_decision and recommendation_decision.result:
+                    result = recommendation_decision.result
+                elif resolution.status == 'chat':
                     result = assemble(resolution, self._snapshot, answer_text=interpretation.answer_text)
                 else:
                     with trace.stage("searching"):
@@ -206,6 +226,7 @@ class AgentJobWorker:
                             role_count=len(search_outcomes),
                             pin_count=sum(len(outcome.pins) for outcome in search_outcomes.values()),
                         )
+                result = recommendations.finish(result, recommendation_decision)
                 if recalled is not None:
                     result.memory_answer, result.sources = recalled.memory_answer, recalled.sources
             with trace.stage("rendering"):
@@ -215,6 +236,7 @@ class AgentJobWorker:
                 with self._tracer.phase("conversation-state-update") as metrics:
                     if not recall_only and not refresh:
                         state = conversation_context.next_state(context, job, interpretation, result)
+                        state = recommendations.next_state(state, job, recommendation_decision)
                     await self._memory.complete(job, result, state)
                     metrics.update(state_saved=True)
             trace.completed(result)
