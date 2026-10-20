@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { countCharacters, createSubmissionController, validateRequestText, shouldSubmitOnEnter } from "../lib/agent-submit.mjs";
 import { resizeComposerInput, createScrollEndAnchor } from "../lib/composer-autosize.mjs";
 import { createGallerySelection } from "../lib/gallery-selection.mjs";
-import { createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, ensureLocalProfile, deleteConversation, DELETE_CONFIRM } from "../lib/server-conversation.mjs";
+import { createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, ensureLocalProfile, deleteConversation } from "../lib/server-conversation.mjs";
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
 import { DEMO_SCENARIOS, DEMO_NOTICE, DEMO_INPUT_ERROR, demoTerm } from "../lib/portfolio-demo-fixtures.mjs";
 import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
@@ -883,7 +883,6 @@ export default function HomePage() {
 
   async function removeSession(session) {
     if (deleteInFlightRef.current || submitInFlightRef.current || !conversationReady) return;
-    if (!window.confirm(DELETE_CONFIRM)) return;
     deleteInFlightRef.current = true;
     setDeletingId(session.session_id);
     setDeleteError("");

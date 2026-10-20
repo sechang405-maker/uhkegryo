@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {deleteConversation,ensureLocalProfile,DELETE_CONFIRM} from '../lib/server-conversation.mjs';
+import {deleteConversation,ensureLocalProfile} from '../lib/server-conversation.mjs';
 import {createDemoSessionStore} from '../lib/portfolio-demo-sessions.mjs';
 const id='00000000-0000-0000-0000-000000000001';
 test('delete uses credentials and action header; success does not require JSON',async()=>{
  let called=false;
  await deleteConversation(id,{fetchImpl:async(url,options)=>{called=true;assert.equal(url,'/api/sessions/'+id);assert.equal(options.method,'DELETE');assert.equal(options.credentials,'include');assert.equal(options.headers['X-Conversation-Action'],'delete');return {status:204};}});
- assert.equal(called,true);assert.match(DELETE_CONFIRM,/영구 삭제/);assert.match(DELETE_CONFIRM,/복구할 수 없습니다/);
+ assert.equal(called,true);
 });
 test('failed and busy deletion give actionable errors',async()=>{
  await assert.rejects(deleteConversation(id,{fetchImpl:async()=>({status:409})}),/처리 중/);
