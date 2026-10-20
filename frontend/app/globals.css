@@ -400,7 +400,7 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
   position:absolute; top:10px; left:10px; pointer-events:auto;
 }
 .reference-board:has(> .term-graph > .term-graph-scene) > .board-header .recommended-query {
-  left:58%; top:12px; width:min(430px,42%); transform:translateX(-50%); pointer-events:auto;
+  left:50%; top:12px; width:min(580px,calc(100% - 400px)); transform:translateX(-50%); pointer-events:auto;
 }
 .term-graph:not(:has(> .term-graph-list)) {
   position:absolute; inset:0; height:auto; padding:0; overflow:hidden;
