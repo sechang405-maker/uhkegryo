@@ -55,11 +55,9 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
     if(actions[event.key]) {event.preventDefault();actions[event.key]();}
   }
   return <section className="term-graph" aria-label="예시 용어 3D 그래프">
-    <header className="term-graph-heading">
-      <div><span className="term-graph-eyebrow">UH · 용어 탐색</span><h1>그림의 조건을 연결해 보세요</h1>
-        <p>선은 카테고리 소속을 뜻해요. 같은 카테고리에서도 여러 용어를 고를 수 있어요.</p></div>
+    <div className="term-graph-view-toggle">
       <button type="button" aria-pressed={list} onClick={()=>{onListChange(!list);suppressClick.current=false;}}>{list?'3D 보기':'목록 보기'}</button>
-    </header>
+    </div>
     {list ? <div className="term-graph-list" aria-label="전체 예시 용어 목록">
       {graph.nodes.filter(n=>!n.term).map(category=><fieldset key={category.id}><legend>{category.label}</legend>
         {graph.nodes.filter(n=>n.term && n.role===category.role).map(node=><div key={node.id}>
