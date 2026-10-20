@@ -939,7 +939,7 @@ export default function HomePage() {
           <p className="conversation-notice">{uiDemoEnabled
             ? "고정 샘플 대화는 이 브라우저에만 저장됩니다. 최대 10개 세션·총 50개 답변을 보관하며 서버로 보내지 않습니다. 개인·민감 정보는 입력하지 마세요."
             : persistentProfile ? "이 PC의 대화는 직접 삭제할 때까지 보관합니다. 로컬 프로필로 기록을 복원합니다." : "같은 브라우저의 쿠키로 최근 대화를 복원합니다. 쿠키 삭제·대화 만료 후에는 복원되지 않습니다."}</p>
-          <button className="history-sidebar-entry" type="button" onClick={() => navigateBoard("home")}>홈 · 용어 그래프</button>
+          <button className="history-sidebar-entry" type="button" onClick={() => navigateBoard("home")}>홈</button>
           <button className="history-sidebar-entry" type="button" disabled={!conversationReady || isSubmitting || Boolean(deletingId)} onClick={startNewSession}>새 대화</button>
           {sessions.map((session) => (
               <div className="history-sidebar-row" key={session.session_id}>
