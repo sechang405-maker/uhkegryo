@@ -14,9 +14,12 @@ const assert=require('node:assert/strict');
     if(p==='/api/term-search'){const body=r.request().postDataJSON();return r.fulfill({json:{term_id:body.term_id,role:'body',label_ko:'모래시계형',pins:[],reason_codes:['PIN_RESULTS_EMPTY']}});}
     return r.abort();});
    await page.goto(process.env.APP_BASE||'http://127.0.0.1:3100');await page.waitForLoadState('networkidle');
+   await page.waitForTimeout(100); // Let ResizeObserver-driven graph safe areas settle before geometry assertions.
    const readQuery=()=>page.locator('[aria-label="추천 검색어"]').innerText();
    const defaultQuery=await readQuery(),scene=page.locator('.term-graph-scene');
-   const geometry=()=>page.locator('.term-graph-node,.term-graph-category').evaluateAll(es=>es.map(e=>({id:e.dataset.nodeId,left:e.style.left,top:e.style.top,depth:e.dataset.depth})));
+   const geometry=()=>page.locator('.term-graph-node,.term-graph-category').evaluateAll(es=>es.map(e=>({
+    id:e.dataset.nodeId,worldX:e.dataset.worldX,worldY:e.dataset.worldY,worldZ:e.dataset.worldZ,depth:e.dataset.depth,
+   })));
    const before=await geometry(),yaw=await scene.getAttribute('data-yaw'),pitch=await scene.getAttribute('data-pitch'),zoom=await scene.getAttribute('data-zoom');
    if(!mobile)await page.getByRole('textbox',{name:'캐릭터 설명'}).fill('내가 직접 작성한 초안');
    const body=page.locator('.term-graph-node[data-node-id="body_hourglass"]'),pose=page.locator('.term-graph-node[data-node-id="pose_standing"]');

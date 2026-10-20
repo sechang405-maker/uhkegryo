@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ACTIVE_TERMS, HOME_TERMS } from '../lib/home-catalog.mjs';
-import { buildTermGraph, buildExpandedTermGraph, projectNode, projectGraph, INITIAL_VIEW, toggleTerm, toggleExpanded, appendTerms } from '../lib/term-graph.mjs';
+import { buildTermGraph, buildExpandedTermGraph, projectNode, projectGraph, resolveGraphProjection, INITIAL_VIEW, toggleTerm, toggleExpanded, appendTerms } from '../lib/term-graph.mjs';
 
 test('graph retains each example once and connects only its actual category', () => {
  const graph = buildTermGraph([...HOME_TERMS, HOME_TERMS[0], {role:'invented',term_id:'bad',label_ko:'bad'}]);
@@ -99,4 +99,26 @@ test('collapse changes visibility only and cyclic relationships remain finite',(
  const graph=buildExpandedTermGraph(base,all,['root','child','loop']);
  assert.equal(graph.nodes.filter(node=>node.term).length,3);
  assert.equal(new Set(graph.edges.map(edge=>`${edge.source}:${edge.target}:${edge.relation}`)).size,graph.edges.length);
+});
+
+test('screen projection separates visible multi-branch labels and stays stable without a view change',()=>{
+ const width=1440,height=900;
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
+ const raw=projectGraph(graph,INITIAL_VIEW);
+ const points=resolveGraphProjection(graph,INITIAL_VIEW,{width,height,topInset:74,bottomInset:150,rawPoints:raw});
+ const visible=graph.nodes.filter(node=>node.term&&raw[node.id].depth>=-40).map(node=>({
+  id:node.id,x:points[node.id].x,y:points[node.id].y,
+  halfWidth:Math.min(190,44+[...node.label].length*11)*(node.expandable?1:1)*Math.max(.72,raw[node.id].scale)/2*1000/width
+    +(node.expandable?20*Math.max(.72,raw[node.id].scale)*1000/width:0),
+  halfHeight:Math.max(42,node.expandable?72:0)*Math.max(.72,raw[node.id].scale)/2*700/height,
+ }));
+ for(let first=0;first<visible.length;first++) for(let second=first+1;second<visible.length;second++) {
+  const a=visible[first],b=visible[second];
+  assert.ok(Math.abs(a.x-b.x)>=a.halfWidth+b.halfWidth||Math.abs(a.y-b.y)>=a.halfHeight+b.halfHeight,
+   `${a.id} overlaps ${b.id}`);
+ }
+ const repeated=resolveGraphProjection(graph,INITIAL_VIEW,{width,height,topInset:74,bottomInset:150,rawPoints:raw,
+  previousLayout:{points,raw}});
+ assert.ok(Math.max(...graph.nodes.map(node=>Math.hypot(repeated[node.id].x-points[node.id].x,
+  repeated[node.id].y-points[node.id].y)))<1);
 });

@@ -1,19 +1,43 @@
 'use client';
 
-import { Fragment, useMemo, useRef, useState } from 'react';
-import { buildExpandedTermGraph, projectGraph, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { buildExpandedTermGraph, projectGraph, resolveGraphProjection, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
 
 export default function TermGraph({terms, catalogTerms=terms, selectedIds, onToggle, onAdd, onSearch, focusedId, onFocus, list, onListChange}) {
   const [expandedIds,setExpandedIds]=useState([]);
   const graph=useMemo(()=>buildExpandedTermGraph(terms,catalogTerms,expandedIds),[terms,catalogTerms,expandedIds]);
   const [view,setView]=useState(INITIAL_VIEW);
   const [notice,setNotice]=useState('');
+  const [sceneSize,setSceneSize]=useState({width:1000,height:700,topInset:0,bottomInset:0});
+  const sceneRef=useRef(null);
+  const layoutRef=useRef(null);
   const gesture=useRef(null);
   const pointers=useRef(new Map());
   const suppressClick=useRef(false);
   const focused=catalogTerms.find(term=>term.term_id===focusedId);
   const selected=catalogTerms.filter(term=>selectedIds.includes(term.term_id));
-  const points=useMemo(()=>projectGraph(graph,view),[graph,view]);
+  const rawPoints=useMemo(()=>projectGraph(graph,view),[graph,view]);
+  const points=useMemo(()=>resolveGraphProjection(graph,view,{...sceneSize,focusedId,selectedIds,
+    rawPoints,previousLayout:layoutRef.current}),[graph,view,sceneSize,focusedId,selectedIds,rawPoints]);
+  useLayoutEffect(()=>{layoutRef.current={points,raw:rawPoints};},[points,rawPoints]);
+  useLayoutEffect(()=>{
+    const scene=sceneRef.current;
+    if(!scene) return;
+    const board=scene.closest('.reference-board');
+    const obstacles=[...(board?.querySelectorAll('.recommended-query,.term-graph-view-toggle,.term-graph-tools,.term-graph-lower-overlay')||[])];
+    const update=()=>{const rect=scene.getBoundingClientRect();let topInset=0,bottomInset=0;
+      for(const obstacle of obstacles) {
+        if(getComputedStyle(obstacle).display==='none') continue;
+        const box=obstacle.getBoundingClientRect();
+        if(obstacle.classList.contains('term-graph-lower-overlay')) bottomInset=Math.max(bottomInset,rect.bottom-box.top+10);
+        else topInset=Math.max(topInset,box.bottom-rect.top+10);
+      }
+      const next={width:rect.width,height:rect.height,topInset:Math.max(0,topInset),bottomInset:Math.max(0,bottomInset)};
+      setSceneSize(size=>Object.keys(next).every(key=>Math.abs(size[key]-next[key])<1)?size:next);};
+    update();
+    const observer=new ResizeObserver(update);observer.observe(scene);obstacles.forEach(element=>observer.observe(element));
+    return()=>observer.disconnect();
+  },[]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.6)})); }
   function start(event) {
@@ -86,7 +110,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         <button type="button" onClick={()=>setView(INITIAL_VIEW)}>회전 초기화</button>
         </div>
       </details>
-      <div className="term-graph-scene" tabIndex={0} role="group" aria-label="회전 가능한 용어 공간"
+      <div className="term-graph-scene" ref={sceneRef} tabIndex={0} role="group" aria-label="회전 가능한 용어 공간"
         aria-describedby="term-graph-help" onKeyDown={key} onPointerDown={start} onPointerMove={move}
         onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
         data-yaw={view.yaw.toFixed(3)} data-pitch={view.pitch.toFixed(3)} data-zoom={view.zoom.toFixed(2)}>
@@ -106,7 +130,9 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
           const expandStyle={...style,'--node-scale':Math.max(1,p.scale)};
           return node.term ? <Fragment key={node.id}><button type="button" style={style} className="term-graph-node"
             data-focused={focusedId===node.id} data-selected={selectedIds.includes(node.id)}
-            data-node-id={node.id} data-detail={Boolean(node.isDetail)} data-depth={p.depth.toFixed(3)} data-distant={p.depth < -40}
+            data-node-id={node.id} data-detail={Boolean(node.isDetail)} data-world-x={node.x.toFixed(3)} data-world-y={node.y.toFixed(3)}
+            data-world-z={node.z.toFixed(3)} data-layout-x={p.x.toFixed(3)} data-layout-y={p.y.toFixed(3)}
+            data-depth={p.depth.toFixed(3)} data-distant={p.depth < -40}
             aria-label={`${node.label} ${selectedIds.includes(node.id)?'선택 해제':'선택'}`} aria-pressed={selectedIds.includes(node.id)}
             onFocus={()=>{suppressClick.current=false;onFocus(node.id);}} onClick={()=>pick(node.id)}>
             <span className="term-graph-dot" aria-hidden="true">{selectedIds.includes(node.id)?'✓':''}</span>
