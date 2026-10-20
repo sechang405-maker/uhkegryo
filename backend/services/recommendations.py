@@ -15,6 +15,8 @@ from backend.schemas.models import (AgentResult, InterpretationOutput, Interpret
 from backend.services.llm import LLMInvalidStructuredOutput
 from backend.services.resolver import ResolutionResult, resolve, STATUS_PROCEED
 from backend.services.selection_grounding import has_affirmed_evidence
+from backend.services.reference_intent import (current_action_text,
+    search_forbidden as _search_forbidden, wants_reference)
 
 
 @dataclass
@@ -32,12 +34,11 @@ def invalid(code):
 
 
 def search_forbidden(text):
-    return bool(re.search(r'찾지\s*말|찾지\s*마|검색(?:은|을)?\s*(?:하지\s*말|하지\s*마)|\b(do not|don.t)\s+(find|search)\b', text, re.I))
+    return _search_forbidden(text)
 
 
 def wants_search(text):
-    if search_forbidden(text): return False
-    return bool(re.search(r'찾아|찾으|찾을|찾고|찾아봐|검색(?:해|하|할|해줘)|\b(find|search)\b', text, re.I))
+    return wants_reference(text)
 
 
 def one_shot(text):
@@ -69,7 +70,7 @@ def _recall_prefix_end(text):
 
 def _current_action_text(text):
     end = _recall_prefix_end(text)
-    return text[end:].strip() if end is not None else text
+    return current_action_text(text[end:].strip() if end is not None else text)
 
 
 def reset_context(job, context):
@@ -103,21 +104,105 @@ def _group(context):
         raise invalid('recommendation_state_invalid') from None
 
 
+def _delegates_choice(text):
+    return wants_search(text) and bool(re.search(
+        r'(?:네가|니가|너가|알아서|직접).{0,12}(?:골라|고르|선택)|좋은\s*(?:걸로|것으로)|'
+        r'\b(?:you\s+(?:choose|pick)|choose\s+for\s+me|pick\s+(?:one|the best))\b', text, re.I))
+
+
+def _candidate_mentions(text, group):
+    ordinals = {int(value) for value in re.findall(r'(?<!\d)([1-9])\s*(?:번|번째|[.)])', text)}
+    ordinals.update(int(value) for value in re.findall(r'\b(?:option|candidate|number)\s*([1-9])\b', text, re.I))
+    names = {c.ordinal for c in group.candidates if c.name.casefold() in text.casefold()}
+    return ordinals | names
+
+
+def _bare_pointer(text):
+    return bool(re.fullmatch(r'\s*그걸로[.!]?\s*', text))
+
+
+async def _recent_focus(memory, job, group, context):
+    """Resolve only a fresh focus, then reread its session-owned original."""
+    recent = context.get('recent') or []
+    if not recent:
+        return 0
+    latest = recent[-1]
+    adoption = context['state'].get('recommendation_adoption') or {}
+    if (adoption.get('group_id') == group.group_id and adoption.get('source_job_id') == group.source_job_id
+            and adoption.get('adoption_job_id') == latest.get('job_id')):
+        originals = await memory.records(job, [adoption['adoption_job_id']])
+        original = next((row for row in originals if row['job_id'] == adoption['adoption_job_id']), {})
+        if original.get('recommendation_adoption') != adoption:
+            raise invalid('recommendation_focus_source_invalid')
+        return next((c.ordinal for c in group.candidates if c.candidate_id == adoption.get('candidate_id')), 0)
+    # A new group or an intervening unrelated turn cannot inherit an older choice.
+    source_index = next((i for i, row in enumerate(recent) if row.get('job_id') == group.source_job_id), None)
+    if source_index is None:
+        return 0
+    if any(re.search(r'새\s*주제|다른\s*주제|주제.{0,8}바[꾸꿀]|추천.{0,8}잊|\bnew topic\b',
+            row.get('request_text', ''), re.I) for row in recent[source_index+1:]):
+        return 0
+    text = latest.get('request_text', '') if source_index < len(recent)-1 else ''
+    # Quoted recalls, rejections and explanatory questions are not adoptions.
+    if text and (_recall_prefix_end(text) is not None or search_forbidden(text)
+            or re.search(r'["“”‘’]|말고|아니|제외|빼|어떻게|왜|설명|싫|별로|않|\b(?:not|except|how|why|explain)\b', text, re.I)):
+        return 0
+    if text:
+        mentions = _candidate_mentions(text, group)
+        if len(mentions) > 1:
+            return 0
+        if mentions and re.search(r'[?？]', text):
+            return 0
+        bare = bool(re.fullmatch(r'\s*[1-9]\s*(?:번|번째)?[.!]?\s*', text)) or any(
+            text.strip().rstrip('.!') in (c.name, c.name+'요', c.name+'이요') for c in group.candidates)
+        adopts = bare or wants_search(text) or bool(re.search(r'좋|할게|선택|고를|하자|마음|\b(?:use|choose|pick|prefer)\b', text, re.I))
+        if len(mentions) == 1 and adopts:
+            originals = await memory.records(job, [latest['job_id']])
+            original = next((row for row in originals if row['job_id'] == latest['job_id']), {})
+            if original.get('request_text') != text:
+                raise invalid('recommendation_focus_source_invalid')
+            return next(iter(mentions))
+    # Suggestion prose identifies an existing option, never supplies new terms.
+    relevant = source_index == len(recent)-1 or bool(re.search(
+        r'추천|후보|어떤|어느|뭐가|\b(?:option|candidate|recommend|which)\b', text, re.I))
+    if not relevant:
+        return 0
+    originals = await memory.records(job, [latest['job_id']])
+    original = next((row for row in originals if row['job_id'] == latest['job_id']), {})
+    if source_index < len(recent)-1 and original.get('request_text') != text:
+        raise invalid('recommendation_focus_source_invalid')
+    message = original.get('recommendation_answer') or original.get('message', '')
+    choices = set()
+    prose = '\n'.join(line for line in message.splitlines() if not re.match(r'\s*[1-9]\s*[.)번]', line))
+    for clause in re.split(r'[.!?。！？\n]', prose):
+        if (re.search(r'추천|좋겠|어울|권해|\b(?:recommend|suggest|choose|pick)\b', clause, re.I)
+                and not re.search(r'말고|아니|제외|빼|\b(?:not|except)\b', clause, re.I)):
+            mentions = _candidate_mentions(clause, group)
+            choices.update(mentions)
+    return next(iter(choices)) if len(choices) == 1 else 0
+
+
 def _selection(text, group, context):
     """Return an ordinal, an ambiguity sentinel, or no recommendation intent."""
     if not group:
         return None
     text = _current_action_text(text)
+    # An explicit replacement names the target in the affirmative later clause.
+    # Keep the full original request for term/removal validation below.
+    correction = re.split(r'말고', text)
+    if (len(correction) > 1 and _candidate_mentions(' '.join(correction[:-1]), group)
+            and wants_search(correction[-1]) and len(_candidate_mentions(correction[-1], group)) == 1):
+        text = correction[-1].strip()
     if search_forbidden(text):
         return None
-    if not wants_search(text) and re.search(r'왜|어떻게|이유|설명|\b(why|how|explain)\b', text, re.I):
+    if not wants_search(text) and re.search(r'왜|어떻게|이유|설명|그리는\s*(?:법|방법)|연습|배우|\b(why|how|explain|learn|practice)\b', text, re.I):
         return None
     normalized = text.casefold()
     ordinals = {int(value) for value in re.findall(r'(?<!\d)([1-9])\s*(?:번|번째|[.)])', normalized)}
     ordinals.update(int(value) for value in re.findall(r'\b(?:option|candidate|number)\s*([1-9])\b', normalized))
     names = {c.ordinal for c in group.candidates if c.name.casefold() in normalized}
     # A casual discussion about a suggestion does not authorize search.
-    adopts = wants_search(text) or bool(re.search(r'번(?:으로|인데|로)|\b(?:use|choose|pick|retry)\b|재시도', normalized))
+    adopts = wants_search(text) or _bare_pointer(text) or bool(re.search(r'번(?:으로|인데|로)|\b(?:use|choose|pick|retry)\b|재시도', normalized))
     if not adopts:
         pending = context['state'].get('recommendation_pending_group_id') == group.group_id
         bare_ordinal = re.fullmatch(r'\s*([1-3])\s*(?:(?:번|번째)(?:이요|요|으로)?)?[.!]?\s*', text)
@@ -127,16 +212,21 @@ def _selection(text, group, context):
             return None
         if bare_ordinal:
             ordinals.add(int(bare_ordinal[1]))
-    if ordinals:
-        return next(iter(ordinals)) if len(ordinals) == 1 else 0
-    if names:
-        return next(iter(names)) if len(names) == 1 else 0
+    if ordinals or names:
+        if len(ordinals) == 1 and re.search(r'바꾸|바꿔|변경|추가|빼|\b(?:change|add|remove|replace)\b', text, re.I):
+            return next(iter(ordinals))
+        mentions = ordinals | names
+        return next(iter(mentions)) if len(mentions) == 1 else 0
+    if _delegates_choice(text):
+        return group.candidates[0].ordinal
     if re.search(r'다시|재시도|\bretry\b', normalized):
         previous = context['state'].get('recommendation_adoption') or {}
         chosen = next((c.ordinal for c in group.candidates if c.candidate_id == previous.get('candidate_id')), None)
         if chosen:
             return chosen
-    if re.search(r'추천|방금|그걸|그거|그대로|\b(that|recommend\w*|suggest\w*)\b', normalized):
+    if re.search(r'추천|방금|그걸|그거|그런|그대로|\b(that|recommend\w*|suggest\w*)\b', normalized):
+        return group.candidates[0].ordinal if len(group.candidates) == 1 else 0
+    if wants_search(text) and re.fullmatch(r'\s*(?:찾아줘|검색해줘|find|search)[.!]?\s*', text, re.I):
         return group.candidates[0].ordinal if len(group.candidates) == 1 else 0
     if re.search(r'다시|재시도|\bretry\b', normalized):
         previous = context['state'].get('recommendation_adoption') or {}
@@ -147,8 +237,9 @@ def _selection(text, group, context):
 def has_intent(job, context):
     if _recall_prefix_end(job['request_text']) is not None:
         return False
-    return (_selection(job['request_text'], _group(context), context) is not None
-            or generates_recommendations(job['request_text']) or search_forbidden(job['request_text']))
+    text = _current_action_text(job['request_text'])
+    return (_selection(text, _group(context), context) is not None
+            or generates_recommendations(text) or search_forbidden(text))
 
 
 def _validated(terms, quote, snapshot, *, allow_disabled=False):
@@ -284,6 +375,17 @@ async def handle(memory, job, interpretation, snapshot, context):
             selected = group.candidates[0].ordinal
         elif not group and wants_search(active_text) and re.search(
                 r'추천한|추천해\s*준|추천.{0,10}걸로|\b(recommended|suggested)\b', job['request_text'], re.I):
+            # Nonstructured suggestions retain the normal narrower source validator.
+            recent = context.get('recent') or []
+            ids = list(dict.fromkeys(str(term.source_job_id) for term in interpretation.selections if term.source_job_id))
+            if recent and ids == [str(recent[-1]['job_id'])]:
+                from backend.services import conversation_context
+                originals = await memory.records(job, ids)
+                original = next((row for row in originals if str(row['job_id']) == ids[0]), None)
+                if original and conversation_context.adopted_assistant_evidence(original, job, context):
+                    resolution = await conversation_context.validate(memory, job, interpretation, snapshot, context=context)
+                    if resolution.status == STATUS_PROCEED:
+                        return None
             return Decision(interpretation=interpretation, result=AgentResult(agent_status='needs_clarification',
                 reason_codes=[ReasonCode.INSUFFICIENT_VISUAL_EVIDENCE],
                 clarifying_question='이전 추천을 안전하게 선택할 수 있도록 번호가 있는 후보를 먼저 추천해드릴까요?'))
@@ -295,6 +397,8 @@ async def handle(memory, job, interpretation, snapshot, context):
             return None
     if not created:
         await _verify_group(memory, job, group)
+        if selected == 0 and (wants_search(active_text) or _bare_pointer(active_text)) and not _candidate_mentions(active_text, group):
+            selected = await _recent_focus(memory, job, group, context)
     candidate = next((item for item in group.candidates if item.ordinal == selected), None)
     if candidate is None:
         return Decision(interpretation=interpretation, group=group,

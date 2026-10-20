@@ -14,6 +14,7 @@ from backend.services.conversation_memory import ConversationMemory
 from backend.services import conversation_context
 from backend.services import reference_update
 from backend.services import recommendations
+from backend.services.reference_intent import explicit_non_search
 from backend.services.input_safety import is_out_of_scope_input, is_unsafe_input
 from backend.services.job_repository import JobRepository, StaleJobAttempt
 from backend.services.job_retry_recovery import JobRetryRecovery
@@ -180,6 +181,9 @@ class AgentJobWorker:
                                 session_context=conversation_context.prompt_context(context),
                                 **({"validation_feedback": feedback} if feedback else {}),
                             )
+                        if interpretation.interpretation_state == 'select_terms' and explicit_non_search(job['request_text']):
+                            raise LLMInvalidStructuredOutput('Explicit non-search intent conflicts with selected reference terms',
+                                stage='conversation_validation', feedback=[{'path': [], 'code': 'reference_intent_conflict'}])
                         recommendation_decision = await recommendations.handle(
                             self._memory, job, interpretation, self._snapshot, context)
                         if context.get('_recommendation_topic_reset'):
@@ -191,6 +195,8 @@ class AgentJobWorker:
                             if recommendation_decision.adoption:
                                 previous = {}
                         else:
+                            interpretation = await conversation_context.reference_fallback(
+                                self._memory, job, interpretation, self._snapshot, context)
                             resolution = await conversation_context.validate(
                                 self._memory, job, interpretation, self._snapshot, context=context)
                             resolution = reference_update.select_searches(resolution, previous)

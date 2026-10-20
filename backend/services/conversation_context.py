@@ -6,9 +6,20 @@ from backend.schemas.enums import AgentStatus, ReasonCode, Role
 from backend.services.clarification_policy import repeated_question, REPEATED_FALLBACK
 from backend.schemas.models import AgentResult, InterpretationOutput, InterpretationSelection
 from backend.schemas.memory import RecallQuery, RecallAnswer, MemorySource, NO_RECORDS, TOO_MANY
-from backend.services.conversation_memory import evidence_text, normalize_constraints
+from backend.services.conversation_memory import evidence_text, normalize_constraints, RECENT_LIMIT
 from backend.services.llm import LLMInvalidStructuredOutput
+from backend.services.reference_intent import wants_reference, current_action_text
+from backend.services.selection_grounding import has_affirmed_evidence
 from backend.services.resolver import resolve, ResolutionResult, STATUS_CLARIFY, STATUS_ALL_INVALID, STATUS_PROCEED
+
+# Narrow literal alternatives for existing catalog concepts, never a default or
+# semantic mapping from mood, props, or an unspecified character to a card.
+_REFERENCE_ALIASES = {
+    'pose_standing': ('서 있는', '서있는'),
+    'pose_sitting': ('앉아 있는', '앉아있는', '앉은'),
+    'view_front': ('정면', '앞모습'),
+    'view_three_quarter': ('3/4 방향', '3/4방향'),
+}
 
 async def prepare(memory, job, adapter, trace):
     context = await memory.load(job)
@@ -57,6 +68,9 @@ async def recall(memory, job, context, adapter, trace, query: RecallQuery | None
                 "current_reference_roles": [term["role"] for term in
                     ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])],
             }, RecallQuery, **trace_args(job))
+        if query.mode == 'recall' and wants_reference(job['request_text']):
+            context['reference_action'] = 'update'
+            return None, False
         context["reference_action"] = query.reference_action if query.mode != "recall" else "update"
         context["refresh_roles"] = query.refresh_roles if query.mode != "recall" else []
         context["refresh_term_ids"] = query.refresh_term_ids if query.mode != "recall" else []
@@ -99,17 +113,38 @@ def is_clear_new_request(text, context):
 
 
 async def validate(memory, job, interpretation, snapshot, *, context=None, updates_only=False):
-    ids = [item.source_job_id for item in interpretation.selections if item.source_job_id]
+    ids = list(dict.fromkeys(item.source_job_id for item in interpretation.selections if item.source_job_id))
     originals = await memory.records(job, ids) if ids else []
     by_id = {item["job_id"]: item for item in originals}
     verified_source_texts = {}
     for selection in interpretation.selections:
         if selection.source_job_id:
+            if (context or {}).get('_recommendation_topic_reset') or interpretation.topic_reset_evidence:
+                raise LLMInvalidStructuredOutput('Prior-topic sources cannot support a new topic',
+                    stage='conversation_validation', feedback=[{'path': [], 'code': 'selection_source_invalid'}])
             original = by_id.get(str(selection.source_job_id))
             if original is None:
                 raise LLMInvalidStructuredOutput("선택 출처가 검증된 선행 기록에 없습니다", stage="conversation_validation",
                                                  feedback=[{"path": [], "code": "selection_source_invalid"}])
             allowed = [original["request_text"]] + [t[k] for t in original["terms"] for k in ("label_ko", "label_en")]
+            allowed += adopted_assistant_evidence(original, job, context or {})
+            condition = normalize_constraints((context or {}).get('state', {}).get('constraints', {})).get(selection.term_id)
+            if (condition and condition['role'] == selection.role.value
+                    and str(condition.get('source_job_id')) == str(selection.source_job_id)
+                    and condition.get('evidence')
+                    and condition['evidence'] in (original.get('message') or '')):
+                allowed.append(condition['evidence'])
+            recent = (context or {}).get('recent') or []
+            source_index = next((index for index, row in enumerate(recent)
+                if str(row.get('job_id')) == str(selection.source_job_id)), -1)
+            newer = [row.get('request_text', '') for row in recent[source_index + 1:]] + [job['request_text']]
+            removed = {term_id for update in interpretation.context_updates for term_id in update.remove_term_ids}
+            cleared = {update.role for update in interpretation.context_updates
+                if update.term_id is None and not update.remove_term_ids}
+            if (selection.term_id in removed or selection.role in cleared
+                    or any(explicitly_excluded(text, phrase) for text in newer for phrase in selection.evidence)):
+                raise LLMInvalidStructuredOutput('Removed conditions cannot be restored from old evidence',
+                    stage='conversation_validation', feedback=[{'path': [], 'code': 'selection_evidence_invalid'}])
         else:
             allowed = [job["request_text"]]
         if any(not any(phrase in text for text in allowed) for phrase in selection.evidence):
@@ -172,6 +207,165 @@ async def validate(memory, job, interpretation, snapshot, *, context=None, updat
     return resolution
 
 
+def explicitly_excluded(text, phrase):
+    for match in re.finditer(re.escape(phrase), text):
+        suffix = re.sub(r'^\s*(?:건|것은|것이|게|조건은|은|는|을|를)?\s*', '', text[match.end():])
+        if re.match(r'(?:빼|제외하|삭제하)(?:지|지는)\s*말', suffix):
+            continue
+        if re.match(r'빼|제외|삭제|아니|말고|대신', suffix):
+            return True
+    return False
+
+
+def adopted_assistant_evidence(original, job, context):
+    """Authorize only the latest suggestion explicitly adopted by this request.
+
+    The caller has reread the original through the session-scoped records store.
+    Structured recommendation candidates have their own narrower adoption path.
+    """
+    recent = context.get('recent') or []
+    text = current_action_text(job['request_text'])
+    if (not recent or str(recent[-1].get('job_id')) != str(original['job_id'])
+            or original.get('recommendation_group') or not wants_reference(text)
+            or not re.search(r'그런|그걸로|그거|추천한\s*걸로|그\s*(?:포즈|자세|설명|제안|조건)|그대로|말한\s*대로|'
+                             r'\b(?:that|your suggestion|as suggested)\b', text, re.I)):
+        return []
+    return [clause for clause in re.split(r'[.!?。！？\n]', original.get('message') or '')
+            if re.search(r'어때|추천|제안|해\s*보|좋겠|\b(?:suggest|recommend|try)\b', clause, re.I)
+            and not re.search(r'않|아니|말고|제외|\b(?:not|never|avoid)\b', clause, re.I)]
+
+
+def related_reference_record(recent):
+    """Skip only clarification-only pointer turns; preserve substantive replies.
+
+    This recovers a clarification retry without searching wider history or crossing
+    a fresh subject/removal. Source content is still reread from the session store.
+    """
+    for row in reversed(recent[-RECENT_LIMIT:]):
+        pointer_only = re.fullmatch(
+            r'\s*(?:(?:이런|그런)\s*(?:캐릭터|포즈|자세)(?:를|을)?\s*'
+            r'(?:그리고|그려\s*보고|보고)\s*싶(?:어|어요|습니다)|'
+            r'(?:그걸로|그거|그대로)?\s*(?:찾아\s*(?:줘|주세요)|검색\s*해\s*(?:줘|주세요)))'
+            r'[.!?\s]*', row.get('request_text', ''))
+        if (not row.get('terms') and pointer_only and row.get('question')
+                and not (row.get('message') or '').strip()):
+            continue
+        return row
+    return None
+
+
+async def reference_fallback(memory, job, interpretation, snapshot, context):
+    """Repair only a clear reference request misrouted to chat/missing-detail.
+
+    Exact current catalog labels and already grounded user conditions are safe
+    candidates. This is deliberately not a semantic synonym or scene generator.
+    """
+    from backend.schemas.enums import InterpretationState, ClarificationType
+    from backend.schemas.memory import ContextUpdate
+    from backend.services.recommendations import _condition_slot
+    text = job['request_text']
+    if (not wants_reference(text)
+            or interpretation.interpretation_state not in (
+                InterpretationState.DRAWING_CHAT, InterpretationState.NEEDS_CLARIFICATION)
+            or interpretation.clarification_type in (
+                ClarificationType.CONFLICTING_CONSTRAINTS, ClarificationType.CATALOG_LIMITATION)):
+        return interpretation
+    updates = list(interpretation.context_updates)
+    removed = {term_id for update in updates for term_id in update.remove_term_ids}
+    cleared = {update.role.value for update in updates if update.term_id is None and not update.remove_term_ids}
+    current = current_action_text(text)
+    selections = {}
+    def labels(source, source_id=None):
+        for term_id, card in snapshot.active_cards.items():
+            if (term_id in removed or card['role'] in cleared or card.get('component') == 'composite'
+                    or snapshot.is_direct_search_disabled(term_id)):
+                continue
+            for label in (card['label_ko'], card['label_en'], *_REFERENCE_ALIASES.get(term_id, ())):
+                if explicitly_excluded(source, label):
+                    continue
+                if len(label.strip()) > 1 and label in source and has_affirmed_evidence(label, [source]):
+                    selections[term_id] = InterpretationSelection(role=card['role'], term_id=term_id,
+                        evidence=[label], confidence=1, source_job_id=source_id)
+                    break
+    labels(current)
+    current_selections = dict(selections)
+    current_slots = {_condition_slot(item.role, item.term_id, snapshot) for item in current_selections.values()}
+    reset = context.get('_recommendation_topic_reset') or interpretation.topic_reset_evidence
+    pointer = re.search(r'이런|그런|그걸로|그거|추천한\s*걸로|그대로|그\s*(?:포즈|자세|캐릭터|조건|설명)|바꿔|유지|'
+                        r'\b(?:that|same|keep|change)\b', current, re.I)
+    pointer = pointer or re.fullmatch(r'\s*(?:찾아\s*(?:줘|주세요)|검색\s*해\s*(?:줘|주세요)|'
+        r'(?:please\s+)?(?:find|search)(?:\s+(?:it|references?))?)[.!?\s]*', current, re.I)
+    constraints = normalize_constraints(context.get('state', {}).get('constraints', {}))
+    if pointer and not reset:
+        ids = list(dict.fromkeys(value['source_job_id'] for value in constraints.values()))
+        recent = context.get('recent') or []
+        related = related_reference_record(recent)
+        # At most one bounded related user source; never search older DB history.
+        if not ids and related:
+            ids = [related['job_id']]
+        originals = await memory.records(job, ids) if ids else []
+        by_id = {str(row['job_id']): row for row in originals}
+        for term_id, condition in constraints.items():
+            original = by_id.get(str(condition['source_job_id']))
+            card = snapshot.get_active(term_id)
+            evidence = condition.get('evidence', '')
+            if (not original or not card or term_id in removed or card['role'] in cleared
+                    or _condition_slot(card['role'], term_id, snapshot) in current_slots
+                    or snapshot.is_direct_search_disabled(term_id)
+                    or explicitly_excluded(current, evidence)
+                    or (evidence in current and not has_affirmed_evidence(evidence, [current]))):
+                continue
+            allowed = [original['request_text']] + [term[k] for term in original['terms']
+                for k in ('label_ko', 'label_en')]
+            if evidence and evidence in (original.get('message') or ''):
+                allowed.append(evidence)
+            if has_affirmed_evidence(evidence, [value.casefold() for value in allowed]):
+                selections.setdefault(term_id, InterpretationSelection(role=card['role'], term_id=term_id,
+                    evidence=[evidence], confidence=1, source_job_id=condition['source_job_id']))
+        if not constraints and related:
+            original = by_id.get(str(related['job_id']))
+            if original:
+                # Replace only the stated dimension, retaining independent framing.
+                before = dict(selections)
+                source_text = re.sub(r'"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<!\w)\'[^\'\n]*\'', ' ', original['request_text'])
+                labels(source_text, original['job_id'])
+                for suggestion in adopted_assistant_evidence(original, job, context):
+                    labels(suggestion, original['job_id'])
+                selections = {key: value for key, value in selections.items()
+                    if value.source_job_id is None
+                    or _condition_slot(value.role, value.term_id, snapshot) not in current_slots}
+                selections.update(before)
+    # Merge preservation also needs explicit removal of superseded known cards.
+    # Do not invent prior IDs when only immediate dialogue exists without a board.
+    known = {term['term_id']: term['role'] for term in
+        ((context.get('previous_result') or {}).get('reference_plan') or {}).get('terms', [])}
+    known.update({term_id: value['role'] for term_id, value in constraints.items()})
+    for item in current_selections.values():
+        slot = _condition_slot(item.role, item.term_id, snapshot)
+        superseded = [term_id for term_id, role in known.items() if term_id != item.term_id
+            and term_id not in removed and _condition_slot(role, term_id, snapshot) == slot]
+        if superseded:
+            updates.append(ContextUpdate(role=item.role, evidence=item.evidence[0], remove_term_ids=superseded))
+    if not selections:
+        if interpretation.interpretation_state is InterpretationState.DRAWING_CHAT:
+            return InterpretationOutput(interpretation_state='needs_clarification',
+                clarification_type='insufficient_visual_evidence', unresolved_constraints=['검색할 자세나 방향'],
+                clarifying_question='찾을 캐릭터의 자세나 보는 방향을 한 가지만 알려주시겠어요?')
+        return interpretation
+    if len(selections) > 10:
+        return interpretation
+    labels_text = ', '.join(snapshot.get_active(term_id)['label_ko'] for term_id in selections)
+    explanation = f'말씀하신 조건 중 {labels_text} 기준으로 참고 자료를 찾았어요.'
+    if interpretation.unresolved_constraints:
+        explanation += ' 아직 확정되지 않은 조건은 검색에 추가하지 않았어요.'
+    candidate = InterpretationOutput(interpretation_state='select_terms',
+        answer_text=explanation,
+        selections=sorted(selections.values(), key=lambda item: list(Role).index(item.role)), context_updates=updates,
+        topic_reset_evidence=interpretation.topic_reset_evidence)
+    resolution = await validate(memory, job, candidate, snapshot, context=context)
+    return candidate if resolution.status == STATUS_PROCEED else interpretation
+
+
 def next_state(context, job, interpretation, result):
     state = deepcopy(context["state"])
     if result.agent_status is AgentStatus.REFERENCE_GUIDANCE:
@@ -191,6 +385,14 @@ def next_state(context, job, interpretation, result):
         elif update.term_id is not None:
             constraints[update.term_id] = {"role": update.role.value, "term_id": update.term_id,
                 "evidence": update.evidence, "source_job_id": str(job["job_id"])}
+    final_ids = {term.term_id for term in result.reference_plan.terms} if result.reference_plan else set()
+    removed = {term_id for update in interpretation.context_updates for term_id in update.remove_term_ids}
+    cleared = {update.role for update in interpretation.context_updates
+        if update.term_id is None and not update.remove_term_ids}
+    for selection in getattr(interpretation, 'selections', []) if not result.recommendation_group else []:
+        if selection.term_id in final_ids and selection.term_id not in removed and selection.role not in cleared:
+            constraints[selection.term_id] = dict(role=selection.role.value, term_id=selection.term_id,
+                evidence=selection.evidence[0], source_job_id=str(selection.source_job_id or job['job_id']))
     if len(constraints) > 10:
         raise LLMInvalidStructuredOutput('Conversation cannot contain more than ten cards',
             stage='conversation_validation', feedback=[{'path': [], 'code': 'context_card_limit'}])

@@ -549,7 +549,9 @@ def test_worker_topic_change_and_normal_recall_keep_existing_boundaries(monkeypa
         assert not adapter.calls
     else:
         assert [term.term_id for term in result.reference_plan.terms]==['stand']
-        assert state['recommendation_group'] is None and state['constraints']=={}
+        assert state['recommendation_group'] is None
+        assert state['constraints'] == {'stand': dict(role='pose', term_id='stand',
+            evidence='서기', source_job_id=str(jobs.job['job_id']))}
 
 
 def test_historical_quoted_search_keeps_recall_routing_and_current_mixed_selection(snapshot_factory,card_factory):

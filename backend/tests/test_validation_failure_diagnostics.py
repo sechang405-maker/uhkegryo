@@ -52,6 +52,8 @@ def test_final_nonvalidation_failure_clears_diagnostics():
     'recommendation_candidate_count', 'recommendation_candidates_missing',
     'recommendation_card_invalid', 'recommendation_confirmed_source_invalid',
     'recommendation_evidence_invalid', 'recommendation_model_source_invalid',
+    'recommendation_focus_source_invalid',
+    'reference_intent_conflict',
     'recommendation_numbering_invalid', 'recommendation_owner_invalid',
     'recommendation_quote_invalid', 'recommendation_retry_conditions_invalid',
     'recommendation_retry_source_invalid', 'recommendation_source_invalid',
