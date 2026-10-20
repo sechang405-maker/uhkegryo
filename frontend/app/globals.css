@@ -92,6 +92,7 @@ a { color: var(--accent); }
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) clamp(310px, 31.5vw, 450px); height: 100vh; min-height: 0; overflow: hidden; }
 .reference-board { position: relative; min-width: 0; overflow: hidden; container-type: inline-size; border-right: 3px solid var(--accent); background: var(--canvas); color: var(--text); }
 .board-header { position:relative; display: flex; align-items: center; justify-content: center; height: 72px; padding: 0 24px; border-bottom: 3px solid var(--accent); background: var(--surface); }
+.reference-board:has(> .term-graph) > .board-header { border-bottom: 0; background: var(--canvas); }
 .brand-identity { display: flex; align-items: center; gap: 12px; }
 .brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-weight: 800; }
 .brand-name { font-size: 17px; font-weight: 800; letter-spacing: -.03em; }
