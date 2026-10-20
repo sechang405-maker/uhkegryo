@@ -9,7 +9,7 @@ import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs"
 import { DEMO_SCENARIOS, DEMO_NOTICE, DEMO_INPUT_ERROR, demoTerm } from "../lib/portfolio-demo-fixtures.mjs";
 import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
 import { sessionTitle } from "../lib/session-title.mjs";
-import { HOME_TERMS } from "../lib/home-catalog.mjs";
+import { ACTIVE_TERMS, HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
 import { getRecommendedSearchQuery, combineRecommendedSearchQueries } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode, applySketchResult, applyPreviewRecovery } from "../lib/term-search.mjs";
@@ -125,7 +125,7 @@ export default function HomePage() {
   const queryTerm = ["results", "term-results"].includes(boardView) && hasGalleryRows ? galleryTerm : homeTerm;
   const showingGraph = !(boardView === "results" && historyTurnId) && !( ["results", "term-results"].includes(boardView) && hasGalleryRows );
   const recommendedSearchQuery = showingGraph && graphTermIds.length
-    ? combineRecommendedSearchQueries(HOME_TERMS.filter(term => graphTermIds.includes(term.term_id)))
+    ? combineRecommendedSearchQueries(ACTIVE_TERMS.filter(term => graphTermIds.includes(term.term_id)))
     : getRecommendedSearchQuery(queryTerm);
   const pendingTurnIds = turns.filter(isTurnPending).map((turn) => `${turn.id}:${turn.screen_generation ?? ""}`).join(",");
   const conversationBusy = !conversationReady || isSubmitting || Boolean(pendingTurnIds) || Boolean(deletingId);
@@ -1075,7 +1075,7 @@ export default function HomePage() {
             <button type="button" onClick={() => navigateBoard("home")}>용어 둘러보기</button>
           </div>
         ) : hasTerms ? (
-          <TermGraph terms={HOME_TERMS} selectedIds={graphTermIds}
+          <TermGraph terms={HOME_TERMS} catalogTerms={ACTIVE_TERMS} selectedIds={graphTermIds}
             focusedId={graphFocusId} onFocus={setGraphFocusId} list={graphList} onListChange={setGraphList}
             onToggle={(id) => {setGraphTermIds((ids) => toggleTerm(ids, id));setGraphFocusId(id);}}
             onSearch={openTermSearch}

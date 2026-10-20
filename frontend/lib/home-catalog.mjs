@@ -21,6 +21,9 @@ const cardsById = new Map(
   [bodyCatalog, poseCatalog, compositionCatalog, perspectiveCatalog]
     .flatMap((catalog) => catalog.cards).map((card) => [card.term_id, card]),
 );
+const directSearchDisabled = new Set(
+  catalogIndex.pinterest_search_contract?.direct_search_disabled_term_ids || [],
+);
 
 // 검수된 홈 탐색 예시이며 LLM 선택·답변·이미지 검색 결과가 아닙니다.
 export function catalogTerm(termId) {
@@ -35,9 +38,15 @@ export function catalogTerm(termId) {
     reference_checkpoints: feedback.reference_checkpoints_ko,
     cautions: feedback.common_confusion_ko || [],
     recommended_search_query: [...card.query_fragments, "drawing"].join(" "),
+    requires_all_of: [...(card.requires_all_of || [])],
+    requires_any_of: [...(card.requires_any_of || [])],
+    search_disabled: directSearchDisabled.has(termId),
     pins: [],
   };
 }
 
+export const ACTIVE_TERMS = [...cardsById.values()]
+  .filter((card) => card.runtime_eligible && card.mvp_status === "active_in_current_contract" && catalogIndex.active_term_feedback[card.term_id])
+  .map((card) => catalogTerm(card.term_id));
 export const HOME_TERMS = HOME_TERM_IDS.map(catalogTerm);
 

@@ -1,17 +1,18 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
-import { buildTermGraph, projectGraph, INITIAL_VIEW, clamp } from '../lib/term-graph.mjs';
+import { Fragment, useMemo, useRef, useState } from 'react';
+import { buildExpandedTermGraph, projectGraph, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
 
-export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch, focusedId, onFocus, list, onListChange}) {
-  const graph=useMemo(()=>buildTermGraph(terms),[terms]);
+export default function TermGraph({terms, catalogTerms=terms, selectedIds, onToggle, onAdd, onSearch, focusedId, onFocus, list, onListChange}) {
+  const [expandedIds,setExpandedIds]=useState([]);
+  const graph=useMemo(()=>buildExpandedTermGraph(terms,catalogTerms,expandedIds),[terms,catalogTerms,expandedIds]);
   const [view,setView]=useState(INITIAL_VIEW);
   const [notice,setNotice]=useState('');
   const gesture=useRef(null);
   const pointers=useRef(new Map());
   const suppressClick=useRef(false);
-  const focused=terms.find(term=>term.term_id===focusedId);
-  const selected=terms.filter(term=>selectedIds.includes(term.term_id));
+  const focused=catalogTerms.find(term=>term.term_id===focusedId);
+  const selected=catalogTerms.filter(term=>selectedIds.includes(term.term_id));
   const points=useMemo(()=>projectGraph(graph,view),[graph,view]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.6)})); }
@@ -49,6 +50,10 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
     gesture.current=remaining ? {...remaining,view:gesture.current?.latest||view,distance:null} : null;
   }
   function pick(id) { if(!suppressClick.current) onToggle(id); }
+  function expand(event,id) {
+    event.preventDefault();event.stopPropagation();suppressClick.current=false;
+    setExpandedIds(ids=>toggleExpanded(ids,id));
+  }
   function key(event) {
     if(event.target!==event.currentTarget) return;
     const actions={ArrowLeft:()=>rotate(-.16,0),ArrowRight:()=>rotate(.16,0),ArrowUp:()=>rotate(0,-.16),ArrowDown:()=>rotate(0,.16),'+':()=>zoom(.1),'=':()=>zoom(.1),'-':()=>zoom(-.1),Home:()=>setView(INITIAL_VIEW)};
@@ -62,7 +67,11 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
       {graph.nodes.filter(n=>!n.term).map(category=><fieldset key={category.id}><legend>{category.label}</legend>
         {graph.nodes.filter(n=>n.term && n.role===category.role).map(node=><div key={node.id}>
           <label><input type="checkbox" checked={selectedIds.includes(node.id)} onChange={()=>onToggle(node.id)}/>{node.label}</label>
-          <button type="button" aria-label={`${node.label} 설명 보기`} onClick={()=>onFocus(node.id)}>설명</button>
+          <span className="term-graph-list-actions">
+            {node.expandable && <button type="button" aria-label={`${node.label}: 이 조건이 필요한 세부 용어 ${expandedIds.includes(node.id)?'접기':'펼치기'}`}
+              aria-expanded={expandedIds.includes(node.id)} onClick={(event)=>expand(event,node.id)}>{expandedIds.includes(node.id)?'−':'+'}</button>}
+            <button type="button" aria-label={`${node.label} 설명 보기`} onClick={()=>onFocus(node.id)}>설명</button>
+          </span>
         </div>)}
       </fieldset>)}
     </div> : <>
@@ -81,23 +90,32 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
         aria-describedby="term-graph-help" onKeyDown={key} onPointerDown={start} onPointerMove={move}
         onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
         data-yaw={view.yaw.toFixed(3)} data-pitch={view.pitch.toFixed(3)} data-zoom={view.zoom.toFixed(2)}>
+        {graph.edges.some(edge=>edge.relation) && <div className="term-graph-relation-legend" aria-label="조건 연결선 안내">
+          <span data-relation="all">실선: 모두 필요</span><span data-relation="any">점선: 하나 이상</span>
+        </div>}
         <svg viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">
-          {graph.edges.map(edge=><line key={edge.target} x1={points[edge.source].x} y1={points[edge.source].y}
+          {graph.edges.map(edge=><line key={`${edge.source}:${edge.target}:${edge.relation||'category'}`} x1={points[edge.source].x} y1={points[edge.source].y}
             x2={points[edge.target].x} y2={points[edge.target].y}
             style={{opacity:(points[edge.source].opacity+points[edge.target].opacity)/2*.55}}
+            data-source={edge.source} data-target={edge.target} data-relation={edge.relation||'category'}
             className={focusedId===edge.target?'is-focused':''}/>)}
         </svg>
         {graph.nodes.map(node=>{
           const p=points[node.id];
           const style={left:`${p.x/10}%`,top:`${p.y/7}%`,zIndex:Math.round(p.depth+500),opacity:p.opacity,'--node-scale':p.scale};
-          return node.term ? <button type="button" key={node.id} style={style} className="term-graph-node"
+          const expandStyle={...style,'--node-scale':Math.max(1,p.scale)};
+          return node.term ? <Fragment key={node.id}><button type="button" style={style} className="term-graph-node"
             data-focused={focusedId===node.id} data-selected={selectedIds.includes(node.id)}
-            data-node-id={node.id} data-depth={p.depth.toFixed(3)} data-distant={p.depth < -40}
+            data-node-id={node.id} data-detail={Boolean(node.isDetail)} data-depth={p.depth.toFixed(3)} data-distant={p.depth < -40}
             aria-label={`${node.label} ${selectedIds.includes(node.id)?'선택 해제':'선택'}`} aria-pressed={selectedIds.includes(node.id)}
             onFocus={()=>{suppressClick.current=false;onFocus(node.id);}} onClick={()=>pick(node.id)}>
             <span className="term-graph-dot" aria-hidden="true">{selectedIds.includes(node.id)?'✓':''}</span>
             <span className="term-graph-label">{node.label}</span>
-          </button> : <span key={node.id} style={style} data-node-id={node.id} data-depth={p.depth.toFixed(3)} className="term-graph-category">{node.label}</span>;
+          </button>{node.expandable && <button type="button" className="term-graph-expand" style={expandStyle}
+            data-node-id={`${node.id}:expand`} aria-label={`${node.label}: 이 조건이 필요한 세부 용어 ${expandedIds.includes(node.id)?'접기':'펼치기'}`}
+            aria-expanded={expandedIds.includes(node.id)} onPointerDown={(event)=>event.stopPropagation()}
+            onClick={(event)=>expand(event,node.id)}>{expandedIds.includes(node.id)?'−':'+'}</button>}</Fragment>
+            : <span key={node.id} style={style} data-node-id={node.id} data-depth={p.depth.toFixed(3)} className="term-graph-category">{node.label}</span>;
         })}
       </div>
       <details className="term-graph-help-disclosure">
@@ -110,7 +128,8 @@ export default function TermGraph({terms, selectedIds, onToggle, onAdd, onSearch
       <div aria-live="polite"><h2>{focused.label_ko}</h2><p>{focused.plain_meaning_ko}</p></div>
       <div className="term-graph-actions">
         <button type="button" aria-pressed={selectedIds.includes(focused.term_id)} onClick={()=>onToggle(focused.term_id)}>{selectedIds.includes(focused.term_id)?'선택 해제':'용어 선택'}</button>
-        <button type="button" onClick={()=>onSearch(focused)}>레퍼런스 검색</button>
+        <button type="button" disabled={focused.search_disabled} title={focused.search_disabled?'이 용어는 직접 검색할 수 없어요.':undefined}
+          onClick={()=>onSearch(focused)}>레퍼런스 검색</button>
       </div>
       </article>}
       <footer className="term-graph-selection">

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HOME_TERMS } from '../lib/home-catalog.mjs';
-import { buildTermGraph, projectNode, projectGraph, INITIAL_VIEW, toggleTerm, appendTerms } from '../lib/term-graph.mjs';
+import { ACTIVE_TERMS, HOME_TERMS } from '../lib/home-catalog.mjs';
+import { buildTermGraph, buildExpandedTermGraph, projectNode, projectGraph, INITIAL_VIEW, toggleTerm, toggleExpanded, appendTerms } from '../lib/term-graph.mjs';
 
 test('graph retains each example once and connects only its actual category', () => {
  const graph = buildTermGraph([...HOME_TERMS, HOME_TERMS[0], {role:'invented',term_id:'bad',label_ko:'bad'}]);
@@ -57,4 +57,46 @@ test('initial volume has front and back clusters and tilted camera; rotation cha
  assert.ok(graph.nodes.some(n=>Math.abs(after[n.id].depth-before[n.id].depth)>100));
  assert.ok(graph.nodes.some(n=>Math.abs(after[n.id].scale-before[n.id].scale)>.1));
  for(const point of Object.values(before)) assert.ok(point.x>0&&point.x<1000&&point.y>0&&point.y<700);
+});
+
+test('active catalog exposes only validated dependency ids and direct-search policy',()=>{
+ assert.equal(ACTIVE_TERMS.length,82);
+ const ids=new Set(ACTIVE_TERMS.map(term=>term.term_id));
+ for(const term of ACTIVE_TERMS) for(const id of [...term.requires_all_of,...term.requires_any_of]) assert.ok(ids.has(id));
+ assert.equal(ACTIVE_TERMS.find(term=>term.term_id==='pose_action').search_disabled,true);
+ assert.equal(ACTIVE_TERMS.find(term=>term.term_id==='pose_sitting_on_edge').search_disabled,false);
+});
+
+test('expansion uses real catalog dependencies, preserves AND and OR parents, and deduplicates nodes',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_sitting']);
+ const ids=graph.nodes.map(node=>node.id);
+ assert.equal(ids.length,new Set(ids).size);
+ assert.ok(ids.includes('pose_sitting_on_edge'));
+ assert.ok(ids.includes('pose_support_chair'));
+ assert.deepEqual(
+  graph.edges.filter(edge=>edge.target==='pose_sitting_on_edge').map(edge=>[edge.source,edge.relation]).sort(),
+  [['pose_sitting','all'],['pose_support_chair','all']],
+ );
+ assert.deepEqual(
+  graph.edges.filter(edge=>edge.target==='pose_action_two_hand_aiming').map(edge=>[edge.source,edge.relation]).sort(),
+  [['pose_sitting','any'],['pose_standing','any']],
+ );
+ assert.ok(graph.nodes.find(node=>node.id==='pose_sitting').expandable);
+ assert.ok(graph.nodes.find(node=>node.id==='pose_sitting_on_edge').isDetail);
+ const sitting=graph.nodes.find(node=>node.id==='pose_sitting');
+ const direct=graph.edges.filter(edge=>edge.source==='pose_sitting'&&edge.relation).map(edge=>graph.nodes.find(node=>node.id===edge.target));
+ assert.ok(direct.every(node=>Math.hypot(node.x-sitting.x,node.y-sitting.y,node.z-sitting.z)>100));
+});
+
+test('collapse changes visibility only and cyclic relationships remain finite',()=>{
+ const selected=['child'];
+ assert.deepEqual(toggleExpanded(['root'],'root'),[]);
+ assert.deepEqual(selected,['child']);
+ const base=[{role:'pose',term_id:'root',label_ko:'root',requires_all_of:[],requires_any_of:[]}];
+ const all=[...base,
+  {role:'pose',term_id:'child',label_ko:'child',requires_all_of:['root','loop'],requires_any_of:[]},
+  {role:'pose',term_id:'loop',label_ko:'loop',requires_all_of:['child'],requires_any_of:[]}];
+ const graph=buildExpandedTermGraph(base,all,['root','child','loop']);
+ assert.equal(graph.nodes.filter(node=>node.term).length,3);
+ assert.equal(new Set(graph.edges.map(edge=>`${edge.source}:${edge.target}:${edge.relation}`)).size,graph.edges.length);
 });
