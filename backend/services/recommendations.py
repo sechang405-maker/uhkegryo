@@ -203,7 +203,9 @@ def create_group(job, interpretation, snapshot):
     candidates = []
     for ordinal, draft in enumerate(interpretation.recommendation_candidates, 1):
         block = interpretation.answer_text[blocks[ordinal-1].end():blocks[ordinal].start() if ordinal < len(blocks) else len(interpretation.answer_text)]
-        if draft.source_quote not in block or draft.name not in draft.source_quote:
+        # A title and its evidence paragraph may be distinct spans in one option.
+        # Only the verbatim quote authorizes terms; the name identifies the option.
+        if draft.source_quote not in block or draft.name not in block:
             raise invalid('recommendation_quote_invalid')
         if any(value not in draft.source_quote for value in draft.unsupported_constraints):
             raise invalid('recommendation_unsupported_evidence_invalid')

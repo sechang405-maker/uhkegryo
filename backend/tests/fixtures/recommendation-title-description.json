@@ -1,0 +1,101 @@
+{
+  "request": "기존 카드로 표현 가능한 인물의 자세와 구도 조합을 2개 번호로 추천해줘. 추천만 하고 지금은 검색하지 마.",
+  "output": {
+    "interpretation_state": "drawing_chat",
+    "selections": [],
+    "unresolved_constraints": [],
+    "clarifying_question": null,
+    "clarification_type": null,
+    "context_updates": [],
+    "answer_text": "1. **한쪽 다리에 기대 선 3/4 전신 구도** — 한쪽 다리에 힘을 주고, 인물을 3/4 방향의 전신으로 배치하는 조합입니다.\n2. **바르게 앉은 정면 구도** — 의자에 바르게 앉아 정면을 바라보며, 머리부터 발까지 보이게 구성하는 조합입니다.",
+    "recommendation_candidates": [
+      {
+        "name": "한쪽 다리에 기대 선 3/4 전신 구도",
+        "source_quote": "한쪽 다리에 힘을 주고, 인물을 3/4 방향의 전신으로 배치하는 조합입니다.",
+        "terms": [
+          {
+            "role": "pose",
+            "term_id": "pose_weight_shift",
+            "evidence": [
+              "한쪽 다리에 힘을 주고"
+            ],
+            "confidence": 0.95,
+            "source_job_id": null
+          },
+          {
+            "role": "composition",
+            "term_id": "view_three_quarter",
+            "evidence": [
+              "3/4 방향"
+            ],
+            "confidence": 0.9,
+            "source_job_id": null
+          },
+          {
+            "role": "composition",
+            "term_id": "view_full_body",
+            "evidence": [
+              "전신으로"
+            ],
+            "confidence": 0.9,
+            "source_job_id": null
+          }
+        ],
+        "unsupported_constraints": []
+      },
+      {
+        "name": "바르게 앉은 정면 구도",
+        "source_quote": "의자에 바르게 앉아 정면을 바라보며, 머리부터 발까지 보이게 구성하는 조합입니다.",
+        "terms": [
+          {
+            "role": "pose",
+            "term_id": "pose_sitting",
+            "evidence": [
+              "앉아"
+            ],
+            "confidence": 0.9,
+            "source_job_id": null
+          },
+          {
+            "role": "pose",
+            "term_id": "pose_sitting_upright",
+            "evidence": [
+              "바르게 앉아"
+            ],
+            "confidence": 0.9,
+            "source_job_id": null
+          },
+          {
+            "role": "pose",
+            "term_id": "pose_support_chair",
+            "evidence": [
+              "의자에"
+            ],
+            "confidence": 0.9,
+            "source_job_id": null
+          },
+          {
+            "role": "composition",
+            "term_id": "view_front",
+            "evidence": [
+              "정면을"
+            ],
+            "confidence": 0.9,
+            "source_job_id": null
+          },
+          {
+            "role": "composition",
+            "term_id": "view_full_body",
+            "evidence": [
+              "머리부터 발까지"
+            ],
+            "confidence": 0.95,
+            "source_job_id": null
+          }
+        ],
+        "unsupported_constraints": []
+      }
+    ],
+    "topic_reset_evidence": null
+  }
+}

@@ -59,6 +59,14 @@ def validation_diagnostics(error: Exception) -> str | None:
         for name in definition.get("properties", {})
     }
     codes = set(get_args(ErrorType)) | {
+        "recommendation_candidate_count", "recommendation_candidates_missing",
+        "recommendation_card_invalid", "recommendation_confirmed_source_invalid",
+        "recommendation_evidence_invalid", "recommendation_model_source_invalid",
+        "recommendation_numbering_invalid", "recommendation_owner_invalid",
+        "recommendation_quote_invalid", "recommendation_retry_conditions_invalid",
+        "recommendation_retry_source_invalid", "recommendation_source_invalid",
+        "recommendation_state_invalid", "recommendation_terms_invalid",
+        "recommendation_topic_evidence_invalid", "recommendation_unsupported_evidence_invalid",
         "invalid_candidate", "role_duplicate", "term_duplicate", "role_order", "state_rules",
         "summary_source_invalid", "recall_citation_invalid", "selection_source_invalid",
         "selection_evidence_invalid", "context_evidence_invalid",

@@ -571,6 +571,49 @@ def test_bare_digit_without_pending_search_and_conversational_digit_question_do_
     assert handle(snapshot,group,dict(context,state=state),'2는 왜 좋아?') is None
 
 
+def test_broad_recommendation_accepts_separate_title_and_grounded_description():
+    import json
+    from pathlib import Path
+    from backend.services.catalog_repository import load_catalog
+    fixture = json.loads((Path(__file__).parent / 'fixtures/recommendation-title-description.json').read_text(encoding='utf-8'))
+    snapshot = load_catalog(Path(__file__).parents[2] / 'docs/domains/illustration-reference/term-cards')
+    interpreted = InterpretationOutput.model_validate(fixture['output'])
+    job = dict(JOB, request_text=fixture['request'])
+    decision = asyncio.run(recommendations.handle(None, job, interpreted, snapshot,
+        dict(state={}, recent=[], sources=[])))
+    assert decision.result.agent_status == 'drawing_chat'
+    assert decision.result.reference_plan is None
+    group = decision.result.recommendation_group
+    assert len(group.candidates) == 2
+    assert all(candidate.name not in candidate.source_quote for candidate in group.candidates)
+    context = dict(state={'recommendation_group': group.model_dump(mode='json')}, recent=[], sources=[])
+    adopted = handle(snapshot, group, context)
+    assert adopted.adoption.candidate_id == group.candidates[1].candidate_id
+    assert {term.selection.term_id for term in adopted.resolution.terms} == {
+        term.term_id for term in group.candidates[1].terms}
+    # A heading can identify an option, but cannot silently become search evidence.
+    heading_evidence = interpreted.model_copy(deep=True)
+    heading_evidence.recommendation_candidates[0].terms[0].evidence = [
+        heading_evidence.recommendation_candidates[0].name]
+    with pytest.raises(LLMInvalidStructuredOutput) as failure:
+        recommendations.create_group(job, heading_evidence, snapshot)
+    assert failure.value.feedback[0]['code'] == 'recommendation_evidence_invalid'
+    foreign_quote = interpreted.model_copy(deep=True)
+    foreign_quote.recommendation_candidates[0].source_quote = group.candidates[1].source_quote
+    with pytest.raises(LLMInvalidStructuredOutput) as failure:
+        recommendations.create_group(job, foreign_quote, snapshot)
+    assert failure.value.feedback[0]['code'] == 'recommendation_quote_invalid'
+
+
+def test_recommendation_title_must_still_belong_to_its_numbered_block(snapshot_factory, card_factory):
+    snapshot, _, _ = setup(snapshot_factory, card_factory)
+    interpreted = output()
+    interpreted.recommendation_candidates[0].name = interpreted.recommendation_candidates[1].name
+    with pytest.raises(LLMInvalidStructuredOutput) as failure:
+        recommendations.create_group(JOB, interpreted, snapshot)
+    assert failure.value.feedback[0]['code'] == 'recommendation_quote_invalid'
+
+
 def real_group(term_ids):
     from pathlib import Path
     from backend.services.catalog_repository import load_catalog

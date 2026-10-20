@@ -48,6 +48,24 @@ def test_final_nonvalidation_failure_clears_diagnostics():
     assert connection.args[5] is None
 
 
+@pytest.mark.parametrize('code', [
+    'recommendation_candidate_count', 'recommendation_candidates_missing',
+    'recommendation_card_invalid', 'recommendation_confirmed_source_invalid',
+    'recommendation_evidence_invalid', 'recommendation_model_source_invalid',
+    'recommendation_numbering_invalid', 'recommendation_owner_invalid',
+    'recommendation_quote_invalid', 'recommendation_retry_conditions_invalid',
+    'recommendation_retry_source_invalid', 'recommendation_source_invalid',
+    'recommendation_state_invalid', 'recommendation_terms_invalid',
+    'recommendation_topic_evidence_invalid', 'recommendation_unsupported_evidence_invalid',
+])
+def test_recommendation_failure_reason_survives_safe_persistence(code):
+    connection = persisted(LLMInvalidStructuredOutput('private response',
+        stage='conversation_validation', feedback=[{'path': [], 'code': code, 'input': 'private response'}]))
+    assert json.loads(connection.args[5]) == [
+        {'stage': 'conversation_validation', 'path': [], 'code': code}]
+    assert 'private response' not in repr(connection.args)
+
+
 def test_final_diagnostics_reject_arbitrary_values():
     connection = persisted(LLMInvalidStructuredOutput("secret", feedback=[
         {"path": ["secret", 0], "code": "secret", "input": "secret"}]))
