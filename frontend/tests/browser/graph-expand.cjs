@@ -37,7 +37,7 @@ const assert=require('node:assert/strict');
 
    const detail=page.locator('.term-graph-node[data-node-id="pose_sitting_leaning_forward"]');
    await detail.click({force:true});
-   assert.equal(await detail.getAttribute('data-selected'),'true');
+   assert.equal(await detail.getAttribute('data-selected'),'true',`${mobile?'mobile':'desktop'} detail remains selectable after expansion`);
    await expand.click({force:true});
    assert.equal(await detail.count(),0,'collapse hides descendants');
    assert.match(await page.locator('[aria-label="추천 검색어"]').innerText(),/leaning forward/,'collapse preserves selected query');

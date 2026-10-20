@@ -49,6 +49,58 @@ function stableAngle(id) {
   return (hash%360)*Math.PI/180;
 }
 
+function spreadExpandedWorldLayout(nodes) {
+  const width=1000,height=700,graph={nodes};
+  const raw=projectGraph(graph,INITIAL_VIEW),positions=Object.fromEntries(Object.entries(raw).map(([id,point])=>[id,{...point}]));
+  const items=nodes.map(node=>{
+    const point=raw[node.id],visible=node.term&&point.depth>=-40;
+    let boxWidth=!node.term?50:visible?Math.min(190,44+[...node.label].length*11):30;
+    let boxHeight=!node.term?50:visible?42:30;
+    if(node.expandable) {boxWidth+=40;boxHeight=Math.max(boxHeight,72);}
+    const scale=node.term?Math.max(.72,point.scale):point.scale;
+    return {node,halfWidth:boxWidth*scale/2*1000/width,halfHeight:boxHeight*scale/2*700/height,
+      mobility:node.isDetail?1:node.term?(node.term.term_id.startsWith('pose_')?.7:.6):.25};
+  });
+  const gapX=8*1000/width,gapY=8*700/height;
+  for(let iteration=0;iteration<180;iteration++) {
+    if(iteration<120) for(const item of items) {
+      const point=positions[item.node.id],origin=raw[item.node.id];
+      point.x+=(origin.x-point.x)*.018;point.y+=(origin.y-point.y)*.018;
+    }
+    for(let first=0;first<items.length;first++) for(let second=first+1;second<items.length;second++) {
+      const a=items[first],b=items[second],pa=positions[a.node.id],pb=positions[b.node.id];
+      const dx=pb.x-pa.x,dy=pb.y-pa.y;
+      const needX=a.halfWidth+b.halfWidth+gapX,needY=a.halfHeight+b.halfHeight+gapY;
+      const overlapX=needX-Math.abs(dx),overlapY=needY-Math.abs(dy);
+      if(overlapX<=0||overlapY<=0) continue;
+      const total=a.mobility+b.mobility,shareA=a.mobility/total,shareB=b.mobility/total;
+      if(overlapX/needX<overlapY/needY) {
+        const direction=dx===0?(stableAngle(`${a.node.id}:${b.node.id}`)<Math.PI?1:-1):Math.sign(dx);
+        pa.x-=direction*overlapX*shareA;pb.x+=direction*overlapX*shareB;
+      } else {
+        const direction=dy===0?(stableAngle(`${b.node.id}:${a.node.id}`)<Math.PI?1:-1):Math.sign(dy);
+        pa.y-=direction*overlapY*shareA;pb.y+=direction*overlapY*shareB;
+      }
+    }
+    for(const item of items) {
+      const point=positions[item.node.id];
+      point.x=clamp(point.x,item.halfWidth+gapX,1000-item.halfWidth-gapX);
+      point.y=clamp(point.y,70+item.halfHeight+gapY,560-item.halfHeight-gapY);
+    }
+  }
+  const right={x:Math.cos(INITIAL_VIEW.yaw),y:0,z:Math.sin(INITIAL_VIEW.yaw)};
+  const up={x:Math.sin(INITIAL_VIEW.yaw)*Math.sin(INITIAL_VIEW.pitch),y:Math.cos(INITIAL_VIEW.pitch),
+    z:-Math.cos(INITIAL_VIEW.yaw)*Math.sin(INITIAL_VIEW.pitch)};
+  for(const node of nodes) {
+    const origin=raw[node.id],point=positions[node.id];
+    const perspective=1100/(1100-origin.depth),projectionScale=perspective*INITIAL_VIEW.zoom;
+    const screenX=(point.x-origin.x)/projectionScale,screenY=(point.y-origin.y)/projectionScale;
+    node.x+=right.x*screenX+up.x*screenY;
+    node.y+=right.y*screenX+up.y*screenY;
+    node.z+=right.z*screenX+up.z*screenY;
+  }
+}
+
 export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) {
   const base=buildTermGraph(baseTerms);
   const baseIds=new Set(baseTerms.map(term=>term.term_id));
@@ -115,6 +167,7 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
     const node=makeNode(term,anchor,stableAngle(term.term_id),76);
     nodes.push(node);nodeById.set(node.id,node);
   }
+  if(expanded.size>0) spreadExpandedWorldLayout(nodes);
 
   const edges=[...base.edges];
   const edgeKeys=new Set(edges.map(edge=>`${edge.source}:${edge.target}:category`));
@@ -150,73 +203,6 @@ export function toggleTerm(ids, id) {
 export function projectGraph(graph, view) {
   // Node anchors and edge endpoints must always share the same 3D projection.
   return Object.fromEntries(graph.nodes.map(node=>[node.id,projectNode(node,view)]));
-}
-
-function projectedFootprint(node, point, {width, height, focusedId, selectedIds}) {
-  const compact=width<=560;
-  const emphasized=focusedId===node.id||selectedIds.includes(node.id);
-  const labelVisible=node.term&&(compact ? focusedId===node.id : point.depth>=-40||emphasized);
-  let boxWidth,boxHeight;
-  if(!node.term) {
-    boxWidth=50;boxHeight=50;
-  } else if(labelVisible) {
-    boxWidth=Math.min(190,44+[...node.label].length*11);boxHeight=42;
-  } else {
-    boxWidth=compact?40:30;boxHeight=compact?40:30;
-  }
-  if(node.expandable) {boxWidth+=40;boxHeight=Math.max(boxHeight,72);}
-  const scale=node.term?Math.max(compact?1:.72,point.scale):point.scale;
-  return {halfWidth:boxWidth*scale/2*1000/width,halfHeight:boxHeight*scale/2*700/height};
-}
-
-export function resolveGraphProjection(graph, view, options={}) {
-  const width=Math.max(280,options.width||1000),height=Math.max(320,options.height||700);
-  const focusedId=options.focusedId||'',selectedIds=options.selectedIds||[];
-  const raw=options.rawPoints||projectGraph(graph,view),positions={},previous=options.previousLayout;
-  const leftInset=(options.leftInset||0)*1000/width,rightInset=(options.rightInset||0)*1000/width;
-  const topInset=(options.topInset||0)*700/height,bottomInset=(options.bottomInset||0)*700/height;
-  const items=graph.nodes.map(node=>{
-    const footprint=projectedFootprint(node,raw[node.id],{width,height,focusedId,selectedIds});
-    const item={node,raw:raw[node.id],...footprint,
-      mobility:node.isDetail?1:node.term?(node.term.term_id.startsWith('pose_')?0.7:0.6):0.25};
-    const oldPoint=previous?.points?.[node.id],oldRaw=previous?.raw?.[node.id];
-    positions[node.id]=oldPoint&&oldRaw ? {...raw[node.id],
-      x:oldPoint.x+raw[node.id].x-oldRaw.x,y:oldPoint.y+raw[node.id].y-oldRaw.y} : {...raw[node.id]};
-    return item;
-  });
-  const gapX=8*1000/width,gapY=8*700/height;
-  function separate(attract) {
-    if(attract) for(const item of items) {
-      const point=positions[item.node.id];
-      const oldRaw=previous?.raw?.[item.node.id];
-      const rawMoved=oldRaw&&(Math.abs(oldRaw.x-item.raw.x)>0.001||Math.abs(oldRaw.y-item.raw.y)>0.001);
-      const strength=previous?.points?.[item.node.id]?(rawMoved?0.004:0):0.018;
-      point.x+=(item.raw.x-point.x)*strength;point.y+=(item.raw.y-point.y)*strength;
-    }
-    for(let first=0;first<items.length;first++) for(let second=first+1;second<items.length;second++) {
-      const a=items[first],b=items[second],pa=positions[a.node.id],pb=positions[b.node.id];
-      let dx=pb.x-pa.x,dy=pb.y-pa.y;
-      const needX=a.halfWidth+b.halfWidth+gapX,needY=a.halfHeight+b.halfHeight+gapY;
-      const overlapX=needX-Math.abs(dx),overlapY=needY-Math.abs(dy);
-      if(overlapX<=0||overlapY<=0) continue;
-      const total=a.mobility+b.mobility,shareA=a.mobility/total,shareB=b.mobility/total;
-      if(overlapX/needX<overlapY/needY) {
-        const direction=dx===0?(stableAngle(`${a.node.id}:${b.node.id}`)<Math.PI?1:-1):Math.sign(dx);
-        pa.x-=direction*overlapX*shareA;pb.x+=direction*overlapX*shareB;
-      } else {
-        const direction=dy===0?(stableAngle(`${b.node.id}:${a.node.id}`)<Math.PI?1:-1):Math.sign(dy);
-        pa.y-=direction*overlapY*shareA;pb.y+=direction*overlapY*shareB;
-      }
-    }
-    for(const item of items) {
-      const point=positions[item.node.id];
-      point.x=clamp(point.x,leftInset+item.halfWidth+gapX,1000-rightInset-item.halfWidth-gapX);
-      point.y=clamp(point.y,topInset+item.halfHeight+gapY,700-bottomInset-item.halfHeight-gapY);
-    }
-  }
-  const iterations=previous?100:180;
-  for(let iteration=0;iteration<iterations;iteration++) separate(iteration<(previous?40:120));
-  return positions;
 }
 
 export function appendTerms(draft, terms) {
