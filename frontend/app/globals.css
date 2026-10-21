@@ -43,12 +43,16 @@
 .term-graph-scene line[data-relation="all"] { stroke:var(--accent); stroke-width:1.7; }
 .term-graph-scene line[data-relation="any"] { stroke:var(--accent-hover); stroke-dasharray:5 4; stroke-width:1.7; }
 .term-graph-scene line.is-focused { stroke:var(--accent); opacity:1; stroke-width:2; }
-.term-graph-node,.term-graph-category { position:absolute; transform:translate(-50%,-50%) scale(var(--node-scale,1)); transform-origin:center; }
+.term-graph-node,.term-graph-category { position:absolute; transform:translate(-50%,-50%) scale(var(--node-scale,1)); transform-origin:center;
+  transition:filter 140ms cubic-bezier(.2,0,0,1),border-color 140ms cubic-bezier(.2,0,0,1),background-color 140ms cubic-bezier(.2,0,0,1); }
 .term-graph-node { --term-node-size:92px; display:grid; place-items:center; width:var(--term-node-size); height:var(--term-node-size); min-width:var(--term-node-size); min-height:var(--term-node-size); padding:8px; overflow:hidden;
   border:1px solid var(--border); border-radius:50%; background:var(--canvas); font-size:14px; font-weight:700; text-align:center; line-height:1.2; box-shadow:0 3px 12px #0003; }
-.term-graph-node .term-graph-label { display:block; width:100%; max-height:4.8em; overflow:hidden; overflow-wrap:break-word; word-break:normal; }
+.term-graph-node::before,.term-graph-category::before { content:""; position:absolute; inset:4px; border:1px solid color-mix(in srgb,var(--accent) 34%,transparent); border-radius:50%; opacity:.04; pointer-events:none; }
+.term-graph-node .term-graph-label { position:relative; z-index:1; display:block; width:100%; max-height:4.8em; overflow:hidden; overflow-wrap:break-word; word-break:normal; }
 .term-graph-node[data-expandable="true"] .term-graph-label { padding-bottom:24px; }
-.term-graph-node:hover,.term-graph-node:focus-visible,.term-graph-node[data-selected="true"] { opacity:1 !important; }
+.term-graph-node:hover,.term-graph-node:focus-visible,.term-graph-node[data-selected="true"][data-motion="idle"] { opacity:1 !important; }
+.term-graph-node:hover { filter:brightness(1.07); }
+.term-graph-node:active { filter:brightness(.93) saturate(1.08); transition-duration:80ms; }
 .term-graph-node[data-selected="true"] { border-color:var(--accent); background:var(--accent-surface); box-shadow:0 0 0 2px var(--accent),0 3px 12px #0003; }
 .term-graph-node[data-expandable="false"] { --term-node-size:76px; padding:6px; font-size:14px; }
 .term-graph-node[data-detail="true"] { --term-node-size:80px; padding:6px; border-color:color-mix(in srgb,var(--accent) 55%,transparent); font-size:14px; line-height:1.14; }
@@ -60,7 +64,15 @@
   background:var(--surface-raised); color:var(--accent); font-size:16px; line-height:1; font-weight:700; touch-action:manipulation; z-index:1150 !important; }
 .term-graph-expand[aria-expanded="true"] { background:var(--accent-surface); }
 .term-graph-expand:hover,.term-graph-expand:focus-visible { opacity:1 !important; z-index:1003 !important; }
+.term-graph-expand:active { filter:brightness(.9); }
 .term-graph-category { color:var(--accent); border:1px solid var(--accent); border-radius:50%; width:56px; height:56px; display:grid; place-items:center; background:var(--accent-surface); font-size:14px; font-weight:700; opacity:1 !important; --node-scale:1 !important; pointer-events:none; }
+.term-graph-scene[data-animating="false"][data-page-visible="true"] .term-graph-category::before { animation:term-graph-idle-glow 4.8s ease-in-out 1; }
+@keyframes term-graph-idle-glow { 0%,100% { opacity:.04; } 48% { opacity:.10; } }
+@media (prefers-reduced-motion:reduce) {
+  .term-graph-node,.term-graph-category,.term-graph-expand { transition:none; }
+  .term-graph-scene .term-graph-category::before { animation:none !important; }
+}
+@media (max-width:760px) { .term-graph-scene .term-graph-category::before { animation:none !important; } }
 .term-graph-help { padding:8px 0 16px; font-size:11px; }
 .term-graph-detail { display:flex; gap:16px; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding:16px 0; }
 .term-graph-detail h2 { margin:0 0 6px; font-size:17px; }
