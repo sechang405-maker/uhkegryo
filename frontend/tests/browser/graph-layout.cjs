@@ -62,11 +62,15 @@ function geometry(page) {
     const top=document.elementFromPoint(x,y);
     return top&&control.contains(top)?[]:[[control.dataset.nodeId,top?.closest?.('.term-graph-node,.term-graph-expand')?.dataset?.nodeId||top?.className||null]];
    });
-  const edges=[...document.querySelectorAll('.term-graph-scene line')].map(element=>({
-   source:element.dataset.source,target:element.dataset.target,relation:element.dataset.relation,
-   x1:+element.getAttribute('x1')*sr.width/1000,y1:+element.getAttribute('y1')*sr.height/840,
-   x2:+element.getAttribute('x2')*sr.width/1000,y2:+element.getAttribute('y2')*sr.height/840,
-  }));
+  const edgeMap=new Map();
+  for(const element of document.querySelectorAll('.term-graph-scene line')) {
+   const key=`${element.dataset.source}:${element.dataset.target}:${element.dataset.relation}`;
+   const edge=edgeMap.get(key)||{source:element.dataset.source,target:element.dataset.target,relation:element.dataset.relation};
+   if(element.dataset.endpoint==='source') Object.assign(edge,{x1:+element.getAttribute('x1')*sr.width/1000,y1:+element.getAttribute('y1')*sr.height/840});
+   if(element.dataset.endpoint==='target') Object.assign(edge,{x2:+element.getAttribute('x2')*sr.width/1000,y2:+element.getAttribute('y2')*sr.height/840});
+   edgeMap.set(key,edge);
+  }
+  const edges=[...edgeMap.values()];
   const endpointErrors=edges.flatMap(edge=>{
    const source=byId[edge.source],target=byId[edge.target];
    if(!source||!target) return [];

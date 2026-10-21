@@ -53,7 +53,7 @@ async function openPage(browser,options={}) {
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
    const sample=await page.evaluate(()=>{
     const node=document.querySelector('[data-node-id="pose_sitting_leaning_forward"]');
-    const line=document.querySelector('line[data-target="pose_sitting_leaning_forward"]');
+    const line=document.querySelector('line[data-target="pose_sitting_leaning_forward"][data-endpoint="target"]');
     if(!node||!line) return null;
     return {amount:+node.dataset.motionAmount,disabled:node.disabled,
      error:Math.hypot(+line.getAttribute('x2')-(+node.dataset.layoutX),+line.getAttribute('y2')-(+node.dataset.layoutY))};
@@ -89,7 +89,7 @@ async function openPage(browser,options={}) {
   await expand.click();
   await settle(page,'pose_sitting_leaning_forward');
   assert.equal(await page.locator('[data-node-id="pose_sitting_leaning_forward"]').count(),1);
-  assert.equal(await page.locator('line[data-target="pose_sitting_leaning_forward"]').count(),1);
+  assert.equal(await page.locator('line[data-target="pose_sitting_leaning_forward"][data-endpoint="target"]').count(),1);
 
   const viewBefore=await scene.evaluate(node=>[node.dataset.yaw,node.dataset.pitch,node.dataset.zoom]);
   await expand.click();await page.waitForFunction(()=>!document.querySelector('[data-node-id="pose_sitting_leaning_forward"]'));
@@ -104,7 +104,7 @@ async function openPage(browser,options={}) {
   await settle(page,'pose_sitting_leaning_forward');
   const viewAfter=await scene.evaluate(node=>[node.dataset.yaw,node.dataset.pitch,node.dataset.zoom]);
   assert.notDeepEqual(viewAfter,viewBefore,'wheel and drag input stopped responding during motion');
-  const endpointError=await page.evaluate(()=>Math.max(0,...[...document.querySelectorAll('.term-graph-scene line')].map(line=>{
+  const endpointError=await page.evaluate(()=>Math.max(0,...[...document.querySelectorAll('.term-graph-scene line[data-endpoint="target"]')].map(line=>{
    const target=document.querySelector(`.term-graph-node[data-node-id="${line.dataset.target}"],.term-graph-category[data-node-id="${line.dataset.target}"]`);
    return target?Math.hypot(+line.getAttribute('x2')-(+target.dataset.layoutX),+line.getAttribute('y2')-(+target.dataset.layoutY)):0;
   })));
@@ -115,16 +115,16 @@ async function openPage(browser,options={}) {
   const standingExpand=page.locator('[data-node-id="pose_standing:expand"]');
   await standingExpand.click();
   await page.waitForFunction(()=>document.querySelector('.term-graph-scene')?.dataset.animating==='false');
-  assert.equal(await page.locator('line[data-target="pose_action_two_hand_aiming"][data-source="pose_sitting"]').count(),1);
+  assert.equal(await page.locator('line[data-target="pose_action_two_hand_aiming"][data-source="pose_sitting"][data-endpoint="target"]').count(),1);
   await expand.click();
   const shared=page.locator('[data-node-id="pose_action_two_hand_aiming"]');
   assert.equal(await shared.getAttribute('data-motion'),'enter');
-  assert.equal(await page.locator('line[data-target="pose_action_two_hand_aiming"][data-source="pose_standing"]').count(),1);
-  assert.equal(await page.locator('line[data-target="pose_action_two_hand_aiming"]').count(),1);
+  assert.equal(await page.locator('line[data-target="pose_action_two_hand_aiming"][data-source="pose_standing"][data-endpoint="target"]').count(),1);
+  assert.equal(await page.locator('line[data-target="pose_action_two_hand_aiming"][data-endpoint="target"]').count(),1);
   for(let frame=0;frame<4;frame++) {
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
    const error=await page.evaluate(()=>{
-    const node=document.querySelector('[data-node-id="pose_action_two_hand_aiming"]'),line=document.querySelector('line[data-target="pose_action_two_hand_aiming"]');
+    const node=document.querySelector('[data-node-id="pose_action_two_hand_aiming"]'),line=document.querySelector('line[data-target="pose_action_two_hand_aiming"][data-endpoint="target"]');
     return Math.hypot(+line.getAttribute('x2')-(+node.dataset.layoutX),+line.getAttribute('y2')-(+node.dataset.layoutY));
    });
    assert(error<.001,`owner-transfer edge lost its node anchor by ${error}`);

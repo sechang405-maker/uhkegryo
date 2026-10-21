@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { buildExpandedTermGraph, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
 import { graphCategoryColor } from '../lib/term-graph-colors.mjs';
+import { buildGraphDepthLayers } from '../lib/term-graph-edges.mjs';
 import {
   createGraphMotionState,
   finishGraphMotion,
@@ -27,6 +28,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
   const list=listRequested||logicalGraph.denseOverflow;
   const [view,setView]=useState(INITIAL_VIEW);
   const [notice,setNotice]=useState('');
+  const [sceneSize,setSceneSize]=useState({width:1000,height:840});
   const gesture=useRef(null);
   const sceneRef=useRef(null);
   const pointers=useRef(new Map());
@@ -43,6 +45,8 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
     [graph,motionState.presence,view,motionNow]);
   const points=projection.points;
   const roleByNodeId=useMemo(()=>new Map(graph.nodes.map(node=>[node.id,node.role])),[graph.nodes]);
+  const depthComposition=useMemo(()=>buildGraphDepthLayers(graph.nodes,graph.edges,points,{viewport:sceneSize}),
+    [graph.nodes,graph.edges,points,sceneSize]);
   useEffect(()=>{
     setMotionState(current=>createGraphMotionState(
       buildExpandedTermGraph(terms,catalogTerms,current.expandedIds),current.expandedIds));
@@ -114,6 +118,18 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
     };
     scene.addEventListener('wheel',handleWheel,{passive:false});
     return ()=>scene.removeEventListener('wheel',handleWheel);
+  },[list]);
+  useEffect(()=>{
+    const scene=sceneRef.current;
+    if(!scene) return;
+    const update=()=>{
+      const {width,height}=scene.getBoundingClientRect();
+      setSceneSize(current=>current.width===width&&current.height===height?current:{width,height});
+    };
+    update();
+    const observer=new ResizeObserver(update);
+    observer.observe(scene);
+    return ()=>observer.disconnect();
   },[list]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.25)})); }
@@ -205,14 +221,19 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         {graph.edges.some(edge=>edge.relation) && <div className="term-graph-relation-legend" aria-label="조건 연결선 안내">
           <span data-relation="all">실선: 모두 필요</span><span data-relation="any">점선: 하나 이상</span>
         </div>}
-        <svg viewBox="0 0 1000 840" preserveAspectRatio="none" aria-hidden="true">
-          {graph.edges.map(edge=><line key={`${edge.source}:${edge.target}:${edge.relation||'category'}`} x1={points[edge.source].x} y1={points[edge.source].y}
-            x2={points[edge.target].x} y2={points[edge.target].y}
-            style={{opacity:(points[edge.source].opacity+points[edge.target].opacity)/2*.55,
-              '--edge-color':graphCategoryColor(roleByNodeId.get(edge.target))}}
-            data-source={edge.source} data-target={edge.target} data-relation={edge.relation||'category'}
-            className={focusedId===edge.target?'is-focused':''}/>)}
-        </svg>
+        {depthComposition.layers.map(layer=><svg key={layer.zIndex} className="term-graph-edge-layer"
+          style={{zIndex:layer.zIndex}} viewBox="0 0 1000 840" preserveAspectRatio="none" aria-hidden="true"
+          data-edge-layer={layer.zIndex}>
+          {layer.segments.map(segment=><line key={`${segment.source}:${segment.target}:${segment.relation||'category'}:${segment.segmentIndex}`}
+            x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2}
+            style={{opacity:segment.opacity,strokeDashoffset:segment.dashOffset,
+              '--edge-color':graphCategoryColor(roleByNodeId.get(segment.target))}}
+            data-source={segment.source} data-target={segment.target} data-relation={segment.relation||'category'}
+            data-segment-start={segment.t0.toFixed(7)} data-segment-end={segment.t1.toFixed(7)}
+            data-segment-depth={segment.depth.toFixed(3)} data-endpoint={segment.endpoint||undefined}
+            data-endpoint-mask={segment.endpointMasks.length?segment.endpointMasks.join(','):undefined}
+            className={focusedId===segment.target?'is-focused':''}/>)}
+        </svg>)}
         {graph.nodes.filter(node=>!node.motionOrigin).map(node=>{
           const p=points[node.id];
           const categoryColor=graphCategoryColor(node.role);
@@ -221,7 +242,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
           const exiting=motion?.target===0;
           const interactive=!motion;
           const nodeScale=node.term?1:p.scale;
-          const style={left:`${p.x/10}%`,top:`${p.y/8.4}%`,zIndex:Math.round(p.depth+500),opacity:p.opacity,
+          const style={left:`${p.x/10}%`,top:`${p.y/8.4}%`,zIndex:depthComposition.nodeZ[node.id],opacity:p.opacity,
             pointerEvents:node.term?(interactive?'auto':'none'):undefined,'--node-scale':nodeScale,'--motion-presence':motionAmount,
             '--category-color':categoryColor};
           const expandStyle={...style,'--node-scale':Math.max(1,nodeScale),
