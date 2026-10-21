@@ -34,7 +34,25 @@ const assert=require('node:assert/strict');
     await page.locator('.term-graph-tools > summary').click();
     await page.getByRole('button',{name:'확대',exact:true}).click();
     assert(Number(await scene.getAttribute('data-zoom'))>Number(zoom),'zoom button must remain');
+    const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+    await mobile.route('**/api/**',route=>{
+      const path=new URL(route.request().url()).pathname;
+      if(path==='/api/local/profile') return route.fulfill({json:{persistent:false}});
+      if(path==='/api/sessions') return route.fulfill({json:{items:[]}});
+      return route.abort();
+    });
+    await mobile.goto(process.env.APP_BASE || 'http://127.0.0.1:3100');
+    await mobile.waitForLoadState('networkidle');
+    await mobile.locator('.term-graph-list').waitFor();
+    await mobile.locator('.term-graph-view-toggle > button').click();
+    const mobileScene=mobile.locator('.term-graph-scene');
+    await mobileScene.waitFor();
+    const mobileZoom=await mobileScene.getAttribute('data-zoom'),mobileRect=await mobileScene.boundingBox();
+    await mobile.mouse.move(mobileRect.x+mobileRect.width*.5,mobileRect.y+mobileRect.height*.45);
+    await mobile.mouse.wheel(0,240);
+    await mobile.waitForFunction(previous=>+document.querySelector('.term-graph-scene').dataset.zoom<+previous,mobileZoom);
+    await mobile.close();
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({wheelZoom:true,centralNoScroll:true,wheelCancelled:true,dragRotation:true,zoomButton:true,errors}));
+    console.log(JSON.stringify({wheelZoom:true,mobileWheelZoom:true,centralNoScroll:true,wheelCancelled:true,dragRotation:true,zoomButton:true,errors}));
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

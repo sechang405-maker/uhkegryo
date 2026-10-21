@@ -400,7 +400,7 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     if(canonical.length<4||children.length<2) return false;
     const parentPoint=projectNode(parent,INITIAL_VIEW),parentRadius=Math.hypot(parentPoint.x-GRAPH_CENTER.x,parentPoint.y-GRAPH_CENTER.y),
       parentAngle=Math.atan2(parentPoint.y-GRAPH_CENTER.y,parentPoint.x-GRAPH_CENTER.x),
-      half=Math.min(.86,screenTerritoryHalfAngle(parent)+.04),
+      half=canonical.length>12?1.25:Math.min(.86,screenTerritoryHalfAngle(parent)+.04),
       frameBias=Math.sin(parentAngle)<0?half*.28:-half*.28,
       immutable=nodes.filter(node=>!node.isDetail&&node.id!==parentId),
       immutablePoints=immutable.map(node=>({node,point:projectNode(node,INITIAL_VIEW)}));
@@ -458,6 +458,40 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     }
     const order=[...children].sort((a,b)=>candidateMap.get(a.id).length-candidateMap.get(b.id).length||
       canonical.indexOf(a.id)-canonical.indexOf(b.id)||a.id.localeCompare(b.id));
+    const applyAssignment=assigned=>{
+      for(const {child,candidate} of assigned) {
+        const visible=visualParent.get(child.id)===parentId?byId.get(child.id):null;
+        if(!visible) continue;
+        visible.x=candidate.world.x;visible.y=candidate.world.y;visible.z=candidate.world.z;placed.add(visible.id);
+      }
+      return true;
+    };
+    // A bounded beam can legitimately exhaust on a large synthetic fan. Do
+    // not silently fall through to independent placement: reserve the entire
+    // canonical fan with a deterministic farthest-first assignment instead.
+    const placeSafeFallback=()=>{
+      const assigned=[];
+      for(const child of [...children].sort((a,b)=>canonical.indexOf(a.id)-canonical.indexOf(b.id)||a.id.localeCompare(b.id))) {
+        const choices=candidateMap.get(child.id)||[];
+        if(!choices.length) return false;
+        const ranked=choices.map(candidate=>{
+          const margin=assigned.length?Math.min(...assigned.map(saved=>Math.hypot(saved.candidate.x-candidate.x,saved.candidate.y-candidate.y)-
+            renderedCircleRadius(child)-renderedCircleRadius(saved.child))):Infinity;
+          return {candidate,margin};
+        }).sort((a,b)=>b.margin-a.margin||a.candidate.preference-b.candidate.preference||a.candidate.x-b.candidate.x||a.candidate.y-b.candidate.y);
+        assigned.push({child,candidate:ranked[0].candidate});
+      }
+      for(let pass=0;pass<12;pass++) for(let index=0;index<assigned.length;index++) {
+        const item=assigned[index],others=assigned.filter((_,otherIndex)=>otherIndex!==index);
+        const ranked=(candidateMap.get(item.child.id)||[]).map(candidate=>{
+          const margin=others.length?Math.min(...others.map(saved=>Math.hypot(saved.candidate.x-candidate.x,saved.candidate.y-candidate.y)-
+            renderedCircleRadius(item.child)-renderedCircleRadius(saved.child))):Infinity;
+          return {candidate,margin};
+        }).sort((a,b)=>b.margin-a.margin||a.candidate.preference-b.candidate.preference||a.candidate.x-b.candidate.x||a.candidate.y-b.candidate.y);
+        item.candidate=ranked[0].candidate;
+      }
+      return applyAssignment(assigned);
+    };
     const beamWidth=children.length>6?512:256;
     let beam=[{cost:0,assigned:[]}];
     for(const child of order) {
@@ -468,17 +502,12 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
         if(blocked) continue;
         next.push({cost:state.cost+candidate.preference,assigned:[...state.assigned,{child,candidate}]});
       }
-      if(!next.length) return false;
+      if(!next.length) return placeSafeFallback();
       next.sort((a,b)=>a.cost-b.cost||a.assigned.map(item=>`${item.child.id}:${item.candidate.x.toFixed(2)}:${item.candidate.y.toFixed(2)}`).join('|')
         .localeCompare(b.assigned.map(item=>`${item.child.id}:${item.candidate.x.toFixed(2)}:${item.candidate.y.toFixed(2)}`).join('|')));
       beam=next.slice(0,beamWidth);
     }
-    for(const {child,candidate} of beam[0].assigned) {
-      const visible=visualParent.get(child.id)===parentId?byId.get(child.id):null;
-      if(!visible) continue;
-      visible.x=candidate.world.x;visible.y=candidate.world.y;visible.z=candidate.world.z;placed.add(visible.id);
-    }
-    return true;
+    return applyAssignment(beam[0].assigned);
   };
 
   for(const [parentId,visibleIds] of [...siblingGroups].sort(([a],[b])=>a.localeCompare(b)))

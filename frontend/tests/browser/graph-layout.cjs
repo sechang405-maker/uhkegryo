@@ -133,7 +133,7 @@ function geometry(page) {
   };
   const initial=await check('desktop initial',Infinity,true);
   if(process.env.GRAPH_CAPTURE) await page.screenshot({path:process.env.GRAPH_CAPTURE,fullPage:true});
-  assert(initial.overlaps.length<=50,`desktop initial: dense circular layout still has ${initial.overlaps.length} overlaps: ${JSON.stringify(initial.overlaps.slice(0,20))}`);
+  assert(initial.overlaps.length<=25,`desktop initial: dense circular layout still has ${initial.overlaps.length} overlaps: ${JSON.stringify(initial.overlaps.slice(0,20))}`);
   assert(initial.minDetailSize>=68,`desktop initial: detail circles shrink below 68px (${initial.minDetailSize}px)`);
   assert(initial.minDetailFont>=14,`desktop initial: detail text shrinks below 14px (${initial.minDetailFont}px)`);
   assert.deepEqual(initial.offscreen,[],`desktop initial: nodes are clipped: ${JSON.stringify(initial.offscreen)}`);

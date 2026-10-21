@@ -77,12 +77,12 @@
 .term-graph-selection > p:empty { margin:0; }
 .term-graph-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; padding:20px 0; }
 .term-graph-list fieldset { min-width:0; border:1px solid var(--border); border-radius:10px; margin:0; }
-.term-graph-list legend { font-size:13px; color:var(--accent); padding:0 6px; }
+.term-graph-list legend { font-size:14px; color:var(--accent); padding:0 6px; }
 .term-graph-list fieldset > div { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:44px; }
-.term-graph-list label { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; }
+.term-graph-list label { display:flex; align-items:center; gap:6px; font-size:14px; cursor:pointer; }
 .term-graph-list input { accent-color:var(--accent); width:18px; height:18px; }
 .term-graph-list-actions { display:flex; align-items:center; flex-shrink:0; }
-.term-graph-list button { border:0; background:transparent; color:var(--accent); font-size:11px; padding:10px; }
+.term-graph-list button { border:0; background:transparent; color:var(--accent); font-size:14px; padding:10px; }
 @container (max-width: 560px) {
   .term-graph { padding:18px 14px 28px; }
   .term-graph-detail { align-items:start; }
@@ -483,5 +483,5 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
   }
   .term-graph:not(:has(> .term-graph-list)) .term-graph-scene > svg { overflow:visible; }
   .term-graph:not(:has(> .term-graph-list)) .term-graph-actions { flex-direction:column; }
-  .term-graph:not(:has(> .term-graph-list)) .term-graph-help-disclosure { top:104px; right:10px; bottom:auto; z-index:200; }
+  .term-graph:not(:has(> .term-graph-list)) .term-graph-help-disclosure { top:55px; left:112px; right:auto; bottom:auto; z-index:1300; }
 }

@@ -280,3 +280,16 @@ test('circular graph anchors avoid stacked centers and stay near the initial cam
     `${parent} dense sibling labels are packed too tightly: ${children[first]} / ${children[second]}`);
  assert.ok(visible.every(node=>node.x>-30&&node.x<1050&&node.y>-30&&node.y<870),'initial camera keeps every anchor near the frame');
 });
+
+test('a sixteen-child fan uses the deterministic dense fallback without stacked centers',()=>{
+ const root={role:'pose',term_id:'dense_root',label_ko:'dense root',requires_all_of:[],requires_any_of:[]};
+ const children=Array.from({length:16},(_,index)=>({role:'pose',term_id:`dense_child_${String(index).padStart(2,'0')}`,
+  label_ko:`dense child ${index}`,requires_all_of:['dense_root'],requires_any_of:[]}));
+ const graph=buildExpandedTermGraph([root],[root,...children],['dense_root']),points=projectGraph(graph,INITIAL_VIEW);
+ const visible=children.map(child=>points[child.term_id]);
+ let minimum=Infinity;
+ for(let first=0;first<visible.length;first++) for(let second=first+1;second<visible.length;second++)
+  minimum=Math.min(minimum,Math.hypot(visible[first].x-visible[second].x,visible[first].y-visible[second].y));
+ assert.ok(minimum>=68,`dense fallback stacked child centers at ${minimum}px`);
+ assert.deepEqual(buildExpandedTermGraph([root],[root,...children],['dense_root']).nodes,graph.nodes);
+});

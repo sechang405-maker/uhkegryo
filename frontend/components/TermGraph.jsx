@@ -33,7 +33,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
     };
     scene.addEventListener('wheel',handleWheel,{passive:false});
     return ()=>scene.removeEventListener('wheel',handleWheel);
-  },[]);
+  },[list]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.25)})); }
   function start(event) {
