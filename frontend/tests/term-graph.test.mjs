@@ -14,6 +14,15 @@ test('graph retains each example once and connects only its actual category', ()
  }
  assert.ok(new Set(graph.nodes.map(n=>n.z)).size>3);
 });
+test('category hubs keep a little extra breathing room without changing the camera',()=>{
+ const graph=buildTermGraph(HOME_TERMS),points=projectGraph(graph,INITIAL_VIEW);
+ const categories=graph.nodes.filter(node=>!node.term).map(node=>points[node.id]);
+ let minimum=Infinity;
+ for(let first=0;first<categories.length;first++) for(let second=first+1;second<categories.length;second++)
+  minimum=Math.min(minimum,Math.hypot(categories[first].x-categories[second].x,categories[first].y-categories[second].y));
+ assert.ok(minimum>=180,`adjacent category hubs are only ${minimum}px apart`);
+ assert.deepEqual(INITIAL_VIEW,{yaw:-.32,pitch:.18,zoom:.9});
+});
 test('projection rotates real depth and keeps extreme zoom finite', () => {
  const node={x:100,y:30,z:180};
  const front=projectNode(node,{yaw:0,pitch:0,zoom:1});

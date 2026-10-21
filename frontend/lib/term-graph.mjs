@@ -30,7 +30,7 @@ export function buildTermGraph(terms, childCounts=new Map()) {
   const nodes = [], edges = [];
   slots.forEach((slot, index) => {
     const angle=CATEGORY_ANGLE[slot.role]??(-3*Math.PI/4+index*Math.PI/2);
-    const categoryScreen={x:GRAPH_CENTER.x+115*Math.cos(angle),y:GRAPH_CENTER.y+115*Math.sin(angle)};
+    const categoryScreen={x:GRAPH_CENTER.x+128*Math.cos(angle),y:GRAPH_CENTER.y+128*Math.sin(angle)};
     const categoryDepth=index%2?-160:160;
     const {x,y,z}=worldFromInitialProjection(categoryScreen.x,categoryScreen.y,categoryDepth);
     const id = `category:${slot.role}`;
