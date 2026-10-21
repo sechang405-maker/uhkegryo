@@ -42,6 +42,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
   const projection=useMemo(()=>interpolateGraphMotion(graph,motionState.presence,view,motionNow),
     [graph,motionState.presence,view,motionNow]);
   const points=projection.points;
+  const roleByNodeId=useMemo(()=>new Map(graph.nodes.map(node=>[node.id,node.role])),[graph.nodes]);
   useEffect(()=>{
     setMotionState(current=>createGraphMotionState(
       buildExpandedTermGraph(terms,catalogTerms,current.expandedIds),current.expandedIds));
@@ -207,7 +208,8 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         <svg viewBox="0 0 1000 840" preserveAspectRatio="none" aria-hidden="true">
           {graph.edges.map(edge=><line key={`${edge.source}:${edge.target}:${edge.relation||'category'}`} x1={points[edge.source].x} y1={points[edge.source].y}
             x2={points[edge.target].x} y2={points[edge.target].y}
-            style={{opacity:(points[edge.source].opacity+points[edge.target].opacity)/2*.55}}
+            style={{opacity:(points[edge.source].opacity+points[edge.target].opacity)/2*.55,
+              '--edge-color':graphCategoryColor(roleByNodeId.get(edge.target))}}
             data-source={edge.source} data-target={edge.target} data-relation={edge.relation||'category'}
             className={focusedId===edge.target?'is-focused':''}/>)}
         </svg>
