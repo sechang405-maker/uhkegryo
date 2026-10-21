@@ -200,21 +200,9 @@ export function toggleTerm(ids, id) {
   return ids.includes(id) ? ids.filter(value=>value!==id) : [...ids,id];
 }
 
-export function projectGraph(graph, view, viewport={width:1000,height:700}) {
-  // Keep the visible graph as one locked screen-space body. A per-node camera
-  // projection makes rigid world coordinates look as if each card is drifting
-  // independently because perspective changes every anchor by a different amount.
-  const angle=(view.yaw-INITIAL_VIEW.yaw)+(view.pitch-INITIAL_VIEW.pitch)*.7;
-  const cosine=Math.cos(angle),sine=Math.sin(angle);
-  const zoom=clamp(view.zoom,.65,1.6)/INITIAL_VIEW.zoom;
-  const width=Number.isFinite(viewport?.width)&&viewport.width>0?viewport.width:1000;
-  const height=Number.isFinite(viewport?.height)&&viewport.height>0?viewport.height:700;
-  const unitX=width/1000,unitY=height/700;
-  return Object.fromEntries(graph.nodes.map(node=>{
-    const base=projectNode(node,INITIAL_VIEW),x=(base.x-500)*unitX,y=(base.y-350)*unitY;
-    return [node.id,{x:500+(x*cosine-y*sine)*zoom/unitX,y:350+(x*sine+y*cosine)*zoom/unitY,
-      depth:base.depth,scale:base.scale*zoom,opacity:base.opacity}];
-  }));
+export function projectGraph(graph, view) {
+  // Every visible anchor is derived from the same immutable world point and camera.
+  return Object.fromEntries(graph.nodes.map(node=>[node.id,projectNode(node,view)]));
 }
 
 export function appendTerms(draft, terms) {

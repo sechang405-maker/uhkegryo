@@ -45,7 +45,7 @@ test('initial rendered anchors use the world projection without grid or screen r
  assert.ok(new Set(Object.values(points).map(p=>p.x.toFixed(2))).size>30);
  assert.ok(new Set(Object.values(points).map(p=>p.y.toFixed(2))).size>30);
 });
-test('world data retains depth while camera motion preserves one visible graph body',()=>{
+test('world data stays fixed while yaw changes the projected depth',()=>{
  const graph=buildTermGraph(HOME_TERMS),before=projectGraph(graph,INITIAL_VIEW);
  assert.ok(INITIAL_VIEW.yaw!==0&&INITIAL_VIEW.pitch!==0);
  const categories=graph.nodes.filter(n=>!n.term);
@@ -53,10 +53,8 @@ test('world data retains depth while camera motion preserves one visible graph b
  assert.ok(Math.max(...graph.nodes.map(n=>n.z))-Math.min(...graph.nodes.map(n=>n.z))>400);
  const after=projectGraph(graph,{...INITIAL_VIEW,yaw:INITIAL_VIEW.yaw+.7});
  assert.ok(graph.nodes.some(n=>Math.hypot(after[n.id].x-before[n.id].x,after[n.id].y-before[n.id].y)>100));
- for(const node of graph.nodes) {
-  assert.equal(after[node.id].depth,before[node.id].depth);
-  assert.equal(after[node.id].scale,before[node.id].scale);
- }
+ assert.ok(graph.nodes.some(node=>Math.abs(after[node.id].depth-before[node.id].depth)>1));
+ assert.ok(graph.nodes.some(node=>Math.abs(after[node.id].scale-before[node.id].scale)>.001));
  for(const point of Object.values(before)) assert.ok(point.x>0&&point.x<1000&&point.y>0&&point.y<700);
 });
 
@@ -110,17 +108,19 @@ test('expanded graph keeps one deterministic world layout through rotation and z
  assert.deepEqual(buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']).nodes,graph.nodes);
 });
 
-test('camera motion keeps every graph anchor locked in one screen-space shape',()=>{
+test('camera motion uses independent yaw and pitch in one 3D projection without mutating world anchors',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
- const viewport={width:1440,height:900},before=projectGraph(graph,INITIAL_VIEW,viewport);
- const zoom=1.08,after=projectGraph(graph,{yaw:INITIAL_VIEW.yaw+.63,pitch:INITIAL_VIEW.pitch-.31,zoom},viewport);
- const expectedScale=zoom/INITIAL_VIEW.zoom;
- for(let first=0;first<graph.nodes.length;first++) for(let second=first+1;second<graph.nodes.length;second++) {
-  const a=graph.nodes[first].id,b=graph.nodes[second].id;
-  const beforeDistance=Math.hypot((before[a].x-before[b].x)*viewport.width/1000,(before[a].y-before[b].y)*viewport.height/700);
-  const afterDistance=Math.hypot((after[a].x-after[b].x)*viewport.width/1000,(after[a].y-after[b].y)*viewport.height/700);
-  assert.ok(Math.abs(afterDistance-beforeDistance*expectedScale)<1e-8,`${a} and ${b} drifted apart`);
+ const world=graph.nodes.map(({id,x,y,z})=>({id,x,y,z}));
+ const yawView={...INITIAL_VIEW,yaw:INITIAL_VIEW.yaw+.63};
+ const pitchView={...INITIAL_VIEW,pitch:INITIAL_VIEW.pitch-.31};
+ const yaw=projectGraph(graph,yawView),pitch=projectGraph(graph,pitchView);
+ for(const node of graph.nodes) {
+  assert.deepEqual(yaw[node.id],projectNode(node,yawView));
+  assert.deepEqual(pitch[node.id],projectNode(node,pitchView));
  }
+ assert.ok(graph.nodes.some(node=>Math.abs(yaw[node.id].depth-pitch[node.id].depth)>1));
+ assert.ok(graph.nodes.some(node=>Math.hypot(yaw[node.id].x-pitch[node.id].x,yaw[node.id].y-pitch[node.id].y)>10));
+ assert.deepEqual(graph.nodes.map(({id,x,y,z})=>({id,x,y,z})),world);
 });
 
 test('structure-time world layout separates visible labels in the initial camera view',()=>{

@@ -5,9 +5,11 @@ function geometry(page) {
  return page.evaluate(()=>{
   const scene=document.querySelector('.term-graph-scene'),sr=scene.getBoundingClientRect();
   const nodes=[...document.querySelectorAll('.term-graph-node,.term-graph-category')].map(element=>{
-   const rect=element.getBoundingClientRect(),label=element.querySelector('.term-graph-label');
+   const rect=element.getBoundingClientRect(),label=element.querySelector('.term-graph-label'),dot=element.querySelector('.term-graph-dot');
+   const anchor=(dot||element).getBoundingClientRect();
    return {id:element.dataset.nodeId,isDetail:element.dataset.detail==='true',x:rect.x-sr.x,y:rect.y-sr.y,width:rect.width,height:rect.height,
-    cx:rect.x-sr.x+rect.width/2,cy:rect.y-sr.y+rect.height/2,
+    cx:anchor.x-sr.x+anchor.width/2,cy:anchor.y-sr.y+anchor.height/2,
+    world:[element.dataset.worldX,element.dataset.worldY,element.dataset.worldZ],depth:+element.dataset.depth,
     labelVisible:Boolean(label)&&getComputedStyle(label).display!=='none'};
   });
   const labeled=nodes.filter(node=>node.labelVisible),overlaps=[];
@@ -44,9 +46,11 @@ function geometry(page) {
   const endpointErrors=edges.flatMap(edge=>{
    const source=byId[edge.source],target=byId[edge.target];
    if(!source||!target) return [];
-   return [Math.hypot(edge.x1-source.cx,edge.y1-source.cy),Math.hypot(edge.x2-target.cx,edge.y2-target.cy)];
+   return [{id:edge.source,error:Math.hypot(edge.x1-source.cx,edge.y1-source.cy),dx:edge.x1-source.cx,dy:edge.y1-source.cy},
+    {id:edge.target,error:Math.hypot(edge.x2-target.cx,edge.y2-target.cy),dx:edge.x2-target.cx,dy:edge.y2-target.cy}];
   });
-  return {overlaps,overlayOverlaps,maxEndpointError:Math.max(...endpointErrors),
+  const worstEndpoint=endpointErrors.reduce((worst,item)=>item.error>worst.error?item:worst,{error:0});
+  return {overlaps,overlayOverlaps,maxEndpointError:worstEndpoint.error,worstEndpoint,
    maxExpandAnchorError:Math.max(...expandAnchorErrors),maxLabelContainmentError:Math.max(...labelContainmentErrors),nodes,edges};
  });
 }
@@ -70,7 +74,7 @@ function geometry(page) {
   const check=async (label,overlapLimit=Infinity)=>{
    const result=await geometry(page);
    assert(result.overlaps.length<=overlapLimit,`${label}: visible-label overlaps grew to ${result.overlaps.length}: ${JSON.stringify(result.overlaps.slice(0,8))}`);
-   assert(result.maxEndpointError<1,`${label}: edge endpoint misses its node center by ${result.maxEndpointError}px`);
+   assert(result.maxEndpointError<1,`${label}: edge endpoint misses its visible anchor: ${JSON.stringify(result.worstEndpoint)}`);
    assert(result.maxExpandAnchorError<1,`${label}: expand control drifts from its node by ${result.maxExpandAnchorError}px`);
    assert(result.maxLabelContainmentError<1,`${label}: label drifts outside its node by ${result.maxLabelContainmentError}px`);
    assert.equal(result.nodes.filter(node=>node.id==='pose_sitting_on_edge').length,1,`${label}: multi-parent node duplicates`);
@@ -82,42 +86,36 @@ function geometry(page) {
   };
   const initial=await check('desktop initial',0);
   const scene=page.locator('.term-graph-scene');
-  const centers=()=>page.locator('.term-graph-node').evaluateAll(elements=>Object.fromEntries(elements.map(element=>{
-   const rect=element.getBoundingClientRect();return[element.dataset.nodeId,[rect.x+rect.width/2,rect.y+rect.height/2]];
-  })));
-  const before=await centers();
-  const pairDistances=points=>{
-   const ids=Object.keys(points),distances={};
-   for(let first=0;first<ids.length;first++) for(let second=first+1;second<ids.length;second++) {
-    const a=ids[first],b=ids[second];
-    distances[`${a}:${b}`]=Math.hypot(points[a][0]-points[b][0],points[a][1]-points[b][1]);
-   }
-   return distances;
-  };
-  const initialDistances=pairDistances(before),bounds=await scene.boundingBox(),dragErrors=[];
+  const before=await geometry(page),beforeById=Object.fromEntries(before.nodes.map(node=>[node.id,node]));
+  const bounds=await scene.boundingBox(),depthChanges=[];
   await page.mouse.move(bounds.x+bounds.width*.5,bounds.y+bounds.height*.2);
   await page.mouse.down();
   for(let step=1;step<=6;step++) {
    await page.mouse.move(bounds.x+bounds.width*(.5+step*.035),bounds.y+bounds.height*(.2+step*.012));
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-   const frame=await centers(),distances=pairDistances(frame);
-   dragErrors.push(Math.max(...Object.keys(initialDistances).map(key=>Math.abs(distances[key]-initialDistances[key]))));
    const frameGeometry=await geometry(page);
    assert(frameGeometry.maxEndpointError<1,`drag frame ${step}: edge endpoint misses its node center by ${frameGeometry.maxEndpointError}px`);
    assert(frameGeometry.maxExpandAnchorError<1,`drag frame ${step}: expand control drifts from its node by ${frameGeometry.maxExpandAnchorError}px`);
    assert(frameGeometry.maxLabelContainmentError<1,`drag frame ${step}: label drifts outside its node by ${frameGeometry.maxLabelContainmentError}px`);
+   for(const node of frameGeometry.nodes) assert.deepEqual(node.world,beforeById[node.id].world,`drag frame ${step}: ${node.id} world anchor mutated`);
+   depthChanges.push(Math.max(...frameGeometry.nodes.map(node=>Math.abs(node.depth-beforeById[node.id].depth))));
   }
   await page.mouse.up();
-  assert(Math.max(...dragErrors)<1,`pointer drag changes the graph's internal shape by ${Math.max(...dragErrors)}px`);
+  assert(Math.max(...depthChanges)>1,'pointer drag did not change 3D depth');
   await scene.press('Home');
+  const home=await geometry(page),homeById=Object.fromEntries(home.nodes.map(node=>[node.id,node]));
   await scene.press('ArrowRight');
-  const after=await centers();
-  const movement=Object.keys(before).map(id=>Math.hypot(after[id][0]-before[id][0],after[id][1]-before[id][1]));
-  assert(Math.max(...movement)<150,`one rotation step jumps ${Math.max(...movement)}px`);
+  const yaw=await geometry(page),yawById=Object.fromEntries(yaw.nodes.map(node=>[node.id,node]));
   await scene.press('ArrowLeft');
-  const returned=await centers();
-  const returnError=Math.max(...Object.keys(before).map(id=>Math.hypot(returned[id][0]-before[id][0],returned[id][1]-before[id][1])));
+  const returned=await geometry(page),returnedById=Object.fromEntries(returned.nodes.map(node=>[node.id,node]));
+  const returnError=Math.max(...Object.keys(homeById).map(id=>Math.hypot(returnedById[id].cx-homeById[id].cx,returnedById[id].cy-homeById[id].cy)));
   assert(returnError<1,`rotation back shifts layout ${returnError}px`);
+  await scene.press('ArrowDown');
+  const pitch=await geometry(page),pitchById=Object.fromEntries(pitch.nodes.map(node=>[node.id,node]));
+  assert(Object.keys(homeById).some(id=>Math.abs(yawById[id].depth-homeById[id].depth)>1),'yaw does not change depth');
+  assert(Object.keys(homeById).some(id=>Math.abs(pitchById[id].depth-homeById[id].depth)>1),'pitch does not change depth');
+  assert(Object.keys(homeById).some(id=>Math.hypot(yawById[id].cx-pitchById[id].cx,yawById[id].cy-pitchById[id].cy)>5),'yaw and pitch are not independent');
+  await scene.press('Home');
   for(let count=0;count<3;count++) await scene.press('ArrowRight');
   await scene.press('+');
   await check('desktop rotated and zoomed');
@@ -126,6 +124,6 @@ function geometry(page) {
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({multipleBranches:true,initialVisibleLabelOverlaps:initial.overlaps.length,
    initialOverlapPairs:initial.overlaps,
-   lockedGraphBody:true,endpointsMatchNodes:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
+   rigid3DWorld:true,independentYawPitch:true,depthChanges:true,endpointsMatchVisibleAnchors:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
  } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

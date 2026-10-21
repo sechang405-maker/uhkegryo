@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { buildExpandedTermGraph, projectGraph, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
 
 export default function TermGraph({terms, catalogTerms=terms, selectedIds, onToggle, onAdd, onSearch, focusedId, onFocus, list, onListChange}) {
@@ -8,27 +8,12 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
   const graph=useMemo(()=>buildExpandedTermGraph(terms,catalogTerms,expandedIds),[terms,catalogTerms,expandedIds]);
   const [view,setView]=useState(INITIAL_VIEW);
   const [notice,setNotice]=useState('');
-  const [sceneSize,setSceneSize]=useState({width:1000,height:700});
-  const sceneRef=useRef(null);
   const gesture=useRef(null);
   const pointers=useRef(new Map());
   const suppressClick=useRef(false);
   const focused=catalogTerms.find(term=>term.term_id===focusedId);
   const selected=catalogTerms.filter(term=>selectedIds.includes(term.term_id));
-  const points=useMemo(()=>projectGraph(graph,view,sceneSize),[graph,view,sceneSize]);
-  useLayoutEffect(()=>{
-    const scene=sceneRef.current;
-    if(!scene) return;
-    const update=()=>{
-      const {width,height}=scene.getBoundingClientRect();
-      if(width<=0||height<=0) return;
-      setSceneSize(previous=>Math.abs(previous.width-width)<.5&&Math.abs(previous.height-height)<.5?previous:{width,height});
-    };
-    update();
-    const observer=new ResizeObserver(update);
-    observer.observe(scene);
-    return ()=>observer.disconnect();
-  },[list]);
+  const points=useMemo(()=>projectGraph(graph,view),[graph,view]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.6)})); }
   function start(event) {
@@ -101,7 +86,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         <button type="button" onClick={()=>setView(INITIAL_VIEW)}>회전 초기화</button>
         </div>
       </details>
-      <div ref={sceneRef} className="term-graph-scene" tabIndex={0} role="group" aria-label="회전 가능한 용어 공간"
+      <div className="term-graph-scene" tabIndex={0} role="group" aria-label="회전 가능한 용어 공간"
         aria-describedby="term-graph-help" onKeyDown={key} onPointerDown={start} onPointerMove={move}
         onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
         data-yaw={view.yaw.toFixed(3)} data-pitch={view.pitch.toFixed(3)} data-zoom={view.zoom.toFixed(2)}>
