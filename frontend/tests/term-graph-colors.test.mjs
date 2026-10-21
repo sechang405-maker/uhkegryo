@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GRAPH_CATEGORY_COLORS, graphCategoryColor } from '../lib/term-graph-colors.mjs';
+import { GRAPH_CATEGORY_COLORS, graphCategoryColor, graphNodeColor } from '../lib/term-graph-colors.mjs';
 
 test('graph categories use fixed distinct colors with a deterministic fallback',()=>{
  const roles=['body','pose','composition','perspective'];
@@ -13,4 +13,18 @@ test('graph categories use fixed distinct colors with a deterministic fallback',
  assert.equal(graphCategoryColor('unknown'),GRAPH_CATEGORY_COLORS.fallback);
  assert.equal(graphCategoryColor(),GRAPH_CATEGORY_COLORS.fallback);
  assert.equal(graphCategoryColor('pose'),graphCategoryColor('pose'));
+});
+
+test('detail nodes use a stable softer tone while parents keep the category color',()=>{
+ const roles=['body','pose','composition','perspective'];
+ for(const role of roles) {
+  const parent=graphNodeColor(role,false);
+  const detail=graphNodeColor(role,true);
+  assert.equal(parent,graphCategoryColor(role));
+  assert.notEqual(detail,parent);
+  assert.match(detail,/^#[0-9A-F]{6}$/i);
+  assert.equal(graphNodeColor(role,true),detail,'detail color must be deterministic');
+ }
+ assert.equal(graphNodeColor('unknown',false),GRAPH_CATEGORY_COLORS.fallback);
+ assert.notEqual(graphNodeColor('unknown',true),GRAPH_CATEGORY_COLORS.fallback);
 });

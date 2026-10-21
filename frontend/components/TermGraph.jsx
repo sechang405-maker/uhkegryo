@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { buildExpandedTermGraph, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
-import { graphCategoryColor } from '../lib/term-graph-colors.mjs';
+import { graphNodeColor } from '../lib/term-graph-colors.mjs';
 import { buildGraphDepthLayers } from '../lib/term-graph-edges.mjs';
 import {
   createGraphMotionState,
@@ -44,7 +44,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
   const projection=useMemo(()=>interpolateGraphMotion(graph,motionState.presence,view,motionNow),
     [graph,motionState.presence,view,motionNow]);
   const points=projection.points;
-  const roleByNodeId=useMemo(()=>new Map(graph.nodes.map(node=>[node.id,node.role])),[graph.nodes]);
+  const colorByNodeId=useMemo(()=>new Map(graph.nodes.map(node=>[node.id,graphNodeColor(node.role,Boolean(node.isDetail))])),[graph.nodes]);
   const depthComposition=useMemo(()=>buildGraphDepthLayers(graph.nodes,graph.edges,points,{viewport:sceneSize}),
     [graph.nodes,graph.edges,points,sceneSize]);
   useEffect(()=>{
@@ -227,7 +227,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
           {layer.segments.map(segment=><line key={`${segment.source}:${segment.target}:${segment.relation||'category'}:${segment.segmentIndex}`}
             x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2}
             style={{opacity:segment.opacity,strokeDashoffset:segment.dashOffset,
-              '--edge-color':graphCategoryColor(roleByNodeId.get(segment.target))}}
+              '--edge-color':colorByNodeId.get(segment.target)}}
             data-source={segment.source} data-target={segment.target} data-relation={segment.relation||'category'}
             data-segment-start={segment.t0.toFixed(7)} data-segment-end={segment.t1.toFixed(7)}
             data-segment-depth={segment.depth.toFixed(3)} data-endpoint={segment.endpoint||undefined}
@@ -236,7 +236,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         </svg>)}
         {graph.nodes.filter(node=>!node.motionOrigin).map(node=>{
           const p=points[node.id];
-          const categoryColor=graphCategoryColor(node.role);
+          const categoryColor=graphNodeColor(node.role,Boolean(node.isDetail));
           const motion=motionState.presence[node.id];
           const motionAmount=projection.amounts[node.id]??1;
           const exiting=motion?.target===0;
