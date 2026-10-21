@@ -27,18 +27,15 @@ function geometry(page) {
    if(width>1&&height>1) overlayOverlaps.push([node.id,obstacle.name,Math.round(width*height)]);
   }
   const byId=Object.fromEntries(nodes.map(node=>[node.id,node]));
-  const yaw=+scene.dataset.yaw,pitch=+scene.dataset.pitch,zoom=+scene.dataset.zoom;
-  const rigidProjectionErrors=[...document.querySelectorAll('.term-graph-node')].map(element=>{
-   const x=+element.dataset.worldX,y=+element.dataset.worldY,z=+element.dataset.worldZ;
-   const rotatedX=x*Math.cos(yaw)+z*Math.sin(yaw);
-   const rotatedZ=-x*Math.sin(yaw)+z*Math.cos(yaw);
-   const rotatedY=y*Math.cos(pitch)-rotatedZ*Math.sin(pitch);
-   const depth=y*Math.sin(pitch)+rotatedZ*Math.cos(pitch);
-   const perspective=1100/(1100-depth);
-   const expectedX=500+rotatedX*perspective*zoom,expectedY=350+rotatedY*perspective*zoom;
-   const node=byId[element.dataset.nodeId];
-   return Math.hypot(node.cx/sr.width*1000-expectedX,node.cy/sr.height*700-expectedY);
+  const expandAnchorErrors=[...document.querySelectorAll('.term-graph-expand')].map(element=>{
+   const parent=byId[element.dataset.nodeId.replace(/:expand$/,'')],rect=element.getBoundingClientRect();
+   return parent?Math.abs(Math.hypot(rect.x-sr.x+rect.width/2-parent.cx,rect.y-sr.y+rect.height/2-parent.cy)-42):Infinity;
   });
+  const labelContainmentErrors=[...document.querySelectorAll('.term-graph-node .term-graph-label')]
+   .filter(element=>getComputedStyle(element).display!=='none').map(element=>{
+    const label=element.getBoundingClientRect(),node=element.closest('.term-graph-node').getBoundingClientRect();
+    return Math.max(0,node.left-label.left,node.top-label.top,label.right-node.right,label.bottom-node.bottom);
+   });
   const edges=[...document.querySelectorAll('.term-graph-scene line')].map(element=>({
    source:element.dataset.source,target:element.dataset.target,relation:element.dataset.relation,
    x1:+element.getAttribute('x1')*sr.width/1000,y1:+element.getAttribute('y1')*sr.height/700,
@@ -50,7 +47,7 @@ function geometry(page) {
    return [Math.hypot(edge.x1-source.cx,edge.y1-source.cy),Math.hypot(edge.x2-target.cx,edge.y2-target.cy)];
   });
   return {overlaps,overlayOverlaps,maxEndpointError:Math.max(...endpointErrors),
-   maxRigidProjectionError:Math.max(...rigidProjectionErrors),nodes,edges};
+   maxExpandAnchorError:Math.max(...expandAnchorErrors),maxLabelContainmentError:Math.max(...labelContainmentErrors),nodes,edges};
  });
 }
 
@@ -74,7 +71,8 @@ function geometry(page) {
    const result=await geometry(page);
    assert(result.overlaps.length<=overlapLimit,`${label}: visible-label overlaps grew to ${result.overlaps.length}: ${JSON.stringify(result.overlaps.slice(0,8))}`);
    assert(result.maxEndpointError<1,`${label}: edge endpoint misses its node center by ${result.maxEndpointError}px`);
-   assert(result.maxRigidProjectionError<1,`${label}: nodes move independently from the shared camera transform by ${result.maxRigidProjectionError}px`);
+   assert(result.maxExpandAnchorError<1,`${label}: expand control drifts from its node by ${result.maxExpandAnchorError}px`);
+   assert(result.maxLabelContainmentError<1,`${label}: label drifts outside its node by ${result.maxLabelContainmentError}px`);
    assert.equal(result.nodes.filter(node=>node.id==='pose_sitting_on_edge').length,1,`${label}: multi-parent node duplicates`);
    assert.deepEqual(result.edges.filter(edge=>edge.target==='pose_sitting_on_edge'&&edge.relation==='all')
     .map(edge=>edge.source).sort(),['pose_sitting','pose_support_chair'],`${label}: AND parents changed`);
@@ -88,6 +86,30 @@ function geometry(page) {
    const rect=element.getBoundingClientRect();return[element.dataset.nodeId,[rect.x+rect.width/2,rect.y+rect.height/2]];
   })));
   const before=await centers();
+  const pairDistances=points=>{
+   const ids=Object.keys(points),distances={};
+   for(let first=0;first<ids.length;first++) for(let second=first+1;second<ids.length;second++) {
+    const a=ids[first],b=ids[second];
+    distances[`${a}:${b}`]=Math.hypot(points[a][0]-points[b][0],points[a][1]-points[b][1]);
+   }
+   return distances;
+  };
+  const initialDistances=pairDistances(before),bounds=await scene.boundingBox(),dragErrors=[];
+  await page.mouse.move(bounds.x+bounds.width*.5,bounds.y+bounds.height*.2);
+  await page.mouse.down();
+  for(let step=1;step<=6;step++) {
+   await page.mouse.move(bounds.x+bounds.width*(.5+step*.035),bounds.y+bounds.height*(.2+step*.012));
+   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+   const frame=await centers(),distances=pairDistances(frame);
+   dragErrors.push(Math.max(...Object.keys(initialDistances).map(key=>Math.abs(distances[key]-initialDistances[key]))));
+   const frameGeometry=await geometry(page);
+   assert(frameGeometry.maxEndpointError<1,`drag frame ${step}: edge endpoint misses its node center by ${frameGeometry.maxEndpointError}px`);
+   assert(frameGeometry.maxExpandAnchorError<1,`drag frame ${step}: expand control drifts from its node by ${frameGeometry.maxExpandAnchorError}px`);
+   assert(frameGeometry.maxLabelContainmentError<1,`drag frame ${step}: label drifts outside its node by ${frameGeometry.maxLabelContainmentError}px`);
+  }
+  await page.mouse.up();
+  assert(Math.max(...dragErrors)<1,`pointer drag changes the graph's internal shape by ${Math.max(...dragErrors)}px`);
+  await scene.press('Home');
   await scene.press('ArrowRight');
   const after=await centers();
   const movement=Object.keys(before).map(id=>Math.hypot(after[id][0]-before[id][0],after[id][1]-before[id][1]));
@@ -104,6 +126,6 @@ function geometry(page) {
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({multipleBranches:true,initialVisibleLabelOverlaps:initial.overlaps.length,
    initialOverlapPairs:initial.overlaps,
-   rigidCameraProjection:true,endpointsMatchNodes:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
+   lockedGraphBody:true,endpointsMatchNodes:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
  } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

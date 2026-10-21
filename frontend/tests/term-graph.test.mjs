@@ -37,25 +37,26 @@ test('adding terms preserves the draft, deduplicates labels and respects the inp
  assert.equal(appendTerms('🙂'.repeat(490),HOME_TERMS.slice(0,1))?.startsWith('🙂'),true);
 });
 
-test('all rendered anchors equal their perspective projection without grid or screen repacking',()=>{
+test('initial rendered anchors use the world projection without grid or screen repacking',()=>{
  const graph=buildTermGraph(HOME_TERMS);
- for(const view of [INITIAL_VIEW,{yaw:1.1,pitch:.5,zoom:.7},{yaw:-.8,pitch:-.4,zoom:1.4}]) {
-  const points=projectGraph(graph,view);
-  assert.equal(Object.keys(points).length,40);
-  for(const node of graph.nodes) assert.deepEqual(points[node.id],projectNode(node,view));
-  assert.ok(new Set(Object.values(points).map(p=>p.x.toFixed(2))).size>30);
-  assert.ok(new Set(Object.values(points).map(p=>p.y.toFixed(2))).size>30);
- }
+ const points=projectGraph(graph,INITIAL_VIEW);
+ assert.equal(Object.keys(points).length,40);
+ for(const node of graph.nodes) assert.deepEqual(points[node.id],projectNode(node,INITIAL_VIEW));
+ assert.ok(new Set(Object.values(points).map(p=>p.x.toFixed(2))).size>30);
+ assert.ok(new Set(Object.values(points).map(p=>p.y.toFixed(2))).size>30);
 });
-test('initial volume has front and back clusters and tilted camera; rotation changes parallax and scale',()=>{
+test('world data retains depth while camera motion preserves one visible graph body',()=>{
  const graph=buildTermGraph(HOME_TERMS),before=projectGraph(graph,INITIAL_VIEW);
  assert.ok(INITIAL_VIEW.yaw!==0&&INITIAL_VIEW.pitch!==0);
  const categories=graph.nodes.filter(n=>!n.term);
  assert.ok(Math.max(...categories.map(n=>n.z))-Math.min(...categories.map(n=>n.z))>250);
  assert.ok(Math.max(...graph.nodes.map(n=>n.z))-Math.min(...graph.nodes.map(n=>n.z))>400);
  const after=projectGraph(graph,{...INITIAL_VIEW,yaw:INITIAL_VIEW.yaw+.7});
- assert.ok(graph.nodes.some(n=>Math.abs(after[n.id].depth-before[n.id].depth)>100));
- assert.ok(graph.nodes.some(n=>Math.abs(after[n.id].scale-before[n.id].scale)>.1));
+ assert.ok(graph.nodes.some(n=>Math.hypot(after[n.id].x-before[n.id].x,after[n.id].y-before[n.id].y)>100));
+ for(const node of graph.nodes) {
+  assert.equal(after[node.id].depth,before[node.id].depth);
+  assert.equal(after[node.id].scale,before[node.id].scale);
+ }
  for(const point of Object.values(before)) assert.ok(point.x>0&&point.x<1000&&point.y>0&&point.y<700);
 });
 
@@ -107,6 +108,19 @@ test('expanded graph keeps one deterministic world layout through rotation and z
  for(let step=0;step<24;step++) projectGraph(graph,{yaw:-Math.PI+step*Math.PI/12,pitch:(step%7-3)*.12,zoom:.65+(step%8)*.12});
  assert.deepEqual(graph.nodes.map(({id,x,y,z})=>({id,x,y,z})),world);
  assert.deepEqual(buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']).nodes,graph.nodes);
+});
+
+test('camera motion keeps every graph anchor locked in one screen-space shape',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
+ const viewport={width:1440,height:900},before=projectGraph(graph,INITIAL_VIEW,viewport);
+ const zoom=1.08,after=projectGraph(graph,{yaw:INITIAL_VIEW.yaw+.63,pitch:INITIAL_VIEW.pitch-.31,zoom},viewport);
+ const expectedScale=zoom/INITIAL_VIEW.zoom;
+ for(let first=0;first<graph.nodes.length;first++) for(let second=first+1;second<graph.nodes.length;second++) {
+  const a=graph.nodes[first].id,b=graph.nodes[second].id;
+  const beforeDistance=Math.hypot((before[a].x-before[b].x)*viewport.width/1000,(before[a].y-before[b].y)*viewport.height/700);
+  const afterDistance=Math.hypot((after[a].x-after[b].x)*viewport.width/1000,(after[a].y-after[b].y)*viewport.height/700);
+  assert.ok(Math.abs(afterDistance-beforeDistance*expectedScale)<1e-8,`${a} and ${b} drifted apart`);
+ }
 });
 
 test('structure-time world layout separates visible labels in the initial camera view',()=>{
