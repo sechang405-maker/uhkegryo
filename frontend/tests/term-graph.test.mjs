@@ -74,7 +74,7 @@ test('expansion preserves semantic AND/OR parents but renders one representative
  const ids=graph.nodes.map(node=>node.id);
  assert.equal(ids.length,new Set(ids).size);
  assert.ok(ids.includes('pose_sitting_on_edge'));
- assert.ok(ids.includes('pose_support_chair'));
+ assert.ok(!ids.includes('pose_support_chair'));
  assert.deepEqual(
   graph.edges.filter(edge=>edge.target==='pose_sitting_on_edge').map(edge=>[edge.source,edge.relation]).sort(),
   [['pose_sitting','all']],
@@ -97,6 +97,20 @@ test('expansion preserves semantic AND/OR parents but renders one representative
  assert.ok(direct.every(node=>Math.hypot(node.x-sitting.x,node.y-sitting.y,node.z-sitting.z)>100));
 });
 
+test('expanding one parent adds only its direct children, never supplemental parent nodes',()=>{
+ const baseline=new Set(buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,[]).nodes.map(node=>node.id));
+ const parents=HOME_TERMS.filter(parent=>ACTIVE_TERMS.some(child=>
+  [...(child.requires_all_of||[]),...(child.requires_any_of||[])].includes(parent.term_id)));
+ for(const parent of parents) {
+  const direct=ACTIVE_TERMS.filter(child=>
+   [...(child.requires_all_of||[]),...(child.requires_any_of||[])].includes(parent.term_id))
+   .map(child=>child.term_id).filter(id=>!baseline.has(id)).sort();
+  const added=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,[parent.term_id]).nodes
+   .map(node=>node.id).filter(id=>!baseline.has(id)).sort();
+  assert.deepEqual(added,direct,`${parent.term_id} expansion exposed nodes that are not its direct children`);
+ }
+});
+
 test('the first expanded shared parent keeps visual ownership until it collapses, independent of later expansion',()=>{
  const parentOf=(graph,target)=>graph.edges.find(edge=>edge.target===target)?.source;
  const sittingOnly=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
@@ -114,17 +128,19 @@ test('the first expanded shared parent keeps visual ownership until it collapses
 });
 
 test('expanding an unrelated parent leaves every existing world coordinate unchanged',()=>{
- const before=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
- const after=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing']);
- const afterById=new Map(after.nodes.map(node=>[node.id,node]));
- for(const node of before.nodes) {
-  const current=afterById.get(node.id);
-  assert.ok(current,`${node.id} disappeared after an unrelated expansion`);
-  assert.deepEqual(
-   {x:current.x,y:current.y,z:current.z},
-   {x:node.x,y:node.y,z:node.z},
-   `${node.id} moved when another branch expanded`,
-  );
+ for(const [first,second] of [['pose_sitting','pose_standing'],['pose_standing','pose_sitting'],['pose_weight_shift','pose_s_curve']]) {
+  const before=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,[first]);
+  const after=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,[first,second]);
+  const afterById=new Map(after.nodes.map(node=>[node.id,node]));
+  for(const node of before.nodes) {
+   const current=afterById.get(node.id);
+   assert.ok(current,`${node.id} disappeared after ${second} expanded`);
+   assert.deepEqual(
+    {x:current.x,y:current.y,z:current.z},
+    {x:node.x,y:node.y,z:node.z},
+    `${node.id} moved when ${second} expanded`,
+   );
+  }
  }
 });
 
@@ -138,7 +154,7 @@ test('each displayed child continues through its parent outward axis without ent
  const points=projectGraph(graph,INITIAL_VIEW),screenAngle=id=>Math.atan2(points[id].y-420,points[id].x-500),
   angularDistance=(a,b)=>Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));
  const displayedParents=[...new Set(graph.edges.filter(edge=>edge.relation).map(edge=>edge.source))].map(id=>byId.get(id));
- for(const edge of graph.edges.filter(edge=>edge.relation)) {
+ for(const edge of graph.edges.filter(edge=>edge.relation&&byId.get(edge.target)?.isDetail)) {
   const parent=byId.get(edge.source),child=byId.get(edge.target),parentAxis=unit(parent);
   assert.ok(angle(unit(subtract(child,parent)),parentAxis)<Math.PI/3,
    `${child.id} does not continue outward from ${parent.id}`);
@@ -172,7 +188,7 @@ test('expanded branches stay in their category cone and every real child is fart
   const category=byId.get(`category:${node.role}`);
   assert.ok(angle(node,category)<Math.PI/3,`${node.id} escaped the ${node.role} category cone`);
  }
- for(const edge of graph.edges.filter(edge=>edge.relation)) {
+ for(const edge of graph.edges.filter(edge=>edge.relation&&byId.get(edge.target)?.isDetail)) {
   const parent=byId.get(edge.source),child=byId.get(edge.target);
   assert.ok(radius(child)>radius(parent)+1,`${child.id} returned inward past ${parent.id}`);
  }
@@ -222,6 +238,23 @@ test('camera motion uses independent yaw and pitch in one 3D projection without 
  assert.deepEqual(graph.nodes.map(({id,x,y,z})=>({id,x,y,z})),world);
 });
 
+test('expanded branches keep a safe camera radius and perspective through every allowed orbit',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,
+  ['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling']);
+ const radii=graph.nodes.filter(node=>node.term).map(node=>Math.hypot(node.x,node.y,node.z));
+ assert.ok(Math.max(...radii)<=650,`expanded world radius ${Math.max(...radii)} approaches the camera`);
+ let closestGap=Infinity,maxPerspective=0;
+ for(let yaw=-Math.PI;yaw<Math.PI;yaw+=Math.PI/18) for(let pitch=-1.2;pitch<=1.2;pitch+=.2) {
+  const projected=projectGraph(graph,{yaw,pitch,zoom:1});
+  for(const point of Object.values(projected)) {
+   closestGap=Math.min(closestGap,1100-point.depth);
+   maxPerspective=Math.max(maxPerspective,1100/(1100-point.depth));
+  }
+ }
+ assert.ok(closestGap>=450,`camera clearance fell to ${closestGap}`);
+ assert.ok(maxPerspective<=2.45,`perspective magnification reached ${maxPerspective}`);
+});
+
 test('circular graph anchors avoid stacked centers and stay near the initial camera frame',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
  const points=projectGraph(graph,INITIAL_VIEW);
@@ -236,5 +269,14 @@ test('circular graph anchors avoid stacked centers and stay near the initial cam
   if(distance<combined*.4) severe.push([a.id,b.id,distance/combined]);
  }
  assert.deepEqual(severe,[],'no circular node centers may stack inside one another');
+ const childrenByParent=new Map();
+ for(const edge of graph.edges.filter(edge=>edge.relation&&graph.nodes.find(node=>node.id===edge.target)?.isDetail)) {
+  if(!childrenByParent.has(edge.source)) childrenByParent.set(edge.source,[]);
+  childrenByParent.get(edge.source).push(edge.target);
+ }
+ for(const [parent,children] of childrenByParent) if(children.length>=4)
+  for(let first=0;first<children.length;first++) for(let second=first+1;second<children.length;second++)
+   assert.ok(Math.hypot(points[children[first]].x-points[children[second]].x,points[children[first]].y-points[children[second]].y)>=67.5,
+    `${parent} dense sibling labels are packed too tightly: ${children[first]} / ${children[second]}`);
  assert.ok(visible.every(node=>node.x>-30&&node.x<1050&&node.y>-30&&node.y<870),'initial camera keeps every anchor near the frame');
 });

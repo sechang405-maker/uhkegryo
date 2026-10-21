@@ -73,6 +73,7 @@ export function buildTermGraph(terms, childCounts=new Map()) {
       edges.push({source:id,target:term.term_id});
     });
   });
+  separateBaseCircleOverlaps(nodes);
   return {nodes,edges};
 }
 
@@ -109,6 +110,143 @@ const scale=(vector,amount)=>({x:vector.x*amount,y:vector.y*amount,z:vector.z*am
 const dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z;
 const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
 
+// Deliberately reserve a little more than the rendered circle. The buffer is
+// what keeps 14px labels and the integrated control readable after projection.
+const nodeCircleRadius=node=>node.isDetail?(node.expandable?56:48):(node.childCount>0?52:44);
+const renderedCircleRadius=node=>node.isDetail?(node.expandable?48:40):(node.childCount>0?46:38);
+
+function separateBaseCircleOverlaps(nodes) {
+  const terms=nodes.filter(node=>node.term),projected=projectGraph({nodes},INITIAL_VIEW),
+    positions=new Map(terms.map(node=>[node.id,{x:projected[node.id].x,y:projected[node.id].y,depth:projected[node.id].depth}])),
+    categoryByRole=new Map(nodes.filter(node=>!node.term).map(node=>[node.role,node]));
+  for(let iteration=0;iteration<180;iteration++) {
+    let moved=false;
+    for(let first=0;first<terms.length;first++) for(let second=first+1;second<terms.length;second++) {
+      const a=terms[first],b=terms[second],pa=positions.get(a.id),pb=positions.get(b.id),dx=pb.x-pa.x,dy=pb.y-pa.y,
+        distance=Math.hypot(dx,dy)||1,
+        territoryA=nodeCircleRadius(a)+Math.min(48,Math.sqrt(a.childCount||0)*18),
+        territoryB=nodeCircleRadius(b)+Math.min(48,Math.sqrt(b.childCount||0)*18),
+        needed=territoryA+territoryB+12-distance;
+      if(needed<=0) continue;
+      moved=true;
+      const ux=dx/distance,uy=dy/distance,sign=distance===1&&dx===0&&dy===0?(stableAngle(`${a.id}:${b.id}`)<Math.PI?1:-1):1;
+      pa.x-=ux*needed*.5*sign;pa.y-=uy*needed*.5*sign;pb.x+=ux*needed*.5*sign;pb.y+=uy*needed*.5*sign;
+    }
+    for(const node of terms) {
+      const point=positions.get(node.id),radius=nodeCircleRadius(node);
+      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+92,720-radius);
+    }
+    if(!moved) break;
+  }
+  const denseRoots=new Set(terms.filter(node=>node.childCount>=4).map(node=>node.id));
+  for(const node of terms.filter(node=>denseRoots.has(node.id))) {
+    const point=positions.get(node.id),dx=point.x-GRAPH_CENTER.x,dy=point.y-GRAPH_CENTER.y,distance=Math.hypot(dx,dy)||1,
+      shift=Math.min(110,Math.max(0,distance-90));
+    point.x-=dx/distance*shift;point.y-=dy/distance*shift;
+  }
+  // Keep dense branch roots closer to the center so their readable children
+  // have a real outward fan inside the fixed viewport. Other base nodes yield
+  // to these roots; the roots themselves remain stable across later expands.
+  for(let iteration=0;iteration<80;iteration++) for(let first=0;first<terms.length;first++) for(let second=first+1;second<terms.length;second++) {
+    const a=terms[first],b=terms[second],pa=positions.get(a.id),pb=positions.get(b.id),dx=pb.x-pa.x,dy=pb.y-pa.y,
+      distance=Math.hypot(dx,dy)||1,needed=nodeCircleRadius(a)+nodeCircleRadius(b)+12-distance;
+    if(needed<=0) continue;
+    const ux=dx/distance,uy=dy/distance,aFixed=denseRoots.has(a.id),bFixed=denseRoots.has(b.id);
+    if(aFixed&&!bFixed) {pb.x+=ux*needed;pb.y+=uy*needed;}
+    else if(bFixed&&!aFixed) {pa.x-=ux*needed;pa.y-=uy*needed;}
+    else {pa.x-=ux*needed*.5;pa.y-=uy*needed*.5;pb.x+=ux*needed*.5;pb.y+=uy*needed*.5;}
+    for(const node of [a,b]) {
+      const point=positions.get(node.id),radius=nodeCircleRadius(node);
+      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+92,720-radius);
+    }
+  }
+  // Solve branch landing zones and base-circle separation together. A former
+  // one-way landing pass cleared the corridor but created fresh base overlaps;
+  // alternating both constraints converges without moving roots on expand.
+  for(let iteration=0;iteration<96;iteration++) {
+    for(const parent of terms.filter(node=>node.childCount>0)) {
+      const origin=positions.get(parent.id),dx=origin.x-GRAPH_CENTER.x,dy=origin.y-GRAPH_CENTER.y,length=Math.hypot(dx,dy)||1,
+        angle=Math.atan2(dy,dx),dense=parent.childCount>=4,zones=[];
+      if(dense) {
+        const rings=Math.ceil(parent.childCount/4),half=.78,bias=Math.sin(angle)<0?.18:-.18;
+        for(let ring=0;ring<rings;ring++) {
+          const slots=Math.min(4,parent.childCount-ring*4);
+          for(let slot=0;slot<slots;slot++) {
+            const fraction=slots===1?0:(slot-(slots-1)/2)/((slots-1)/2),zoneAngle=angle+bias+fraction*half,
+              zoneRadius=length+116+ring*104;
+            zones.push({x:GRAPH_CENTER.x+Math.cos(zoneAngle)*zoneRadius,y:GRAPH_CENTER.y+Math.sin(zoneAngle)*zoneRadius,radius:68});
+          }
+        }
+      } else zones.push({x:origin.x+dx/length*145,y:origin.y+dy/length*145,radius:58});
+      for(const zone of zones) for(const node of terms) {
+        if(node.id===parent.id) continue;
+        const point=positions.get(node.id),vx=point.x-zone.x,vy=point.y-zone.y,distance=Math.hypot(vx,vy)||1,
+          needed=nodeCircleRadius(node)+zone.radius-distance;
+        if(needed>0) {point.x+=vx/distance*needed;point.y+=vy/distance*needed;}
+      }
+    }
+    for(let first=0;first<terms.length;first++) for(let second=first+1;second<terms.length;second++) {
+      const a=terms[first],b=terms[second],pa=positions.get(a.id),pb=positions.get(b.id),dx=pb.x-pa.x,dy=pb.y-pa.y,
+        distance=Math.hypot(dx,dy)||1,needed=nodeCircleRadius(a)+nodeCircleRadius(b)+12-distance;
+      if(needed<=0) continue;
+      const ux=dx/distance,uy=dy/distance,aFixed=denseRoots.has(a.id),bFixed=denseRoots.has(b.id);
+      if(aFixed&&!bFixed) {pb.x+=ux*needed;pb.y+=uy*needed;}
+      else if(bFixed&&!aFixed) {pa.x-=ux*needed;pa.y-=uy*needed;}
+      else {pa.x-=ux*needed*.5;pa.y-=uy*needed*.5;pb.x+=ux*needed*.5;pb.y+=uy*needed*.5;}
+    }
+    for(const node of terms) {
+      const point=positions.get(node.id),radius=nodeCircleRadius(node);
+      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+92,720-radius);
+    }
+  }
+  for(const node of terms) {
+    const point=positions.get(node.id);
+    // Dense roots need enough camera-space breadth for an entire readable
+    // child fan. Keeping one at the far -260 band compressed every valid 3-D
+    // continuation into the same few pixels at the top of the viewport.
+    let safeDepth=denseRoots.has(node.id)?clamp(point.depth,-200,180):point.depth,
+      world=worldFromInitialProjection(point.x,point.y,safeDepth);
+    if(vectorLength(world)>648) {
+      // Preserve the already-separated screen anchor. Scaling the whole world
+      // vector pulled edge nodes back into their neighbours; reducing only
+      // depth keeps x/y identical in the initial camera while restoring the
+      // near-plane safety margin.
+      let unsafe=safeDepth,safe=0;
+      for(let iteration=0;iteration<28;iteration++) {
+        const candidate=(unsafe+safe)/2,test=worldFromInitialProjection(point.x,point.y,candidate);
+        if(vectorLength(test)>648) unsafe=candidate; else safe=candidate;
+      }
+      safeDepth=safe;world=worldFromInitialProjection(point.x,point.y,safeDepth);
+    }
+    const category=categoryByRole.get(node.role),length=vectorLength(world),direction=category?
+      clampDirectionToCone(world,category,Math.PI/3-.02):unit(world);
+    node.x=direction.x*length;node.y=direction.y*length;node.z=direction.z*length;
+  }
+  // Cone clamping can move two boundary nodes back toward one another after
+  // the screen-space solve. Re-project and resolve those residual base/base
+  // collisions while reapplying the same semantic cone on every bounded pass.
+  for(let iteration=0;iteration<80;iteration++) {
+    const points=new Map(terms.map(node=>[node.id,projectNode(node,INITIAL_VIEW)]));
+    let moved=false;
+    for(let first=0;first<terms.length;first++) for(let second=first+1;second<terms.length;second++) {
+      const a=terms[first],b=terms[second],pa=points.get(a.id),pb=points.get(b.id),dx=pb.x-pa.x,dy=pb.y-pa.y,
+        distance=Math.hypot(dx,dy)||1,needed=nodeCircleRadius(a)+nodeCircleRadius(b)+10-distance;
+      if(needed<=0) continue;
+      moved=true;
+      const ux=dx/distance,uy=dy/distance;
+      pa.x-=ux*needed*.5;pa.y-=uy*needed*.5;pb.x+=ux*needed*.5;pb.y+=uy*needed*.5;
+    }
+    if(!moved) break;
+    for(const node of terms) {
+      const point=points.get(node.id),radius=nodeCircleRadius(node);
+      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+92,720-radius);
+      const rawWorld=worldFromInitialProjection(point.x,point.y,point.depth),category=categoryByRole.get(node.role),length=vectorLength(rawWorld),
+        direction=category?clampDirectionToCone(rawWorld,category,Math.PI/3-.02):unit(rawWorld);
+      node.x=direction.x*length;node.y=direction.y*length;node.z=direction.z*length;
+    }
+  }
+}
+
 function clampDirectionToCone(direction,axis,maxAngle=Math.PI/3-.04) {
   const from=unit(axis),to=unit(direction,from),angle=Math.acos(clamp(dot(from,to),-1,1));
   if(angle<=maxAngle) return to;
@@ -127,7 +265,7 @@ function fanDirection(axis,categoryAxis,index,count,ring,key) {
   return clampDirectionToCone(add(scale(outward,Math.cos(deviation)),scale(lateral,Math.sin(deviation))),categoryAxis);
 }
 
-function arrangeOutwardWorldLayout(nodes,edges) {
+function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map()) {
   const byId=new Map(nodes.map(node=>[node.id,node]));
   const categories=new Map(nodes.filter(node=>!node.term).map(node=>[node.role,node]));
   const visualParent=new Map();
@@ -195,34 +333,157 @@ function arrangeOutwardWorldLayout(nodes,edges) {
     if(!primary||!placed.has(primary.id)) {placing.delete(id);return false;}
     const siblings=siblingGroups.get(primaryId)||[id],index=Math.max(0,siblings.indexOf(id));
     const parentPoint=projectNode(primary,INITIAL_VIEW),parentScreenRadius=Math.hypot(parentPoint.x-GRAPH_CENTER.x,parentPoint.y-GRAPH_CENTER.y);
-    const parentScreenAngle=Math.atan2(parentPoint.y-GRAPH_CENTER.y,parentPoint.x-GRAPH_CENTER.x),half=screenTerritoryHalfAngle(primary);
-    const slotsPerRing=half<.18?2:3,screenRing=Math.floor(index/slotsPerRing),
+    const parentScreenAngle=Math.atan2(parentPoint.y-GRAPH_CENTER.y,parentPoint.x-GRAPH_CENTER.x),denseFan=siblings.length>=4,
+      territoryHalf=screenTerritoryHalfAngle(primary),half=denseFan?.86:Math.max(territoryHalf,.26);
+    const slotsPerRing=denseFan?4:2,screenRing=Math.floor(index/slotsPerRing),
       slots=Math.min(slotsPerRing,siblings.length-screenRing*slotsPerRing),slot=index%slotsPerRing;
-    const targetScreenRadius=parentScreenRadius+115+screenRing*75;
+    const targetScreenRadius=parentScreenRadius+104+screenRing*(denseFan?104:104);
     const slotFraction=slots===1?0:(slot-(slots-1)/2)/((slots-1)/2);
-    const baseOffset=slotFraction*half*.92+(screenRing%2&&slots===3?half*.14:0);
-    const obstacles=nodes.filter(candidate=>candidate.id!==primaryId&&(!candidate.isDetail||
-      (placed.has(candidate.id)&&visualParent.get(candidate.id)===primaryId)));
-    let bestPoint=null,bestClearance=-Infinity;
-    for(let sample=0;sample<75;sample++) {
-      const angleSample=sample%25,radialSample=Math.floor(sample/25),candidateRadius=targetScreenRadius+[-24,0,18][radialSample];
-      const offset=clamp(baseOffset+(angleSample-12)/12*(half/Math.max(3,slots)*.7),-half*.98,half*.98),
-        angle=parentScreenAngle+offset;
+    const frameBias=denseFan?(Math.sin(parentScreenAngle)<0?half*.42:-half*.42):0,
+      baseOffset=clamp(slotFraction*half*.72+frameBias,-half*.96,half*.96);
+    // Detail coordinates must depend only on their canonical parent slot. If
+    // another branch becomes visible later it must not move this child.
+    const obstacles=nodes.filter(candidate=>candidate.id!==primaryId&&!candidate.isDetail);
+    let bestPoint=null,bestClearance=-Infinity,bestSeparatedPenalty=Infinity;
+    const consider=(candidateRadius,offset,depthSample)=>{
+      if(candidateRadius<=parentScreenRadius+76) return;
+      const angle=parentScreenAngle+offset;
       const screen={x:GRAPH_CENTER.x+candidateRadius*Math.cos(angle),y:GRAPH_CENTER.y+candidateRadius*Math.sin(angle)};
-      const depthDelta=[-32,0,32][slot%3],depth=clamp(parentPoint.depth*(candidateRadius/Math.max(1,parentScreenRadius))+depthDelta,-420,420);
+      const depthDelta=[-28,0,28,-12][slot%4]+[-112,-56,0,56,112][depthSample],depth=clamp(parentPoint.depth*.58+depthDelta,-240,240);
       const candidate=worldFromInitialProjection(screen.x,screen.y,depth),point=projectNode(candidate,INITIAL_VIEW);
+      const branch=add(candidate,scale(primary,-1)),category=categories.get(node.role)||candidate;
+      if(point.x<58||point.x>942||point.y<108||point.y>690||vectorLength(candidate)>648||
+        vectorLength(branch)<=100||angleBetween(branch,primary)>=Math.PI/3-.04||
+        vectorLength(candidate)<=vectorLength(primary)+1||angleBetween(candidate,category)>=Math.PI/3) return;
       const clearance=Math.min(...obstacles.map(obstacle=>{
         const projected=projectNode(obstacle,INITIAL_VIEW);
-        return Math.hypot(point.x-projected.x,point.y-projected.y);
+        return Math.hypot(point.x-projected.x,point.y-projected.y)-renderedCircleRadius(node)-renderedCircleRadius(obstacle)-8;
       }));
-      const framePenalty=Math.max(0,48-point.x,point.x-952,92-point.y,point.y-748)*6;
-      const score=clearance-framePenalty;
-      if(score>bestClearance) {bestPoint=candidate;bestClearance=score;}
+      // Projection clearance is screen-space identical for the five depth
+      // candidates. Quantize it and give the middle depth an explicit stable
+      // preference so tiny engine-specific floating-point differences cannot
+      // select a different 3D world anchor during hydration.
+      const cellPenalty=denseFan?(Math.abs(offset-baseOffset)*180+Math.abs(candidateRadius-targetScreenRadius)*.28):0,
+        stablePenalty=cellPenalty+Math.abs(depthSample-2)*1e-4,roundedClearance=Math.round(clearance*1e6)/1e6;
+      if(roundedClearance>=0) {
+        if(stablePenalty<bestSeparatedPenalty) {bestPoint=candidate;bestSeparatedPenalty=stablePenalty;bestClearance=roundedClearance;}
+      } else if(!denseFan&&bestSeparatedPenalty===Infinity&&roundedClearance>bestClearance) {
+        bestPoint=candidate;bestClearance=roundedClearance;
+      }
+    };
+    if(denseFan) {
+      const bias=Math.sin(parentScreenAngle)<0?.22:-.22;
+      for(let angleSample=0;angleSample<=80;angleSample++) {
+        const offset=bias-half+2*half*angleSample/80;
+        for(let candidateRadius=parentScreenRadius+96;candidateRadius<=628;candidateRadius+=16)
+          for(let depthSample=0;depthSample<5;depthSample++) consider(candidateRadius,offset,depthSample);
+      }
+    } else {
+      const radialOffsets=[-180,-120,-60,-24,0,24,48],samplesPerDepth=25*radialOffsets.length;
+      for(let sample=0;sample<samplesPerDepth*5;sample++) {
+        const angleSample=sample%25,radialSample=Math.floor(sample/25)%radialOffsets.length,depthSample=Math.floor(sample/samplesPerDepth),
+          candidateRadius=targetScreenRadius+radialOffsets[radialSample];
+        consider(candidateRadius,clamp(baseOffset+(angleSample-12)/12*(half/Math.max(3,slots)*.7),-half*.98,half*.98),depthSample);
+      }
     }
     if(!bestPoint) {placing.delete(id);return false;}
     node.x=bestPoint.x;node.y=bestPoint.y;node.z=bestPoint.z;placed.add(node.id);
     placing.delete(id);return true;
   };
+
+  const placeDenseSiblingGroup=(parentId,visibleIds)=>{
+    const parent=byId.get(parentId);
+    if(!parent||!placed.has(parentId)) return false;
+    const canonical=[...new Set(canonicalChildrenByParent.get(parentId)||visibleIds)].sort(),
+      children=canonical.map(id=>visualParent.get(id)===parentId&&byId.get(id)?byId.get(id):
+        ({id,role:parent.role,isDetail:true,expandable:(canonicalChildrenByParent.get(id)||[]).length>0}));
+    if(canonical.length<4||children.length<2) return false;
+    const parentPoint=projectNode(parent,INITIAL_VIEW),parentRadius=Math.hypot(parentPoint.x-GRAPH_CENTER.x,parentPoint.y-GRAPH_CENTER.y),
+      parentAngle=Math.atan2(parentPoint.y-GRAPH_CENTER.y,parentPoint.x-GRAPH_CENTER.x),
+      half=Math.min(.86,screenTerritoryHalfAngle(parent)+.04),
+      frameBias=Math.sin(parentAngle)<0?half*.28:-half*.28,
+      immutable=nodes.filter(node=>!node.isDetail&&node.id!==parentId),
+      immutablePoints=immutable.map(node=>({node,point:projectNode(node,INITIAL_VIEW)}));
+    const candidateMap=new Map();
+    for(const child of children) {
+      const canonicalIndex=Math.max(0,canonical.indexOf(child.id)),ring=Math.floor(canonicalIndex/4),slot=canonicalIndex%4,
+        slots=Math.min(4,canonical.length-ring*4),slotFraction=slots===1?0:(slot-(slots-1)/2)/((slots-1)/2),
+        preferredOffset=clamp(slotFraction*half*.72+frameBias,-half*.96,half*.96),
+        preferredRadius=parentRadius+104+ring*104,
+        preferredDepth=[-120,-60,0,60,120][canonicalIndex%5],screenCandidates=[];
+      for(let angleSample=0;angleSample<=72;angleSample++) {
+        // Search the complete outward cone. Frame bias is a preference, not a
+        // hard truncation: truncating one side left five-child branches with
+        // no non-occluding batch even though valid placements existed.
+        const offset=-half+2*half*angleSample/72,angle=parentAngle+offset;
+        for(let candidateRadius=parentRadius+96;candidateRadius<=628;candidateRadius+=18) {
+          const screen={x:GRAPH_CENTER.x+candidateRadius*Math.cos(angle),y:GRAPH_CENTER.y+candidateRadius*Math.sin(angle)};
+          if(screen.x<58||screen.x>942||screen.y<108||screen.y>690) continue;
+          let chosen=null;
+          for(const depth of [-240,-180,-120,-60,0,60,120,180,240]) {
+            const candidate=worldFromInitialProjection(screen.x,screen.y,depth),branch=add(candidate,scale(parent,-1)),category=categories.get(child.role)||candidate;
+            if(vectorLength(candidate)>648||vectorLength(branch)<=100||angleBetween(branch,parent)>=Math.PI/3-.04||
+              vectorLength(candidate)<=vectorLength(parent)+1||angleBetween(candidate,category)>=Math.PI/3) continue;
+            const depthCost=Math.abs(depth-preferredDepth);
+            if(!chosen||depthCost<chosen.depthCost) chosen={world:candidate,depthCost};
+          }
+          if(!chosen) continue;
+          const clearance=Math.min(...immutablePoints.map(({node,point})=>
+            Math.hypot(screen.x-point.x,screen.y-point.y)-renderedCircleRadius(child)-renderedCircleRadius(node)-8));
+          const candidateDepth=projectNode(chosen.world,INITIAL_VIEW).depth,
+            coveredCenterCount=immutablePoints.filter(({node,point})=>point.depth>candidateDepth+.5&&
+            Math.hypot(screen.x-point.x,screen.y-point.y)<renderedCircleRadius(node)+4).length;
+          const preference=Math.abs(offset-preferredOffset)*170+Math.abs(candidateRadius-preferredRadius)*.3+
+            chosen.depthCost*.015-Math.min(clearance,80)*.04+Math.max(0,-clearance)*5+coveredCenterCount*10000;
+          screenCandidates.push({world:chosen.world,x:screen.x,y:screen.y,offset,candidateRadius,preference});
+        }
+      }
+      screenCandidates.sort((a,b)=>a.preference-b.preference||a.x-b.x||a.y-b.y||a.world.z-b.world.z);
+      const diverse=[],seenBuckets=new Set();
+      for(const candidate of screenCandidates) {
+        const angleBucket=clamp(Math.floor((candidate.offset+half)/(2*half/12)),0,11),
+          radialSpan=Math.max(1,628-(parentRadius+96)),radialBucket=clamp(Math.floor((candidate.candidateRadius-(parentRadius+96))/(radialSpan/4)),0,3),
+          bucket=`${angleBucket}:${radialBucket}`;
+        if(seenBuckets.has(bucket)) continue;
+        seenBuckets.add(bucket);
+        diverse.push(candidate);
+      }
+      for(const candidate of screenCandidates) {
+        if(diverse.length>=96) break;
+        if(diverse.includes(candidate)||diverse.some(saved=>Math.hypot(saved.x-candidate.x,saved.y-candidate.y)<18)) continue;
+        diverse.push(candidate);
+      }
+      if(!diverse.length) return false;
+      candidateMap.set(child.id,diverse);
+    }
+    const order=[...children].sort((a,b)=>candidateMap.get(a.id).length-candidateMap.get(b.id).length||
+      canonical.indexOf(a.id)-canonical.indexOf(b.id)||a.id.localeCompare(b.id));
+    const beamWidth=children.length>6?512:256;
+    let beam=[{cost:0,assigned:[]}];
+    for(const child of order) {
+      const next=[];
+      for(const state of beam) for(const candidate of candidateMap.get(child.id)) {
+        const blocked=state.assigned.some(saved=>Math.hypot(saved.candidate.x-candidate.x,saved.candidate.y-candidate.y)<
+          renderedCircleRadius(child)+renderedCircleRadius(saved.child)-12);
+        if(blocked) continue;
+        next.push({cost:state.cost+candidate.preference,assigned:[...state.assigned,{child,candidate}]});
+      }
+      if(!next.length) return false;
+      next.sort((a,b)=>a.cost-b.cost||a.assigned.map(item=>`${item.child.id}:${item.candidate.x.toFixed(2)}:${item.candidate.y.toFixed(2)}`).join('|')
+        .localeCompare(b.assigned.map(item=>`${item.child.id}:${item.candidate.x.toFixed(2)}:${item.candidate.y.toFixed(2)}`).join('|')));
+      beam=next.slice(0,beamWidth);
+    }
+    for(const {child,candidate} of beam[0].assigned) {
+      const visible=visualParent.get(child.id)===parentId?byId.get(child.id):null;
+      if(!visible) continue;
+      visible.x=candidate.world.x;visible.y=candidate.world.y;visible.z=candidate.world.z;placed.add(visible.id);
+    }
+    return true;
+  };
+
+  for(const [parentId,visibleIds] of [...siblingGroups].sort(([a],[b])=>a.localeCompare(b)))
+    if((canonicalChildrenByParent.get(parentId)||visibleIds).length>=4) placeDenseSiblingGroup(parentId,visibleIds);
+
   for(let pass=0;pass<nodes.length;pass++) {
     let changed=false;
     for(const node of nodes.filter(node=>node.isDetail&&!placed.has(node.id))) if(placePrimary(node.id)) changed=true;
@@ -231,14 +492,12 @@ function arrangeOutwardWorldLayout(nodes,edges) {
 
   // Supporting prerequisite nodes with no displayed relation edge receive a
   // fixed category-relative slot derived only from their own id.
-  const supplementalByRole=new Map();
   for(const node of nodes.filter(node=>node.isDetail&&!placed.has(node.id)).sort((a,b)=>a.id.localeCompare(b.id))) {
-    if(!supplementalByRole.has(node.role)) supplementalByRole.set(node.role,0);
-    const supplementalIndex=supplementalByRole.get(node.role);supplementalByRole.set(node.role,supplementalIndex+1);
+    const supplementalIndex=node.layoutIndex||0;
     const category=categories.get(node.role)||{x:1,y:0,z:0},categoryPoint=projectNode(category,INITIAL_VIEW);
     const categoryAngle=Math.atan2(categoryPoint.y-GRAPH_CENTER.y,categoryPoint.x-GRAPH_CENTER.x);
     let bestPoint=null,bestScore=-Infinity;
-    const obstacles=nodes.filter(candidate=>!candidate.isDetail||placed.has(candidate.id));
+    const obstacles=nodes.filter(candidate=>!candidate.isDetail);
     for(let sample=0;sample<216;sample++) {
       const angleSample=sample%72,radiusSample=Math.floor(sample/72),targetRadius=280+radiusSample*62+Math.floor(supplementalIndex/3)*50;
       const angle=categoryAngle-.72+1.44*((angleSample+stableAngle(node.id)/(2*Math.PI))%72)/71;
@@ -355,10 +614,11 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
       for(const childId of childrenByParent.get(parentId)||[]) {
         revealedChildren.add(childId);
         if(!revealOrigin.has(childId)) revealOrigin.set(childId,parentId);
-        const child=termsById.get(childId);
-        for(const id of [childId,...(child?.requires_all_of||[]),...(child?.requires_any_of||[])]) {
-          if(termsById.has(id)&&!visible.has(id)) {visible.add(id);changed=true;}
-        }
+        // Expanding a parent reveals that parent's direct children only. A
+        // child's other prerequisites remain semantic metadata; exposing them
+        // here made unrelated peer/parent nodes appear as if they were newly
+        // discovered children.
+        if(termsById.has(childId)&&!visible.has(childId)) {visible.add(childId);changed=true;}
       }
     }
   }
@@ -417,7 +677,6 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
     const child=termsById.get(childId);
     for(const [relation,parents] of [['all',child?.requires_all_of||[]],['any',child?.requires_any_of||[]]]) {
       for(const parentId of parents) {
-        if(!visible.has(parentId)) continue;
         const key=`${parentId}:${childId}:${relation}`;
         if(!relationshipKeys.has(key)) {relationships.push({source:parentId,target:childId,relation});relationshipKeys.add(key);}
       }
@@ -425,7 +684,7 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
   }
   const edges=[...base.edges];
   for(const node of nodes.filter(node=>node.isDetail)) {
-    const candidates=relationships.filter(edge=>edge.target===node.id);
+    const candidates=relationships.filter(edge=>edge.target===node.id&&nodeById.has(edge.source));
     const preferred=revealOrigin.get(node.id);
     const representative=candidates.find(edge=>edge.source===preferred)||candidates[0];
     if(representative) edges.push(representative);
@@ -435,7 +694,10 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
     }
   }
   if(expanded.size>0) {
-    arrangeOutwardWorldLayout(nodes,edges);
+    arrangeOutwardWorldLayout(nodes,edges,childrenByParent);
+    for(const node of nodes.filter(node=>node.isDetail&&vectorLength(node)>648)) {
+      const direction=unit(node);node.x=direction.x*648;node.y=direction.y*648;node.z=direction.z*648;
+    }
   }
   return {nodes,edges,relationships};
 }

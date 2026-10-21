@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { buildExpandedTermGraph, projectGraph, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
 
 export default function TermGraph({terms, catalogTerms=terms, selectedIds, onToggle, onAdd, onSearch, focusedId, onFocus, list, onListChange}) {
@@ -9,13 +9,33 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
   const [view,setView]=useState(INITIAL_VIEW);
   const [notice,setNotice]=useState('');
   const gesture=useRef(null);
+  const sceneRef=useRef(null);
   const pointers=useRef(new Map());
   const suppressClick=useRef(false);
+  const responsiveModeChecked=useRef(false);
+  const onListChangeRef=useRef(onListChange);
+  onListChangeRef.current=onListChange;
   const focused=catalogTerms.find(term=>term.term_id===focusedId);
   const selected=catalogTerms.filter(term=>selectedIds.includes(term.term_id));
   const points=useMemo(()=>projectGraph(graph,view),[graph,view]);
+  useEffect(()=>{
+    if(responsiveModeChecked.current) return;
+    responsiveModeChecked.current=true;
+    if(window.matchMedia('(max-width: 760px)').matches&&!list) onListChangeRef.current(true);
+  },[list]);
+  useEffect(()=>{
+    const scene=sceneRef.current;
+    if(!scene) return;
+    const handleWheel=(event)=>{
+      event.preventDefault();
+      const delta=clamp(-event.deltaY*.0015,-.12,.12);
+      setView(current=>({...current,zoom:clamp(current.zoom+delta,.65,1.25)}));
+    };
+    scene.addEventListener('wheel',handleWheel,{passive:false});
+    return ()=>scene.removeEventListener('wheel',handleWheel);
+  },[]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
-  function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.6)})); }
+  function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.25)})); }
   function start(event) {
     if(event.button!==0) return;
     if(event.target.closest?.('.term-graph-node')) return;
@@ -34,7 +54,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
     if(pair.length===2 && g.distance) {
       suppressClick.current=true;
       const distance=Math.hypot(pair[0].x-pair[1].x,pair[0].y-pair[1].y);
-      g.latest={...g.view,zoom:clamp(g.view.zoom*distance/g.distance,.65,1.6)};
+      g.latest={...g.view,zoom:clamp(g.view.zoom*distance/g.distance,.65,1.25)};
       setView(g.latest);
     } else if(pair.length===1) {
       const dx=event.clientX-g.x,dy=event.clientY-g.y;
@@ -83,12 +103,12 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         <button type="button" aria-label="오른쪽으로 회전" onClick={()=>rotate(.2,0)}>↷</button>
         <button type="button" aria-label="축소" disabled={view.zoom<=.65} onClick={()=>zoom(-.15)}>−</button>
         <span aria-live="off">{Math.round(view.zoom*100)}%</span>
-        <button type="button" aria-label="확대" disabled={view.zoom>=1.6} onClick={()=>zoom(.15)}>+</button>
+        <button type="button" aria-label="확대" disabled={view.zoom>=1.25} onClick={()=>zoom(.15)}>+</button>
         <button type="button" onClick={()=>setView(INITIAL_VIEW)}>회전 초기화</button>
         </div>
       </details>
       <div className="term-graph-scene" tabIndex={0} role="group" aria-label="회전 가능한 용어 공간"
-        aria-describedby="term-graph-help" onKeyDown={key} onPointerDown={start} onPointerMove={move}
+        ref={sceneRef} aria-describedby="term-graph-help" onKeyDown={key} onPointerDown={start} onPointerMove={move}
         onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
         data-yaw={view.yaw.toFixed(3)} data-pitch={view.pitch.toFixed(3)} data-zoom={view.zoom.toFixed(2)}>
         {graph.edges.some(edge=>edge.relation) && <div className="term-graph-relation-legend" aria-label="조건 연결선 안내">
@@ -103,10 +123,10 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         </svg>
         {graph.nodes.map(node=>{
           const p=points[node.id];
-          const nodeScale=node.term?(node.isDetail?1:clamp(p.scale,.9,1)):p.scale;
+          const nodeScale=node.term?1:p.scale;
           const style={left:`${p.x/10}%`,top:`${p.y/8.4}%`,zIndex:Math.round(p.depth+500),opacity:p.opacity,'--node-scale':nodeScale};
           const expandStyle={...style,'--node-scale':Math.max(1,nodeScale),
-            '--expand-x':'13px','--expand-y':'13px'};
+            '--expand-x':'20px','--expand-y':'20px'};
           return node.term ? <Fragment key={node.id}><button type="button" style={style} className="term-graph-node"
             data-focused={focusedId===node.id} data-selected={selectedIds.includes(node.id)} data-expandable={node.expandable}
             data-node-id={node.id} data-detail={Boolean(node.isDetail)} data-world-x={node.x.toFixed(3)} data-world-y={node.y.toFixed(3)}

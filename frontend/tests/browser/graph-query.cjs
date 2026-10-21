@@ -15,6 +15,12 @@ const assert=require('node:assert/strict');
     return r.abort();});
    await page.goto(process.env.APP_BASE||'http://127.0.0.1:3100');await page.waitForLoadState('networkidle');
    await page.waitForTimeout(100); // Let ResizeObserver-driven graph safe areas settle before geometry assertions.
+    const ensure3D=async()=>{
+     await page.locator('.term-graph-scene,.term-graph-list').first().waitFor();
+     if(await page.locator('.term-graph-list').count()) await page.locator('.term-graph-view-toggle > button').click();
+     await page.locator('.term-graph-scene').waitFor();
+    };
+   await ensure3D();
    const readQuery=()=>page.locator('[aria-label="추천 검색어"]').innerText();
    const defaultQuery=await readQuery(),scene=page.locator('.term-graph-scene');
    const geometry=()=>page.locator('.term-graph-node,.term-graph-category').evaluateAll(es=>es.map(e=>({
@@ -40,8 +46,10 @@ const assert=require('node:assert/strict');
    await centered();if(!mobile){await page.setViewportSize({width:800,height:900});await centered();await page.setViewportSize({width:1440,height:900});}else{await page.setViewportSize({width:320,height:844});await centered();await page.setViewportSize({width:390,height:844});}
    await Promise.all([page.waitForResponse(r=>r.url().includes('/api/term-search')),page.getByRole('button',{name:'레퍼런스 검색',exact:true}).click()]);
    await page.goBack();await page.locator('.term-graph').waitFor();assert.equal(await readQuery(),combined);
-   await page.getByRole('button',{name:'3D 보기',exact:true}).click();
-   assert.equal(await page.locator('.term-graph-node[data-selected="true"]').count(),2);
+    await page.locator('.term-graph-scene,.term-graph-list').first().waitFor();
+    await page.waitForTimeout(120);
+    const restoredSelectionCount=await page.locator('.term-graph-node[data-selected="true"],.term-graph-list input:checked').count();
+    assert.equal(restoredSelectionCount,2);
    await page.goForward();if(mobile)await page.getByRole('button',{name:'레퍼런스',exact:true}).click();await page.getByText('검색 결과가 없습니다.',{exact:true}).first().waitFor();
    assert.equal(calls.length,1);
    if(mobile)await page.getByRole('button',{name:'대화',exact:true}).click();

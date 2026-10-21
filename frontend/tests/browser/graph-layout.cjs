@@ -42,6 +42,26 @@ function geometry(page) {
     const label=element.getBoundingClientRect(),node=element.closest('.term-graph-node').getBoundingClientRect();
     return Math.max(0,node.left-label.left,node.top-label.top,label.right-node.right,label.bottom-node.bottom);
    });
+  const labelOcclusions=[...document.querySelectorAll('.term-graph-node .term-graph-label')].flatMap(label=>{
+    const rect=label.getBoundingClientRect(),owner=label.closest('.term-graph-node'),samples=[
+     [rect.left+rect.width/2,rect.top+rect.height/2],
+     [rect.left+rect.width/2,rect.top+rect.height*.25],
+     [rect.left+rect.width/2,rect.top+rect.height*.75],
+     [rect.left+rect.width*.3,rect.top+rect.height/2],
+     [rect.left+rect.width*.7,rect.top+rect.height/2],
+    ];
+    return samples.flatMap(([x,y])=>{
+     if(x<0||y<0||x>=innerWidth||y>=innerHeight) return [];
+     const top=document.elementFromPoint(x,y);
+     return top&&owner.contains(top)?[]:[[owner.dataset.nodeId,top?.closest?.('.term-graph-node,.term-graph-expand')?.dataset?.nodeId||top?.className||null]];
+    });
+   });
+  const expandOcclusions=[...document.querySelectorAll('.term-graph-expand')].flatMap(control=>{
+    const rect=control.getBoundingClientRect(),x=rect.left+rect.width/2,y=rect.top+rect.height/2;
+    if(x<0||y<0||x>=innerWidth||y>=innerHeight) return [];
+    const top=document.elementFromPoint(x,y);
+    return top&&control.contains(top)?[]:[[control.dataset.nodeId,top?.closest?.('.term-graph-node,.term-graph-expand')?.dataset?.nodeId||top?.className||null]];
+   });
   const edges=[...document.querySelectorAll('.term-graph-scene line')].map(element=>({
    source:element.dataset.source,target:element.dataset.target,relation:element.dataset.relation,
    x1:+element.getAttribute('x1')*sr.width/1000,y1:+element.getAttribute('y1')*sr.height/840,
@@ -66,7 +86,7 @@ function geometry(page) {
   const logoLegendOverlap=logo&&legend?Math.max(0,Math.min(logo.right,legend.right)-Math.max(logo.left,legend.left))*Math.max(0,Math.min(logo.bottom,legend.bottom)-Math.max(logo.top,legend.top)):0;
   return {overlaps,severeOverlaps,overlayOverlaps,outwardViolations,maxEndpointError:worstEndpoint.error,worstEndpoint,
    maxExpandContainmentError:worstExpand.error,worstExpand,maxCircularNodeError:Math.max(0,...circularNodeErrors),
-   dotCount:document.querySelectorAll('.term-graph-dot').length,maxLabelContainmentError:Math.max(...labelContainmentErrors),
+   dotCount:document.querySelectorAll('.term-graph-dot').length,maxLabelContainmentError:Math.max(...labelContainmentErrors),labelOcclusions,expandOcclusions,
    minDetailSize:Math.min(...detailNodes.map(node=>node.width)),minDetailFont:Math.min(...detailNodes.map(node=>node.fontSize)),offscreen,logoLegendOverlap,nodes,edges};
  });
 }
@@ -96,6 +116,10 @@ function geometry(page) {
    assert(result.maxCircularNodeError<1,`${label}: term nodes are not centered circles (${result.maxCircularNodeError}px)`);
    assert.equal(result.dotCount,0,`${label}: detached dot remains`);
    assert(result.maxLabelContainmentError<1,`${label}: label drifts outside its node by ${result.maxLabelContainmentError}px`);
+    if(requireSeparatedCenters) {
+     assert.deepEqual(result.labelOcclusions,[],`${label}: label center is hidden: ${JSON.stringify(result.labelOcclusions)}`);
+     assert.deepEqual(result.expandOcclusions,[],`${label}: expand control is hidden: ${JSON.stringify(result.expandOcclusions)}`);
+    }
    assert.deepEqual(result.outwardViolations,[],`${label}: branches returned inward: ${JSON.stringify(result.outwardViolations)}`);
    const incoming=new Map();
    for(const edge of result.edges) incoming.set(edge.target,(incoming.get(edge.target)||0)+1);
@@ -109,18 +133,59 @@ function geometry(page) {
   };
   const initial=await check('desktop initial',Infinity,true);
   if(process.env.GRAPH_CAPTURE) await page.screenshot({path:process.env.GRAPH_CAPTURE,fullPage:true});
-  assert(initial.overlaps.length<=25,`desktop initial: dense circular layout still has ${initial.overlaps.length} overlaps: ${JSON.stringify(initial.overlaps.slice(0,20))}`);
-  assert(initial.minDetailSize>=48,`desktop initial: detail circles shrink below 48px (${initial.minDetailSize}px)`);
-  assert(initial.minDetailFont>=9,`desktop initial: detail text shrinks below 9px (${initial.minDetailFont}px)`);
+  assert(initial.overlaps.length<=50,`desktop initial: dense circular layout still has ${initial.overlaps.length} overlaps: ${JSON.stringify(initial.overlaps.slice(0,20))}`);
+  assert(initial.minDetailSize>=68,`desktop initial: detail circles shrink below 68px (${initial.minDetailSize}px)`);
+  assert(initial.minDetailFont>=14,`desktop initial: detail text shrinks below 14px (${initial.minDetailFont}px)`);
   assert.deepEqual(initial.offscreen,[],`desktop initial: nodes are clipped: ${JSON.stringify(initial.offscreen)}`);
   assert.equal(initial.logoLegendOverlap,0,'desktop initial: relation legend overlaps the logo');
   const scene=page.locator('.term-graph-scene');
+  const fixedViewport=await page.locator('.term-graph').evaluate(element=>({
+   scrollHeight:element.scrollHeight,clientHeight:element.clientHeight,scrollTop:element.scrollTop,
+   overlay:[...element.querySelectorAll('.term-graph-lower-overlay button,.term-graph-lower-overlay h2,.term-graph-lower-overlay p')]
+    .filter(item=>getComputedStyle(item).display!=='none').map(item=>{const rect=item.getBoundingClientRect();return [item.textContent.trim(),rect.top,rect.bottom];})
+  }));
+  assert.equal(fixedViewport.scrollTop,0,'desktop graph starts vertically scrolled');
+  assert(fixedViewport.scrollHeight<=fixedViewport.clientHeight+1,`desktop graph still needs vertical scrolling (${fixedViewport.scrollHeight}/${fixedViewport.clientHeight})`);
+  assert(fixedViewport.overlay.every(([,top,bottom])=>top>=0&&bottom<=900),`lower graph controls are outside the viewport: ${JSON.stringify(fixedViewport.overlay)}`);
+  const blank=await scene.evaluate(element=>{
+   const rect=element.getBoundingClientRect();
+   for(const y of [.18,.3,.42,.54,.66]) for(const x of [.12,.26,.4,.54,.68,.82]) {
+    const px=rect.left+rect.width*x,py=rect.top+rect.height*y,target=document.elementFromPoint(px,py);
+    if(target&&element.contains(target)&&!target.closest('.term-graph-node,.term-graph-expand')) return {x:px,y:py};
+   }
+   return {x:rect.left+20,y:rect.top+rect.height/2};
+  });
+  const zoomBefore=+(await scene.getAttribute('data-zoom'));
+  await page.mouse.move(blank.x,blank.y);await page.mouse.wheel(0,-120);
+  await page.waitForFunction(value=>+document.querySelector('.term-graph-scene').dataset.zoom>value,zoomBefore);
+  const zoomAfter=+(await scene.getAttribute('data-zoom'));
+  assert(zoomAfter>zoomBefore&&zoomAfter<=1.25,`graph wheel zoom is outside the safe range (${zoomBefore} -> ${zoomAfter})`);
+  assert.equal(await page.locator('.term-graph').evaluate(element=>element.scrollTop),0,'graph wheel scrolled the central panel');
+  const sidebar=page.locator('.history-sidebar-list');
+  if(await sidebar.count()) {
+   await sidebar.evaluate(element=>{for(let i=0;i<80;i++){const row=document.createElement('div');row.style.height='32px';row.textContent=`scroll-test-${i}`;element.append(row);}});
+   const sideBox=await sidebar.boundingBox(),sideZoom=+(await scene.getAttribute('data-zoom'));
+   if(sideBox) {
+    await page.mouse.move(sideBox.x+sideBox.width/2,sideBox.y+sideBox.height/2);await page.mouse.wheel(0,240);
+    await page.waitForFunction(()=>document.querySelector('.history-sidebar-list').scrollTop>0);
+    assert.equal(+(await scene.getAttribute('data-zoom')),sideZoom,'sidebar wheel changed graph zoom');
+   }
+  }
+  await scene.press('Home');
   const before=await geometry(page),beforeById=Object.fromEntries(before.nodes.map(node=>[node.id,node]));
   const bounds=await scene.boundingBox(),depthChanges=[];
-  await page.mouse.move(bounds.x+bounds.width*.5,bounds.y+bounds.height*.2);
+  const dragStart=await scene.evaluate(element=>{
+   const rect=element.getBoundingClientRect();
+   for(const y of [.18,.3,.42,.54,.66]) for(const x of [.12,.26,.4,.54,.68,.82]) {
+    const clientX=rect.left+rect.width*x,clientY=rect.top+rect.height*y,target=document.elementFromPoint(clientX,clientY);
+    if(target&&element.contains(target)&&!target.closest('.term-graph-node,.term-graph-expand')) return {x:clientX,y:clientY};
+   }
+   return {x:rect.left+20,y:rect.top+rect.height/2};
+  });
+  await page.mouse.move(dragStart.x,dragStart.y);
   await page.mouse.down();
   for(let step=1;step<=6;step++) {
-   await page.mouse.move(bounds.x+bounds.width*(.5+step*.035),bounds.y+bounds.height*(.2+step*.012));
+   await page.mouse.move(dragStart.x+bounds.width*step*.035,dragStart.y+bounds.height*step*.012);
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const frameGeometry=await geometry(page);
    assert(frameGeometry.maxEndpointError<1,`drag frame ${step}: edge endpoint misses its node center by ${frameGeometry.maxEndpointError}px`);
@@ -165,6 +230,12 @@ function geometry(page) {
   await check('desktop rotated and zoomed');
   await page.setViewportSize({width:390,height:844});
   await check('narrow rotated and zoomed');
+  const narrowClipped=await page.locator('.term-graph-node,.term-graph-category').evaluateAll(nodes=>nodes.flatMap(node=>{
+   const rect=node.getBoundingClientRect();
+   return rect.left<0||rect.top<0||rect.right>innerWidth||rect.bottom>innerHeight
+    ?[[node.dataset.nodeId,Math.round(rect.left),Math.round(rect.top),Math.round(rect.width),Math.round(rect.height)]]:[];
+  }));
+  assert.deepEqual(narrowClipped,[],`narrow rotated and zoomed: nodes are clipped by the viewport: ${JSON.stringify(narrowClipped)}`);
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({multipleBranches:true,initialVisibleLabelOverlaps:initial.overlaps.length,
    initialOverlapPairs:initial.overlaps,

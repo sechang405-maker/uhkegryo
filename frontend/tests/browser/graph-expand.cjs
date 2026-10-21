@@ -21,6 +21,10 @@ const assert=require('node:assert/strict');
    });
    await page.goto(process.env.APP_BASE||'http://127.0.0.1:3100');
    await page.waitForLoadState('networkidle');
+   if(mobile) {
+    await page.locator('.term-graph-list').waitFor();
+    await page.locator('.term-graph-view-toggle button').click();
+   }
    const scene=page.locator('.term-graph-scene');
    const initialView=await scene.evaluate(element=>[element.dataset.yaw,element.dataset.pitch,element.dataset.zoom]);
    const expand=page.locator('[data-node-id="pose_sitting:expand"]');
