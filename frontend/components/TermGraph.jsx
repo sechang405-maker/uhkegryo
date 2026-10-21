@@ -1,9 +1,10 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { buildExpandedTermGraph, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
+import { buildExpandedTermGraph, INITIAL_VIEW, clamp, projectGraph, toggleExpanded } from '../lib/term-graph.mjs';
 import { graphNodeColor } from '../lib/term-graph-colors.mjs';
 import { buildGraphDepthLayers } from '../lib/term-graph-edges.mjs';
+import { assessGraphViewport } from '../lib/term-graph-responsive.mjs';
 import {
   createGraphMotionState,
   finishGraphMotion,
@@ -25,11 +26,16 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
   const logicalGraph=motionState.logicalGraph;
   const graph=motionState.displayGraph;
   const hasMotion=Object.keys(motionState.presence).length>0;
-  const list=listRequested||logicalGraph.denseOverflow;
   const [view,setView]=useState(INITIAL_VIEW);
   const [notice,setNotice]=useState('');
   const [sceneSize,setSceneSize]=useState({width:1000,height:840});
+  const [responsiveFallback,setResponsiveFallback]=useState(false);
+  const responsivePoints=useMemo(()=>projectGraph(logicalGraph,INITIAL_VIEW),[logicalGraph]);
+  const viewportAssessment=useMemo(()=>assessGraphViewport(logicalGraph.nodes,responsivePoints,sceneSize),
+    [logicalGraph.nodes,responsivePoints,sceneSize]);
+  const list=listRequested||logicalGraph.denseOverflow||responsiveFallback;
   const gesture=useRef(null);
+  const rootRef=useRef(null);
   const sceneRef=useRef(null);
   const pointers=useRef(new Map());
   const suppressClick=useRef(false);
@@ -97,6 +103,9 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     if(list) setMotionState(current=>createGraphMotionState(current.logicalGraph,current.expandedIds));
   },[list]);
   useEffect(()=>{
+    if(!listRequested&&!logicalGraph.denseOverflow&&viewportAssessment.unsafe) setResponsiveFallback(true);
+  },[listRequested,logicalGraph.denseOverflow,viewportAssessment.unsafe]);
+  useEffect(()=>{
     if(responsiveModeChecked.current) return;
     responsiveModeChecked.current=true;
     if(window.matchMedia('(max-width: 760px)').matches&&!list) onListChangeRef.current(true);
@@ -120,17 +129,17 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     return ()=>scene.removeEventListener('wheel',handleWheel);
   },[list]);
   useEffect(()=>{
-    const scene=sceneRef.current;
-    if(!scene) return;
+    const root=rootRef.current;
+    if(!root) return;
     const update=()=>{
-      const {width,height}=scene.getBoundingClientRect();
+      const {width,height}=root.getBoundingClientRect();
       setSceneSize(current=>current.width===width&&current.height===height?current:{width,height});
     };
     update();
     const observer=new ResizeObserver(update);
-    observer.observe(scene);
+    observer.observe(root);
     return ()=>observer.disconnect();
-  },[list]);
+  },[]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.25)})); }
   function start(event) {
@@ -184,12 +193,28 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     const actions={ArrowLeft:()=>rotate(-.16,0),ArrowRight:()=>rotate(.16,0),ArrowUp:()=>rotate(0,-.16),ArrowDown:()=>rotate(0,.16),'+':()=>zoom(.1),'=':()=>zoom(.1),'-':()=>zoom(-.1),Home:()=>setView(INITIAL_VIEW)};
     if(actions[event.key]) {event.preventDefault();actions[event.key]();}
   }
-  return <section className="term-graph" aria-label="예시 용어 3D 그래프">
+  function toggleList() {
+    suppressClick.current=false;
+    if(list) {
+      if(viewportAssessment.unsafe) return;
+      if(responsiveFallback) setResponsiveFallback(false);
+      else onListChange(false);
+      return;
+    }
+    onListChange(true);
+  }
+  const listUnavailable=logicalGraph.denseOverflow||(list&&viewportAssessment.unsafe);
+  const listTitle=logicalGraph.denseOverflow?'노드가 많아 읽기 쉬운 목록으로 표시합니다':
+    list&&viewportAssessment.unsafe?'그래프 공간이 좁아 노드가 겹치는 동안 목록으로 표시합니다':undefined;
+  return <section ref={rootRef} className="term-graph" aria-label="예시 용어 3D 그래프">
     <div className="term-graph-view-toggle">
-      <button type="button" aria-pressed={list} disabled={graph.denseOverflow}
-        title={graph.denseOverflow?'노드가 많아 읽기 쉬운 목록으로 표시합니다':undefined}
-        onClick={()=>{onListChange(!list);suppressClick.current=false;}}>{list?'3D 보기':'목록 보기'}</button>
+      <button type="button" aria-pressed={list} disabled={listUnavailable}
+        title={listTitle} onClick={toggleList}>{list?'3D 보기':'목록 보기'}</button>
     </div>
+    {responsiveFallback&&<p className="term-graph-responsive-notice" role="status">
+      {viewportAssessment.unsafe?'좁은 그래프 공간에서 노드가 겹치지 않도록 목록으로 표시합니다.':
+        '패널을 넓힌 뒤 3D 보기를 선택하면 같은 선택과 펼침 상태로 돌아갑니다.'}
+    </p>}
     {list ? <div className="term-graph-list" aria-label="전체 예시 용어 목록">
       {logicalGraph.nodes.filter(n=>!n.term).map(category=><fieldset key={category.id}><legend>{category.label}</legend>
         {logicalGraph.nodes.filter(n=>n.term && n.role===category.role).map(node=><div key={node.id}>

@@ -21,6 +21,8 @@
 .session-limit-notice button { flex-shrink: 0; padding: 6px 9px; font-size: 11px; }
 .term-graph { height: calc(100dvh - 72px); overflow-y: auto; overflow-x: hidden; padding: 22px 24px 28px; font-weight: 400; scrollbar-color: var(--accent) var(--canvas); }
 .term-graph-view-toggle { display:flex; justify-content:flex-end; }
+.term-graph-responsive-notice { margin:10px 0 0; padding:10px 12px; border:1px solid var(--accent); border-radius:10px;
+  background:var(--accent-surface); color:var(--text); font-size:13px; line-height:1.5; }
 .term-graph-help { color:var(--text-secondary); font-size:12px; line-height:1.65; margin:0; }
 .term-graph button { cursor:pointer; }
 .term-graph button:disabled { opacity:.45; cursor:default; }
