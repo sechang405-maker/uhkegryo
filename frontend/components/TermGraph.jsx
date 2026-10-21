@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { buildExpandedTermGraph, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
+import { graphCategoryColor } from '../lib/term-graph-colors.mjs';
 import {
   createGraphMotionState,
   finishGraphMotion,
@@ -212,17 +213,20 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         </svg>
         {graph.nodes.filter(node=>!node.motionOrigin).map(node=>{
           const p=points[node.id];
+          const categoryColor=graphCategoryColor(node.role);
           const motion=motionState.presence[node.id];
           const motionAmount=projection.amounts[node.id]??1;
           const exiting=motion?.target===0;
           const interactive=!motion;
           const nodeScale=node.term?1:p.scale;
           const style={left:`${p.x/10}%`,top:`${p.y/8.4}%`,zIndex:Math.round(p.depth+500),opacity:p.opacity,
-            pointerEvents:node.term?(interactive?'auto':'none'):undefined,'--node-scale':nodeScale,'--motion-presence':motionAmount};
+            pointerEvents:node.term?(interactive?'auto':'none'):undefined,'--node-scale':nodeScale,'--motion-presence':motionAmount,
+            '--category-color':categoryColor};
           const expandStyle={...style,'--node-scale':Math.max(1,nodeScale),
             '--expand-x':'20px','--expand-y':'20px'};
           return node.term ? <Fragment key={node.id}><button type="button" style={style} className="term-graph-node"
             data-focused={focusedId===node.id} data-selected={selectedIds.includes(node.id)} data-expandable={node.expandable}
+            data-category={node.role}
             data-node-id={node.id} data-detail={Boolean(node.isDetail)} data-world-x={node.x.toFixed(3)} data-world-y={node.y.toFixed(3)}
             data-world-z={node.z.toFixed(3)} data-layout-x={p.x.toFixed(3)} data-layout-y={p.y.toFixed(3)}
             data-depth={p.depth.toFixed(3)} data-distant={p.depth < -40}
@@ -237,7 +241,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
             data-motion={motion?(exiting?'exit':'enter'):'idle'} data-motion-amount={motionAmount.toFixed(3)}
             onPointerDown={(event)=>event.stopPropagation()}
             onClick={(event)=>expand(event,node.id)}>{expandedIds.includes(node.id)?'−':'+'}</button>}</Fragment>
-            : <span key={node.id} style={style} data-node-id={node.id} data-depth={p.depth.toFixed(3)} className="term-graph-category">{node.label}</span>;
+            : <span key={node.id} style={style} data-node-id={node.id} data-category={node.role} data-depth={p.depth.toFixed(3)} className="term-graph-category">{node.label}</span>;
         })}
       </div>
       <details className="term-graph-help-disclosure">
