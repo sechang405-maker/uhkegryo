@@ -21,3 +21,13 @@ export function getRecommendedSearchQuery(term) {
     return null;
   }
 }
+
+export function createGraphSearchScope(terms, selectedIds, focusedId) {
+  const selected = new Set(selectedIds);
+  const selectedTerms = terms.filter(term => selected.has(term.term_id));
+  return {
+    focusedTerm: terms.find(term => term.term_id === focusedId) || null,
+    selectedTerms,
+    selectedQuery: combineRecommendedSearchQueries(selectedTerms),
+  };
+}

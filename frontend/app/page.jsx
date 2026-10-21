@@ -11,7 +11,7 @@ import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
 import { sessionTitle } from "../lib/session-title.mjs";
 import { ACTIVE_TERMS, HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
-import { getRecommendedSearchQuery, combineRecommendedSearchQueries } from "../lib/recommended-query.mjs";
+import { getRecommendedSearchQuery, createGraphSearchScope } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode, applySketchResult, applyPreviewRecovery } from "../lib/term-search.mjs";
 import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
 import { usableGalleryPins } from "../lib/gallery-pins.mjs";
@@ -124,9 +124,8 @@ export default function HomePage() {
   const galleryTerm = galleryRows.find((row) => row.term.term_id === activeGalleryTermId)?.term || galleryRows[0]?.term || null;
   const queryTerm = ["results", "term-results"].includes(boardView) && hasGalleryRows ? galleryTerm : homeTerm;
   const showingGraph = !(boardView === "results" && historyTurnId) && !( ["results", "term-results"].includes(boardView) && hasGalleryRows );
-  const recommendedSearchQuery = showingGraph && graphTermIds.length
-    ? combineRecommendedSearchQueries(ACTIVE_TERMS.filter(term => graphTermIds.includes(term.term_id)))
-    : getRecommendedSearchQuery(queryTerm);
+  const graphSearchScope = createGraphSearchScope(ACTIVE_TERMS, graphTermIds, graphFocusId);
+  const recommendedSearchQuery = showingGraph ? graphSearchScope.selectedQuery : getRecommendedSearchQuery(queryTerm);
   const pendingTurnIds = turns.filter(isTurnPending).map((turn) => `${turn.id}:${turn.screen_generation ?? ""}`).join(",");
   const conversationBusy = !conversationReady || isSubmitting || Boolean(pendingTurnIds) || Boolean(deletingId);
   const requestLength = countCharacters(requestText);
@@ -966,6 +965,9 @@ export default function HomePage() {
           {!uiDemoEnabled && recommendedSearchQuery && (
             <div className="recommended-query" aria-label="즉시 검색">
               <div className="query-value">
+                <span className="query-scope-label">{showingGraph
+                  ? <>선택 조건 {graphSearchScope.selectedTerms.length}개 전체 검색</>
+                  : "현재 결과 검색어"}</span>
                 <code tabIndex={0} aria-label="추천 검색어" aria-describedby="full-query-tooltip">{recommendedSearchQuery}</code>
                 <span id="full-query-tooltip" className="full-query-tooltip" role="tooltip">{recommendedSearchQuery}</span>
               </div>
@@ -1077,6 +1079,7 @@ export default function HomePage() {
         ) : hasTerms ? (
           <TermGraph terms={HOME_TERMS} catalogTerms={ACTIVE_TERMS} selectedIds={graphTermIds}
             focusedId={graphFocusId} onFocus={setGraphFocusId} list={graphList} onListChange={setGraphList}
+            selectedSearchQuery={graphSearchScope.selectedQuery}
             onToggle={(id) => {setGraphTermIds((ids) => toggleTerm(ids, id));setGraphFocusId(id);}}
             onSearch={openTermSearch}
             onAdd={(terms) => {

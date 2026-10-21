@@ -14,7 +14,7 @@ import {
 
 const GRAPH_MOTION_DURATION=180;
 
-export default function TermGraph({terms, catalogTerms=terms, selectedIds, onToggle, onAdd, onSearch, focusedId, onFocus, list:listRequested, onListChange}) {
+export default function TermGraph({terms, catalogTerms=terms, selectedIds, selectedSearchQuery, onToggle, onAdd, onSearch, focusedId, onFocus, list:listRequested, onListChange}) {
   const [motionState,setMotionState]=useState(()=>createGraphMotionState(buildExpandedTermGraph(terms,catalogTerms,[])));
   const [motionNow,setMotionNow]=useState(0);
   const [reducedMotion,setReducedMotion]=useState(false);
@@ -274,20 +274,29 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
     </>}
     <div className="term-graph-lower-overlay">
       {focused && <article className="term-graph-detail" aria-label="선택한 용어 설명">
-      <div aria-live="polite"><h2>{focused.label_ko}</h2><p>{focused.plain_meaning_ko}</p></div>
+      <div aria-live="polite"><p className="term-graph-scope-label">현재 설명 중인 용어</p><h2>{focused.label_ko}</h2><p>{focused.plain_meaning_ko}</p></div>
       <div className="term-graph-actions">
         <button type="button" aria-pressed={selectedIds.includes(focused.term_id)} onClick={()=>onToggle(focused.term_id)}>{selectedIds.includes(focused.term_id)?'선택 해제':'용어 선택'}</button>
         <button type="button" disabled={focused.search_disabled} title={focused.search_disabled?'이 용어는 직접 검색할 수 없어요.':undefined}
-          onClick={()=>onSearch(focused)}>레퍼런스 검색</button>
+          onClick={()=>onSearch(focused)}>현재 용어만 검색</button>
       </div>
       </article>}
       <footer className="term-graph-selection">
-      {selected.length > 0 && <>
+      <div className="term-graph-selection-summary">
+        <strong>선택 조건 {selected.length}개</strong>
+        <p>펼치기는 관련 용어를 보여 줄 뿐 선택 조건에 포함되지 않습니다.</p>
+      </div>
+      {selected.length > 0 ? <>
         <div className="term-graph-chips" aria-label="선택한 용어">
           {selected.map(term=><button key={term.term_id} type="button" aria-label={`${term.label_ko} 선택 해제`} onClick={()=>onToggle(term.term_id)}>{term.label_ko} <span aria-hidden="true">×</span></button>)}
         </div>
-        <button type="button" onClick={()=>setNotice(onAdd(selected)?'선택한 용어를 입력에 추가했어요.':'500자 이내로 추가할 수 있도록 입력을 줄여 주세요.')}>선택 {selected.length}개 입력에 추가</button>
-      </>}
+      </> : <p className="term-graph-selection-empty">검색에 포함할 조건을 노드에서 선택해 주세요.</p>}
+      <div className="term-graph-selection-actions">
+        {selected.length > 0 && <button type="button" onClick={()=>setNotice(onAdd(selected)?'선택한 용어를 입력에 추가했어요.':'500자 이내로 추가할 수 있도록 입력을 줄여 주세요.')}>선택 {selected.length}개 입력에 추가</button>}
+        {selectedSearchQuery ? <a className="term-graph-search-all" href={`https://kr.pinterest.com/search/pins/?${new URLSearchParams({q:selectedSearchQuery})}`}
+          target="_blank" rel="noopener noreferrer">선택 조건 전체 검색</a>
+          : <button type="button" disabled={!selectedSearchQuery}>선택 조건 전체 검색</button>}
+      </div>
       <p role="status">{notice}</p>
       </footer>
     </div>
