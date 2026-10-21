@@ -514,8 +514,17 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     return applyAssignment(beam[0].assigned);
   };
 
-  for(const [parentId,visibleIds] of [...siblingGroups].sort(([a],[b])=>a.localeCompare(b)))
-    if((canonicalChildrenByParent.get(parentId)||visibleIds).length>=4&&!placeDenseSiblingGroup(parentId,visibleIds)) denseOverflow=true;
+  const lineageDepth=(id,seen=new Set())=>{
+    if(placed.has(id)||seen.has(id)) return 0;
+    const parentId=visualParent.get(id);
+    return parentId?1+lineageDepth(parentId,new Set([...seen,id])):0;
+  };
+  const denseGroups=[...siblingGroups].filter(([parentId,visibleIds])=>(canonicalChildrenByParent.get(parentId)||visibleIds).length>=4)
+    .sort(([a],[b])=>lineageDepth(a)-lineageDepth(b)||a.localeCompare(b));
+  for(const [parentId,visibleIds] of denseGroups) {
+    if(!placed.has(parentId)) placePrimary(parentId);
+    if(placed.has(parentId)&&!placeDenseSiblingGroup(parentId,visibleIds)) denseOverflow=true;
+  }
 
   for(let pass=0;pass<nodes.length;pass++) {
     let changed=false;

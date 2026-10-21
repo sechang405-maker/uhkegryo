@@ -85,7 +85,9 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
   }
   return <section className="term-graph" aria-label="예시 용어 3D 그래프">
     <div className="term-graph-view-toggle">
-      <button type="button" aria-pressed={list} onClick={()=>{onListChange(!list);suppressClick.current=false;}}>{list?'3D 보기':'목록 보기'}</button>
+      <button type="button" aria-pressed={list} disabled={graph.denseOverflow}
+        title={graph.denseOverflow?'노드가 많아 읽기 쉬운 목록으로 표시합니다':undefined}
+        onClick={()=>{onListChange(!list);suppressClick.current=false;}}>{list?'3D 보기':'목록 보기'}</button>
     </div>
     {list ? <div className="term-graph-list" aria-label="전체 예시 용어 목록">
       {graph.nodes.filter(n=>!n.term).map(category=><fieldset key={category.id}><legend>{category.label}</legend>

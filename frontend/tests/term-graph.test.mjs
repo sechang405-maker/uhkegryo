@@ -305,3 +305,13 @@ test('an unsafe synthetic dense fan requests the readable list representation',(
  assert.ok(['overflow_root',...children.map(child=>child.term_id)].every(id=>ids.has(id)));
  assert.equal(graph.relationships.filter(edge=>edge.source==='overflow_root').length,20);
 });
+
+test('a safe dense grandchild fan waits for its detail parent before overflow classification',()=>{
+ const root={role:'pose',term_id:'two_level_root',label_ko:'two level root',requires_all_of:[],requires_any_of:[]};
+ const middle={role:'pose',term_id:'two_level_middle',label_ko:'two level middle',requires_all_of:['two_level_root'],requires_any_of:[]};
+ const children=Array.from({length:4},(_,index)=>({role:'pose',term_id:`two_level_child_${index}`,
+  label_ko:`two level child ${index}`,requires_all_of:['two_level_middle'],requires_any_of:[]}));
+ const graph=buildExpandedTermGraph([root],[root,middle,...children],['two_level_root','two_level_middle']);
+ assert.equal(graph.denseOverflow,false);
+ assert.ok(children.every(child=>graph.nodes.some(node=>node.id===child.term_id)));
+});
