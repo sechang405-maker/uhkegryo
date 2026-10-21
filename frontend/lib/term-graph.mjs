@@ -523,7 +523,7 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     .sort(([a],[b])=>lineageDepth(a)-lineageDepth(b)||a.localeCompare(b));
   for(const [parentId,visibleIds] of denseGroups) {
     if(!placed.has(parentId)) placePrimary(parentId);
-    if(placed.has(parentId)&&!placeDenseSiblingGroup(parentId,visibleIds)) denseOverflow=true;
+    if(!placed.has(parentId)||!placeDenseSiblingGroup(parentId,visibleIds)) denseOverflow=true;
   }
 
   for(let pass=0;pass<nodes.length;pass++) {

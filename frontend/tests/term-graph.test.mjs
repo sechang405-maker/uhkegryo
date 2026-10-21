@@ -315,3 +315,13 @@ test('a safe dense grandchild fan waits for its detail parent before overflow cl
  assert.equal(graph.denseOverflow,false);
  assert.ok(children.every(child=>graph.nodes.some(node=>node.id===child.term_id)));
 });
+
+test('a dense fan whose deep parent cannot be placed uses the readable list representation',()=>{
+ const chain=Array.from({length:4},(_,index)=>({role:'pose',term_id:`deep_${index}`,label_ko:`deep ${index}`,
+  requires_all_of:index?[`deep_${index-1}`]:[],requires_any_of:[]}));
+ const children=Array.from({length:4},(_,index)=>({role:'pose',term_id:`deep_child_${index}`,label_ko:`deep child ${index}`,
+  requires_all_of:['deep_3'],requires_any_of:[]}));
+ const graph=buildExpandedTermGraph([chain[0]],[...chain,...children],chain.map(term=>term.term_id));
+ assert.equal(graph.denseOverflow,true);
+ assert.ok(children.every(child=>graph.nodes.some(node=>node.id===child.term_id)));
+});
