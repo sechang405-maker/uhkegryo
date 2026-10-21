@@ -100,6 +100,42 @@ test('collapse changes visibility only and cyclic relationships remain finite',(
  assert.equal(new Set(graph.edges.map(edge=>`${edge.source}:${edge.target}:${edge.relation}`)).size,graph.edges.length);
 });
 
+test('expanded branches stay in their category cone and every real child is farther from the graph center than its parents',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
+ const byId=new Map(graph.nodes.map(node=>[node.id,node]));
+ const radius=node=>Math.hypot(node.x,node.y,node.z);
+ const angle=(a,b)=>Math.acos(Math.min(1,Math.max(-1,(a.x*b.x+a.y*b.y+a.z*b.z)/(radius(a)*radius(b)))));
+ for(const node of graph.nodes.filter(node=>node.term)) {
+  const category=byId.get(`category:${node.role}`);
+  assert.ok(angle(node,category)<Math.PI/3,`${node.id} escaped the ${node.role} category cone`);
+ }
+ for(const edge of graph.edges.filter(edge=>edge.relation)) {
+  const parent=byId.get(edge.source),child=byId.get(edge.target);
+  assert.ok(radius(child)>radius(parent)+1,`${child.id} returned inward past ${parent.id}`);
+ }
+});
+
+test('simultaneous category fans and a two-level branch keep extending outward, including a multi-parent child',()=>{
+ const base=[
+  {role:'body',term_id:'body_root',label_ko:'body root',requires_all_of:[],requires_any_of:[]},
+  {role:'pose',term_id:'pose_root',label_ko:'pose root',requires_all_of:[],requires_any_of:[]},
+  {role:'pose',term_id:'pose_support',label_ko:'pose support',requires_all_of:[],requires_any_of:[]},
+ ];
+ const catalog=[...base,
+  {role:'body',term_id:'body_child',label_ko:'body child',requires_all_of:['body_root'],requires_any_of:[]},
+  {role:'pose',term_id:'pose_child',label_ko:'pose child',requires_all_of:['pose_root','pose_support'],requires_any_of:[]},
+  {role:'pose',term_id:'pose_grandchild',label_ko:'pose grandchild',requires_all_of:['pose_child'],requires_any_of:[]},
+ ];
+ const graph=buildExpandedTermGraph(base,catalog,['body_root','pose_root','pose_child']);
+ const byId=new Map(graph.nodes.map(node=>[node.id,node])),radius=id=>{const node=byId.get(id);return Math.hypot(node.x,node.y,node.z)};
+ assert.ok(radius('body_child')>radius('body_root'));
+ assert.ok(radius('pose_child')>Math.max(radius('pose_root'),radius('pose_support')));
+ assert.ok(radius('pose_grandchild')>radius('pose_child'));
+ const poseCategory=byId.get('category:pose'),poseGrandchild=byId.get('pose_grandchild');
+ const cosine=(poseCategory.x*poseGrandchild.x+poseCategory.y*poseGrandchild.y+poseCategory.z*poseGrandchild.z)/(radius('category:pose')*radius('pose_grandchild'));
+ assert.ok(Math.acos(Math.min(1,Math.max(-1,cosine)))<Math.PI/3,'grandchild crossed into another category sector');
+});
+
 test('expanded graph keeps one deterministic world layout through rotation and zoom',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
  const world=graph.nodes.map(({id,x,y,z})=>({id,x,y,z}));
@@ -128,15 +164,16 @@ test('structure-time world layout separates visible labels in the initial camera
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
  const points=projectGraph(graph,INITIAL_VIEW);
  const visible=graph.nodes.filter(node=>node.term&&points[node.id].depth>=-40).map(node=>{
-  const scale=Math.max(.72,points[node.id].scale);
+  const scale=Math.max(.72,points[node.id].scale),boxWidth=Math.min(190,44+[...node.label].length*11),left=16*scale;
   return {id:node.id,x:points[node.id].x,y:points[node.id].y,
-   halfWidth:(Math.min(190,44+[...node.label].length*11)+(node.expandable?40:0))*scale/2*1000/width,
-   halfHeight:Math.max(42,node.expandable?72:0)*scale/2*700/height};
+   left:left*1000/width,right:(boxWidth*scale-left)*1000/width,
+   top:21*scale*700/height,bottom:21*scale*700/height};
  });
  const overlaps=[];
  for(let first=0;first<visible.length;first++) for(let second=first+1;second<visible.length;second++) {
   const a=visible[first],b=visible[second];
-  if(Math.abs(a.x-b.x)<a.halfWidth+b.halfWidth&&Math.abs(a.y-b.y)<a.halfHeight+b.halfHeight) overlaps.push([a.id,b.id]);
+  if(Math.min(a.x+a.right,b.x+b.right)>Math.max(a.x-a.left,b.x-b.left)&&
+    Math.min(a.y+a.bottom,b.y+b.bottom)>Math.max(a.y-a.top,b.y-b.top)) overlaps.push([a.id,b.id]);
  }
  assert.deepEqual(overlaps,[]);
 });

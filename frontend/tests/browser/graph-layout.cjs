@@ -9,7 +9,7 @@ function geometry(page) {
    const anchor=(dot||element).getBoundingClientRect();
    return {id:element.dataset.nodeId,isDetail:element.dataset.detail==='true',x:rect.x-sr.x,y:rect.y-sr.y,width:rect.width,height:rect.height,
     cx:anchor.x-sr.x+anchor.width/2,cy:anchor.y-sr.y+anchor.height/2,
-    world:[element.dataset.worldX,element.dataset.worldY,element.dataset.worldZ],depth:+element.dataset.depth,
+    world:[+element.dataset.worldX,+element.dataset.worldY,+element.dataset.worldZ],depth:+element.dataset.depth,
     labelVisible:Boolean(label)&&getComputedStyle(label).display!=='none'};
   });
   const labeled=nodes.filter(node=>node.labelVisible),overlaps=[];
@@ -49,8 +49,11 @@ function geometry(page) {
    return [{id:edge.source,error:Math.hypot(edge.x1-source.cx,edge.y1-source.cy),dx:edge.x1-source.cx,dy:edge.y1-source.cy},
     {id:edge.target,error:Math.hypot(edge.x2-target.cx,edge.y2-target.cy),dx:edge.x2-target.cx,dy:edge.y2-target.cy}];
   });
+  const worldRadius=node=>Math.hypot(...node.world);
+  const outwardViolations=edges.filter(edge=>edge.relation!=='category'&&byId[edge.target]?.isDetail&&
+   worldRadius(byId[edge.target])<=worldRadius(byId[edge.source])+1).map(edge=>[edge.source,edge.target]);
   const worstEndpoint=endpointErrors.reduce((worst,item)=>item.error>worst.error?item:worst,{error:0});
-  return {overlaps,overlayOverlaps,maxEndpointError:worstEndpoint.error,worstEndpoint,
+  return {overlaps,overlayOverlaps,outwardViolations,maxEndpointError:worstEndpoint.error,worstEndpoint,
    maxExpandAnchorError:Math.max(...expandAnchorErrors),maxLabelContainmentError:Math.max(...labelContainmentErrors),nodes,edges};
  });
 }
@@ -77,6 +80,7 @@ function geometry(page) {
    assert(result.maxEndpointError<1,`${label}: edge endpoint misses its visible anchor: ${JSON.stringify(result.worstEndpoint)}`);
    assert(result.maxExpandAnchorError<1,`${label}: expand control drifts from its node by ${result.maxExpandAnchorError}px`);
    assert(result.maxLabelContainmentError<1,`${label}: label drifts outside its node by ${result.maxLabelContainmentError}px`);
+   assert.deepEqual(result.outwardViolations,[],`${label}: branches returned inward: ${JSON.stringify(result.outwardViolations)}`);
    assert.equal(result.nodes.filter(node=>node.id==='pose_sitting_on_edge').length,1,`${label}: multi-parent node duplicates`);
    assert.deepEqual(result.edges.filter(edge=>edge.target==='pose_sitting_on_edge'&&edge.relation==='all')
     .map(edge=>edge.source).sort(),['pose_sitting','pose_support_chair'],`${label}: AND parents changed`);
@@ -124,6 +128,6 @@ function geometry(page) {
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({multipleBranches:true,initialVisibleLabelOverlaps:initial.overlaps.length,
    initialOverlapPairs:initial.overlaps,
-   rigid3DWorld:true,independentYawPitch:true,depthChanges:true,endpointsMatchVisibleAnchors:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
+   outwardBranches:true,rigid3DWorld:true,independentYawPitch:true,depthChanges:true,endpointsMatchVisibleAnchors:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
  } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
