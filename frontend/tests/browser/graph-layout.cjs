@@ -81,11 +81,14 @@ function geometry(page) {
    assert(result.maxExpandAnchorError<1,`${label}: expand control drifts from its node by ${result.maxExpandAnchorError}px`);
    assert(result.maxLabelContainmentError<1,`${label}: label drifts outside its node by ${result.maxLabelContainmentError}px`);
    assert.deepEqual(result.outwardViolations,[],`${label}: branches returned inward: ${JSON.stringify(result.outwardViolations)}`);
+   const incoming=new Map();
+   for(const edge of result.edges) incoming.set(edge.target,(incoming.get(edge.target)||0)+1);
+   assert.ok([...incoming.values()].every(count=>count<=1),`${label}: a child has multiple displayed parents: ${JSON.stringify([...incoming])}`);
    assert.equal(result.nodes.filter(node=>node.id==='pose_sitting_on_edge').length,1,`${label}: multi-parent node duplicates`);
    assert.deepEqual(result.edges.filter(edge=>edge.target==='pose_sitting_on_edge'&&edge.relation==='all')
-    .map(edge=>edge.source).sort(),['pose_sitting','pose_support_chair'],`${label}: AND parents changed`);
+    .map(edge=>edge.source),['pose_sitting'],`${label}: AND child visual owner changed`);
    assert.deepEqual(result.edges.filter(edge=>edge.target==='pose_action_two_hand_aiming'&&edge.relation==='any')
-    .map(edge=>edge.source).sort(),['pose_sitting','pose_standing'],`${label}: OR parents changed`);
+    .map(edge=>edge.source),['pose_sitting'],`${label}: OR child visual owner changed`);
    return result;
   };
   const initial=await check('desktop initial',0);
@@ -128,6 +131,6 @@ function geometry(page) {
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({multipleBranches:true,initialVisibleLabelOverlaps:initial.overlaps.length,
    initialOverlapPairs:initial.overlaps,
-   outwardBranches:true,rigid3DWorld:true,independentYawPitch:true,depthChanges:true,endpointsMatchVisibleAnchors:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
+   outwardBranches:true,singleDisplayedParent:true,rigid3DWorld:true,independentYawPitch:true,depthChanges:true,endpointsMatchVisibleAnchors:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
  } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

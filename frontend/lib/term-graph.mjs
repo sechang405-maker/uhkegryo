@@ -226,7 +226,7 @@ function separateInitialViewOverlaps(nodes,edges) {
 export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) {
   const base=buildTermGraph(baseTerms);
   const baseIds=new Set(baseTerms.map(term=>term.term_id));
-  const expanded=new Set(expandedIds);
+  const expandedOrder=[...new Set(expandedIds)],expanded=new Set(expandedOrder);
   const {termsById,childrenByParent}=relationshipIndex(catalogTerms);
   const visible=new Set(baseIds);
   const revealedChildren=new Set();
@@ -234,8 +234,8 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
   let changed=true;
   while(changed) {
     changed=false;
-    for(const parentId of [...visible]) {
-      if(!expanded.has(parentId)) continue;
+    for(const parentId of expandedOrder) {
+      if(!visible.has(parentId)) continue;
       for(const childId of childrenByParent.get(parentId)||[]) {
         revealedChildren.add(childId);
         if(!revealOrigin.has(childId)) revealOrigin.set(childId,parentId);
@@ -289,8 +289,8 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
     const node=makeNode(term,anchor,stableAngle(term.term_id),76);
     nodes.push(node);nodeById.set(node.id,node);
   }
-  const edges=[...base.edges];
-  const edgeKeys=new Set(edges.map(edge=>`${edge.source}:${edge.target}:category`));
+  const relationships=[];
+  const relationshipKeys=new Set();
   for(const childId of revealedChildren) {
     if(!visible.has(childId)) continue;
     const child=termsById.get(childId);
@@ -298,15 +298,26 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
       for(const parentId of parents) {
         if(!visible.has(parentId)) continue;
         const key=`${parentId}:${childId}:${relation}`;
-        if(!edgeKeys.has(key)) {edges.push({source:parentId,target:childId,relation});edgeKeys.add(key);}
+        if(!relationshipKeys.has(key)) {relationships.push({source:parentId,target:childId,relation});relationshipKeys.add(key);}
       }
+    }
+  }
+  const edges=[...base.edges];
+  for(const node of nodes.filter(node=>node.isDetail)) {
+    const candidates=relationships.filter(edge=>edge.target===node.id);
+    const preferred=revealOrigin.get(node.id);
+    const representative=candidates.find(edge=>edge.source===preferred)||candidates[0];
+    if(representative) edges.push(representative);
+    else {
+      const category=categoryByRole.get(node.role);
+      if(category) edges.push({source:category.id,target:node.id});
     }
   }
   if(expanded.size>0) {
     arrangeOutwardWorldLayout(nodes,edges,revealOrigin);
     separateInitialViewOverlaps(nodes,edges);
   }
-  return {nodes,edges};
+  return {nodes,edges,relationships};
 }
 
 export function projectNode(node, view) {

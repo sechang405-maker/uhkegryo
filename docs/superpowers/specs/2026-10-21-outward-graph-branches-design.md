@@ -9,14 +9,16 @@ Keep the graph's immutable 3D world layout and common camera projection while ar
 - The graph center is world origin `(0, 0, 0)`.
 - A category's sector axis is the normalized vector from the origin to that category node.
 - A child inherits its role category's sector and is placed in a bounded 3D cone around that axis.
-- A direct child must have a greater origin radius than every visible parent connected to it.
+- A direct child must have a greater origin radius than its one displayed representative parent.
 - Siblings split a deterministic fan inside the cone instead of using a full random circle.
 - A second-level child continues outward from its parent and cannot return toward the origin.
 
-## Multiple parents and cycles
+## Semantic relationships and displayed parents
 
-- For multiple visible parents, the child radius starts beyond the farthest parent and its direction uses the normalized sum of the parents' outward directions, clamped to the role category cone.
-- Supporting parents revealed only as dependencies are placed inside the dependent child but still inside the same category sector.
+- Full prerequisite AND/OR relationships remain available as semantic metadata and are not changed by visualization.
+- Each displayed term has at most one incoming edge. A base term keeps its category edge; an expanded detail uses the parent that first revealed it; a supporting term without a revealing parent uses its category.
+- Expanding another shared parent later never adds another edge or steals ownership. If the representative parent collapses, the next still-expanded parent takes ownership; re-expansion does not steal it back.
+- The child radius and outward direction use only the displayed representative parent. Supporting semantic parents stay in the same category sector without an extra line to the child.
 - Cycles remain finite; when strict radial ordering is impossible inside a strongly connected relation, deterministic reveal order is used without iterative repositioning.
 
 ## Projection and interaction
@@ -29,5 +31,5 @@ Keep the graph's immutable 3D world layout and common camera projection while ar
 ## Verification
 
 - Unit tests cover simultaneous category expansion, multi-parent children, and a synthetic two-level branch.
-- Browser tests cover all currently available expandable roots, continuous 3D drag, independent yaw/pitch, depth changes, and sub-pixel anchor agreement. The reviewed catalog has no expandable second-level term, so the two-level case is covered by the real layout function with a synthetic catalog fixture.
+- Browser tests cover shared-child expansion order, ownership transfer on collapse/re-expansion, all currently available expandable roots, continuous 3D drag, independent yaw/pitch, depth changes, and sub-pixel anchor agreement. The reviewed catalog has no expandable second-level term, so the two-level case is covered by the real layout function with a synthetic catalog fixture.
 - Existing selection, collapse, search, AND/OR, deduplication, mobile, build, and CI checks remain green.

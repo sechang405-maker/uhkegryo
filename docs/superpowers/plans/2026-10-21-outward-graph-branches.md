@@ -71,3 +71,30 @@ Copy only changed graph files to the non-Git execution copy, run `npm run build`
 - [x] **Step 4: Run complete verification**
 
 Run `npm test`, production build, graph layout/expand/query browser scripts, hash comparison, and CI for the exact pushed commit.
+
+### Task 3: Single displayed parent forest
+
+**Files:**
+- Modify: `frontend/lib/term-graph.mjs`
+- Modify: `frontend/tests/term-graph.test.mjs`
+- Modify: `frontend/tests/browser/graph-layout.cjs`
+- Modify: `frontend/tests/browser/graph-expand.cjs`
+
+**Interfaces:**
+- Produces: `edges` with at most one incoming display edge per term and `relationships` with every visible semantic AND/OR edge.
+
+- [x] **Step 1: Verify RED for shared children**
+
+Assert that the old graph renders two incoming lines for shared AND/OR children and changes their position when a later shared parent expands.
+
+- [x] **Step 2: Select a stable representative parent**
+
+Use ordered expanded IDs so the parent that first reveals a shared child retains visual ownership. Transfer ownership only when that parent collapses; a later re-expansion appends after the surviving owner.
+
+- [x] **Step 3: Preserve semantics separately**
+
+Return complete visible prerequisite edges in `relationships` while rendering only representative/category edges through `edges`.
+
+- [x] **Step 4: Verify real browser flows and CI**
+
+Check parent ownership across expansion-order changes, collapse, re-expansion, selection/search preservation, one incoming edge for every term, 3D drag anchors, full tests, build, synchronized copies, and exact-commit CI.

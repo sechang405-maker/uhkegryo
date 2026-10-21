@@ -29,9 +29,9 @@ const assert=require('node:assert/strict');
    await page.locator('.term-graph-node[data-node-id="pose_sitting_leaning_forward"]').waitFor();
    assert.equal(await page.locator('.term-graph-node[data-node-id="pose_sitting_on_edge"]').count(),1);
    assert.equal(await page.locator('line[data-source="pose_sitting"][data-target="pose_sitting_on_edge"][data-relation="all"]').count(),1);
-   assert.equal(await page.locator('line[data-source="pose_support_chair"][data-target="pose_sitting_on_edge"][data-relation="all"]').count(),1);
+   assert.equal(await page.locator('line[data-source="pose_support_chair"][data-target="pose_sitting_on_edge"]').count(),0);
    assert.equal(await page.locator('line[data-source="pose_sitting"][data-target="pose_action_two_hand_aiming"][data-relation="any"]').count(),1);
-   assert.equal(await page.locator('line[data-source="pose_standing"][data-target="pose_action_two_hand_aiming"][data-relation="any"]').count(),1);
+   assert.equal(await page.locator('line[data-source="pose_standing"][data-target="pose_action_two_hand_aiming"]').count(),0);
    assert.deepEqual(await scene.evaluate(element=>[element.dataset.yaw,element.dataset.pitch,element.dataset.zoom]),initialView,'expand must not rotate or zoom the graph');
    assert.equal(await page.locator('.term-graph-node[data-selected="true"]').count(),0,'expand must not select its parent');
 
@@ -44,6 +44,22 @@ const assert=require('node:assert/strict');
    await expand.click({force:true});
    assert.equal(await page.locator('.term-graph-node[data-node-id="pose_sitting_leaning_forward"][data-selected="true"]').count(),1,'re-expansion preserves selection');
    assert.equal(await page.locator('.term-graph-node[data-node-id="pose_sitting_on_edge"]').count(),1,'repeated expansion never duplicates nodes');
+   const standingExpand=page.locator('[data-node-id="pose_standing:expand"]');
+   await standingExpand.click({force:true});
+   assert.equal(await page.locator('line[data-source="pose_sitting"][data-target="pose_action_two_hand_aiming"]').count(),1,
+    'later expansion does not attach another parent to an existing child');
+   assert.equal(await page.locator('line[data-source="pose_standing"][data-target="pose_action_two_hand_aiming"]').count(),0);
+   await expand.click({force:true});
+   assert.equal(await page.locator('.term-graph-node[data-node-id="pose_action_two_hand_aiming"]').count(),1,'shared child stays visible through its other parent');
+   assert.equal(await page.locator('line[data-source="pose_standing"][data-target="pose_action_two_hand_aiming"]').count(),1,
+    'remaining expanded parent takes visual ownership');
+   await expand.click({force:true});
+   assert.equal(await page.locator('line[data-source="pose_standing"][data-target="pose_action_two_hand_aiming"]').count(),1,
+    're-expanding an older parent does not steal visual ownership');
+   const incomingCounts=await page.locator('.term-graph-scene line').evaluateAll(lines=>{
+    const counts={};for(const line of lines) counts[line.dataset.target]=(counts[line.dataset.target]||0)+1;return counts;
+   });
+   assert.ok(Object.values(incomingCounts).every(count=>count<=1),'every displayed term has at most one parent edge');
    await Promise.all([
     page.waitForResponse(response=>response.url().includes('/api/term-search')),
     page.getByRole('button',{name:'레퍼런스 검색',exact:true}).click(),
@@ -53,6 +69,6 @@ const assert=require('node:assert/strict');
    await page.close();
   }
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({desktop:true,mobile:true,andOr:true,noDuplicate:true,selectionSurvivesCollapse:true,termSearch:true,noRotationCollision:true,touchTarget:true}));
+  console.log(JSON.stringify({desktop:true,mobile:true,semanticAndOrPreserved:true,singleDisplayedParent:true,stableSharedOwnership:true,noDuplicate:true,selectionSurvivesCollapse:true,termSearch:true,noRotationCollision:true,touchTarget:true}));
  } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

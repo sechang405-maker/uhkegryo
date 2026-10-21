@@ -66,7 +66,7 @@ test('active catalog exposes only validated dependency ids and direct-search pol
  assert.equal(ACTIVE_TERMS.find(term=>term.term_id==='pose_sitting_on_edge').search_disabled,false);
 });
 
-test('expansion uses real catalog dependencies, preserves AND and OR parents, and deduplicates nodes',()=>{
+test('expansion preserves semantic AND/OR parents but renders one representative parent per child',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_sitting']);
  const ids=graph.nodes.map(node=>node.id);
  assert.equal(ids.length,new Set(ids).size);
@@ -74,17 +74,40 @@ test('expansion uses real catalog dependencies, preserves AND and OR parents, an
  assert.ok(ids.includes('pose_support_chair'));
  assert.deepEqual(
   graph.edges.filter(edge=>edge.target==='pose_sitting_on_edge').map(edge=>[edge.source,edge.relation]).sort(),
-  [['pose_sitting','all'],['pose_support_chair','all']],
+  [['pose_sitting','all']],
  );
  assert.deepEqual(
   graph.edges.filter(edge=>edge.target==='pose_action_two_hand_aiming').map(edge=>[edge.source,edge.relation]).sort(),
-  [['pose_sitting','any'],['pose_standing','any']],
+  [['pose_sitting','any']],
  );
+ assert.deepEqual(graph.relationships.filter(edge=>edge.target==='pose_sitting_on_edge').map(edge=>[edge.source,edge.relation]).sort(),
+  [['pose_sitting','all'],['pose_support_chair','all']]);
+ assert.deepEqual(graph.relationships.filter(edge=>edge.target==='pose_action_two_hand_aiming').map(edge=>[edge.source,edge.relation]).sort(),
+  [['pose_sitting','any'],['pose_standing','any']]);
+ const incoming=new Map();
+ for(const edge of graph.edges) incoming.set(edge.target,(incoming.get(edge.target)||0)+1);
+ assert.ok(graph.nodes.filter(node=>node.term).every(node=>(incoming.get(node.id)||0)<=1));
  assert.ok(graph.nodes.find(node=>node.id==='pose_sitting').expandable);
  assert.ok(graph.nodes.find(node=>node.id==='pose_sitting_on_edge').isDetail);
  const sitting=graph.nodes.find(node=>node.id==='pose_sitting');
  const direct=graph.edges.filter(edge=>edge.source==='pose_sitting'&&edge.relation).map(edge=>graph.nodes.find(node=>node.id===edge.target));
  assert.ok(direct.every(node=>Math.hypot(node.x-sitting.x,node.y-sitting.y,node.z-sitting.z)>100));
+});
+
+test('the first expanded shared parent keeps visual ownership until it collapses, independent of later expansion',()=>{
+ const parentOf=(graph,target)=>graph.edges.find(edge=>edge.target===target)?.source;
+ const sittingOnly=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
+ const sittingFirst=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing']);
+ assert.equal(parentOf(sittingOnly,'pose_action_two_hand_aiming'),'pose_sitting');
+ assert.equal(parentOf(sittingFirst,'pose_action_two_hand_aiming'),'pose_sitting');
+ const before=sittingOnly.nodes.find(node=>node.id==='pose_action_two_hand_aiming');
+ const after=sittingFirst.nodes.find(node=>node.id==='pose_action_two_hand_aiming');
+ assert.deepEqual({x:after.x,y:after.y,z:after.z},{x:before.x,y:before.y,z:before.z});
+ const standingOnly=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_standing']);
+ const standingThenSitting=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_standing','pose_sitting']);
+ assert.equal(parentOf(standingOnly,'pose_action_two_hand_aiming'),'pose_standing');
+ assert.equal(parentOf(standingThenSitting,'pose_action_two_hand_aiming'),'pose_standing');
+ assert.equal(standingThenSitting.nodes.filter(node=>node.id==='pose_action_two_hand_aiming').length,1);
 });
 
 test('collapse changes visibility only and cyclic relationships remain finite',()=>{
