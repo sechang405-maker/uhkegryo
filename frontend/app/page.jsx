@@ -28,6 +28,7 @@ import { sessionUsage } from '../lib/session-usage.mjs';
 import { readConversationUsage } from '../lib/server-conversation.mjs';
 import SessionUsageNotice from '../components/SessionUsageNotice.mjs';
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
+import { createMobileResultOrigin, resolveMobileResult } from "../lib/mobile-result-flow.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
 
@@ -83,9 +84,12 @@ export default function HomePage() {
   const [failedThumbnails, setFailedThumbnails] = useState({});
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState("reference");
+  const [mobileResultNotice, setMobileResultNotice] = useState(null);
+  const mobilePanelRevisionRef = useRef(0);
   const [termGuide, setTermGuide] = useState(null);
   const [termSearch, setTermSearch] = useState(null);
   const termSearchControllerRef = useRef(null);
+  const termSearchOriginRef = useRef(null);
   const [sketchSearches, setSketchSearches] = useState({});
   const sketchControllersRef = useRef(new Map());
   const recoveryBudgetRef = useRef(createRecoveryBudget(0));
@@ -335,18 +339,41 @@ export default function HomePage() {
 
   useEffect(() => {
     if (uiDemoEnabled || !conversationReady || !pendingTurnIds) return;
-    const latestId = turns.at(-1)?.id;
+    const latestTurn = turns.at(-1);
+    const latestId = latestTurn?.id;
     const activeSessionId = sessionIdRef.current;
-    const activeScreenId = turns.at(-1)?.screen_generation ?? screenGenerationRef.current;
+    const activeScreenId = latestTurn?.screen_generation ?? screenGenerationRef.current;
+    const mobileOrigin = latestTurn?.mobile_result_origin || createMobileResultOrigin({
+      requestId: latestId,
+      sessionId: activeSessionId,
+      screenGeneration: activeScreenId,
+      panelRevision: mobilePanelRevisionRef.current,
+    });
     const poller = resumeConversation(turns, { onUpdate: (turn) => {
       if (sessionIdRef.current !== activeSessionId || activeSessionId !== turn.job?.session_id) return;
       setTurns((entries) => upsertTurn(entries, turn));
       if (turn.job?.job_status === "completed") refreshSessions();
-      if (turn.id === latestId && activeScreenId === screenGenerationRef.current) {
+      const mobileDecision = resolveMobileResult(mobileOrigin, {
+        requestId: turn.id,
+        sessionId: sessionIdRef.current,
+        screenGeneration: screenGenerationRef.current,
+        panelRevision: mobilePanelRevisionRef.current,
+      });
+      if (mobileDecision.accepted) {
         gallerySelectionRef.current.live(turn.job, activeSessionId);
         if (resultTerms(turn.job).length) {
           setBoardView("results");
-          setMobilePanel("reference");
+          if (mobileDecision.shouldOpen) {
+            setMobilePanel("reference");
+            setMobileResultNotice(null);
+          } else {
+            setMobileResultNotice({
+              requestId: turn.id,
+              targetPanel: "reference",
+              message: "레퍼런스 검색 결과가 도착했어요.",
+              actionLabel: "결과 보기",
+            });
+          }
           setTermSearch(null);
           setTermGuide(null);
         }
@@ -355,6 +382,23 @@ export default function HomePage() {
       if (sessionIdRef.current !== activeSessionId) return;
       setPollError(message);
       setTurns((entries) => stopTurnPolling(entries, id));
+      const mobileDecision = resolveMobileResult(mobileOrigin, {
+        requestId: id,
+        sessionId: sessionIdRef.current,
+        screenGeneration: screenGenerationRef.current,
+        panelRevision: mobilePanelRevisionRef.current,
+      });
+      if (mobileDecision.shouldOpen) {
+        setMobilePanel("conversation");
+        setMobileResultNotice(null);
+      } else if (mobileDecision.accepted) {
+        setMobileResultNotice({
+          requestId: id,
+          targetPanel: "conversation",
+          message: "검색 결과를 확인하지 못했어요.",
+          actionLabel: "오류 확인",
+        });
+      }
     } });
     pollerRef.current = poller;
     return () => {
@@ -383,7 +427,41 @@ export default function HomePage() {
 
   useLayoutEffect(() => { screenHistoryRef.current?.capture(); });
 
-  function visitScreen(key) { ++screenGenerationRef.current; screenHistoryRef.current?.visit(key); }
+  function visitScreen(key) {
+    ++screenGenerationRef.current;
+    setMobileResultNotice(null);
+    screenHistoryRef.current?.visit(key);
+  }
+
+  function chooseMobilePanel(panel) {
+    mobilePanelRevisionRef.current += 1;
+    setMobilePanel(panel);
+    setMobileResultNotice((notice) => notice?.targetPanel === panel ? null : notice);
+  }
+
+  function presentMobileResult(origin, notice) {
+    const decision = resolveMobileResult(origin, {
+      requestId: origin?.requestId,
+      sessionId: sessionIdRef.current,
+      screenGeneration: screenGenerationRef.current,
+      panelRevision: mobilePanelRevisionRef.current,
+    });
+    if (!decision.accepted) return false;
+    if (decision.shouldOpen) {
+      setMobilePanel(notice.targetPanel);
+      setMobileResultNotice(null);
+    } else {
+      setMobileResultNotice({ ...notice, requestId: origin.requestId });
+    }
+    return true;
+  }
+
+  function openMobileResult() {
+    if (!mobileResultNotice) return;
+    mobilePanelRevisionRef.current += 1;
+    setMobilePanel(mobileResultNotice.targetPanel);
+    setMobileResultNotice(null);
+  }
 
   function cancelSubmission() {
     submissionRequestRef.current?.abort();
@@ -424,6 +502,7 @@ export default function HomePage() {
     setGraphFocusId(snapshot.graphFocusId || HOME_TERMS[0]?.term_id);
     setGraphList(Boolean(snapshot.graphList));
     setMobilePanel(snapshot.mobilePanel);
+    setMobileResultNotice(null);
     setTurns(snapshot.turns.map(turn => isTurnPending(turn) && turn.screen_generation === snapshot.screenGeneration
       ? { ...turn, screen_generation: screenGenerationRef.current } : turn));
     setHistoryPage(snapshot.historyPage);
@@ -534,6 +613,13 @@ export default function HomePage() {
     termSearchControllerRef.current?.abort();
     const controller = new AbortController();
     termSearchControllerRef.current = controller;
+    const origin = createMobileResultOrigin({
+      requestId: `term:${term.term_id}:${crypto.randomUUID()}`,
+      sessionId: sessionIdRef.current,
+      screenGeneration: screenGenerationRef.current,
+      panelRevision: mobilePanelRevisionRef.current,
+    });
+    termSearchOriginRef.current = { controller, origin };
     setSelectedTermId(term.term_id);
     setActiveGalleryTermId(term.term_id);
     setFailedThumbnails({});
@@ -544,12 +630,26 @@ export default function HomePage() {
       const result = uiDemoEnabled
         ? demoTerm(term.term_id)
         : await searchFixedTerm(term, { signal: controller.signal });
-      if (!controller.signal.aborted) setTermSearch({ term: term.pins?.some(showThumbnail) ? applySketchResult(term, result) : result, loading: false });
+      if (!controller.signal.aborted && termSearchOriginRef.current?.controller === controller) {
+        setTermSearch({ term: term.pins?.some(showThumbnail) ? applySketchResult(term, result) : result, loading: false });
+        presentMobileResult(origin, {
+          targetPanel: "reference",
+          message: `${term.label_ko} 레퍼런스가 준비됐어요.`,
+          actionLabel: "결과 보기",
+        });
+      }
     } catch (error) {
-      if (!controller.signal.aborted) setTermSearch({
-        term: { ...term, pins: term.pins || [], reason_codes: ["PIN_SEARCH_UNAVAILABLE"] },
-        loading: false, error: error.message,
-      });
+      if (!controller.signal.aborted && termSearchOriginRef.current?.controller === controller) {
+        setTermSearch({
+          term: { ...term, pins: term.pins || [], reason_codes: ["PIN_SEARCH_UNAVAILABLE"] },
+          loading: false, error: error.message,
+        });
+        presentMobileResult(origin, {
+          targetPanel: "reference",
+          message: `${term.label_ko} 검색을 마치지 못했어요.`,
+          actionLabel: "오류 확인",
+        });
+      }
     }
   }
 
@@ -647,6 +747,7 @@ export default function HomePage() {
     visitScreen(`request:${crypto.randomUUID()}`);
     const submitLoadId = sessionLoadRef.current;
     const submitScreenId = screenGenerationRef.current;
+    const submitPanelRevision = mobilePanelRevisionRef.current;
     const submitRequest = new AbortController();
     submissionRequestRef.current = submitRequest;
     const submissionController = submissionRef.current;
@@ -704,6 +805,8 @@ export default function HomePage() {
           return selected ? [selected, ...items.filter((item) => item.session_id !== activeSession)] : items;
         });
         setTurns((entries) => upsertTurn(entries, { id: result.jobId, request: text, screen_generation: submitScreenId,
+          mobile_result_origin: createMobileResultOrigin({ requestId: result.jobId, sessionId: activeSession,
+            screenGeneration: submitScreenId, panelRevision: submitPanelRevision }),
           job: { job_id: result.jobId, session_id: activeSession,
             job_status: "queued", poll_after_ms: result.pollAfterMs }, demo: false }));
         refreshSessions();
@@ -927,9 +1030,15 @@ export default function HomePage() {
       <nav className="mobile-workspace-nav" aria-label="작업 화면">
         <HistoryLogo open={menuOpen} onClick={toggleMenu} />
         <button type="button" aria-pressed={mobilePanel === "reference"} aria-controls="reference-panel"
-          onClick={() => setMobilePanel("reference")}>레퍼런스</button>
+          aria-label={mobileResultNotice?.targetPanel === "reference" ? "레퍼런스, 새 결과 있음" : "레퍼런스"}
+          data-has-notice={mobileResultNotice?.targetPanel === "reference"}
+          data-notice-label={mobileResultNotice?.targetPanel === "reference" ? "새 결과" : undefined}
+          onClick={() => chooseMobilePanel("reference")}>레퍼런스</button>
         <button type="button" aria-pressed={mobilePanel === "conversation"} aria-controls="conversation-panel"
-          onClick={() => setMobilePanel("conversation")}>대화</button>
+          aria-label={mobileResultNotice?.targetPanel === "conversation" ? "대화, 확인할 알림 있음" : "대화"}
+          data-has-notice={mobileResultNotice?.targetPanel === "conversation"}
+          data-notice-label={mobileResultNotice?.targetPanel === "conversation" ? "확인" : undefined}
+          onClick={() => chooseMobilePanel("conversation")}>대화</button>
       </nav>
       <HistoryDrawer open={menuOpen} onClose={() => setMenuOpen(false)} triggerRef={menuButtonRef}>
         {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
@@ -1118,6 +1227,10 @@ export default function HomePage() {
           </div>}
           {((!conversationReady && !restoreError) || isSubmitting) && <div className="receipt"><LoadingIndicator
             label={!conversationReady ? "대화를 불러오는 중…" : "요청을 보내는 중…"} /></div>}
+          {mobileResultNotice && <div className="mobile-result-notice" role="status" aria-live="polite">
+            <strong>{mobileResultNotice.message}</strong>
+            <button type="button" onClick={openMobileResult}>{mobileResultNotice.actionLabel}</button>
+          </div>}
           {pollError && <p className="form-error" role="alert">{pollError}</p>}
         </div>
 

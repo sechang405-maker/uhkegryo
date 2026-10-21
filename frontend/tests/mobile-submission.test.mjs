@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { createMobileResultOrigin } from "../lib/mobile-result-flow.mjs";
 
 // Execute the actual page handler without rendering JSX or calling a live API.
 const source = readFileSync(new URL("../app/page.jsx", import.meta.url), "utf8");
@@ -19,6 +20,7 @@ async function submitScenario(mode) {
     refreshUsage: () => { state.usageRefreshed = true; },
     conversationBusy: false,
     visitScreen: noop, crypto: { randomUUID: () => "navigation-test" }, sessionLoadRef: { current: 0 }, screenGenerationRef: { current: 0 },
+    mobilePanelRevisionRef: { current: 0 }, createMobileResultOrigin,
     AbortController, submissionRequestRef: { current: null },
     deleteInFlightRef: { current: false },
     submitInFlightRef: { current: false },

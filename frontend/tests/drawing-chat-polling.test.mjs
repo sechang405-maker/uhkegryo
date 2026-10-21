@@ -4,18 +4,21 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {resultTerms} from '../lib/result-view.mjs';
 import {upsertTurn} from '../lib/conversation.mjs';
+import {createMobileResultOrigin,resolveMobileResult} from '../lib/mobile-result-flow.mjs';
 const source=readFileSync(new URL('../app/page.jsx',import.meta.url),'utf8');
-const begin=source.indexOf('    const latestId = turns.at(-1)?.id;');
+const begin=source.indexOf('    const latestTurn = turns.at(-1);');
 const end=source.indexOf('    pollerRef.current = poller;',begin);
 function setup(originScreenId){
- const state={turns:[{id:'latest',...(originScreenId===undefined?{}:{screen_generation:originScreenId})}],board:'home',panel:'conversation',gallery:null};let update;
- const context={turns:state.turns,sessionIdRef:{current:'session'},screenGenerationRef:{current:1},resultTerms,upsertTurn,
-  resumeConversation:(_turns,options)=>{update=options.onUpdate;return {};},
+ const screenGeneration=originScreenId??1;
+ const state={turns:[{id:'latest',screen_generation:screenGeneration,mobile_result_origin:createMobileResultOrigin({requestId:'latest',sessionId:'session',screenGeneration,panelRevision:0})}],board:'home',panel:'conversation',gallery:null,notice:null};let update,fail;
+ const context={turns:state.turns,sessionIdRef:{current:'session'},screenGenerationRef:{current:1},mobilePanelRevisionRef:{current:0},resultTerms,upsertTurn,resolveMobileResult,
+  resumeConversation:(_turns,options)=>{update=options.onUpdate;fail=options.onError;return {};},
   setTurns:fn=>{state.turns=fn(state.turns);},refreshSessions:()=>{},
   gallerySelectionRef:{current:{live:job=>{if(resultTerms(job).length)state.gallery=job;}}},
   setBoardView:value=>{state.board=value;},setMobilePanel:value=>{state.panel=value;},
+  setMobileResultNotice:value=>{state.notice=typeof value==='function'?value(state.notice):value;},
   setTermSearch:()=>{},setTermGuide:()=>{},setPollError:()=>{},stopTurnPolling:()=>{}};
- vm.runInNewContext(source.slice(begin,end),context);return {state,context,update};
+ vm.runInNewContext(source.slice(begin,end),context);return {state,context,update,fail};
 }
 const turn=status=>({id:'latest',job:{job_id:'latest',session_id:'session',job_status:'completed',result:{agent_status:status,answer_text:'Contextual response',reference_plan:status==='success'?{terms:[{term_id:'pose'}]}:null}}});
 test('chat and clarification update answers while keeping the board and mobile conversation',()=>{
@@ -23,6 +26,16 @@ test('chat and clarification update answers while keeping the board and mobile c
 });
 test('explicit references replace the board and show the mobile reference tab',()=>{
  const {state,update}=setup();update(turn('success'));assert.equal(state.board,'results');assert.equal(state.panel,'reference');assert.equal(state.gallery.job_id,'latest');
+});
+test('an explicit mobile tab choice prevents takeover and leaves a result action',()=>{
+ const {state,context,update}=setup();context.mobilePanelRevisionRef.current++;update(turn('success'));
+ assert.equal(state.board,'results');assert.equal(state.panel,'conversation');assert.equal(state.gallery.job_id,'latest');
+ assert.equal(state.notice.targetPanel,'reference');assert.equal(state.notice.requestId,'latest');
+});
+test('a polling failure does not steal an explicitly selected panel and points back to the error',()=>{
+ const {state,context,fail}=setup();state.panel='reference';context.mobilePanelRevisionRef.current++;
+ fail('latest','잠시 후 다시 시도해 주세요.');
+ assert.equal(state.panel,'reference');assert.equal(state.notice.targetPanel,'conversation');assert.equal(state.notice.requestId,'latest');
 });
 test('late reference completion after navigation updates the conversation without taking over the screen',()=>{
  const {state,context,update}=setup();context.screenGenerationRef.current++;update(turn('success'));assert.equal(state.turns[0].job.result.agent_status,'success');assert.equal(state.board,'home');assert.equal(state.panel,'conversation');assert.equal(state.gallery,null);
