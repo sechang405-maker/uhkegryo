@@ -319,6 +319,7 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     return unit(add(scale(axis,Math.cos(half)),scale(lateral,Math.sin(half))),axis);
   };
   const placed=new Set(nodes.filter(node=>!node.isDetail).map(node=>node.id)),placing=new Set();
+  let denseOverflow=false;
   const setAt=(node,direction,radius)=>{
     const fixed=unit(direction,categories.get(node.role)||direction);
     node.x=fixed.x*radius;node.y=fixed.y*radius;node.z=fixed.z*radius;placed.add(node.id);
@@ -490,7 +491,10 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
         }).sort((a,b)=>b.margin-a.margin||a.candidate.preference-b.candidate.preference||a.candidate.x-b.candidate.x||a.candidate.y-b.candidate.y);
         item.candidate=ranked[0].candidate;
       }
-      return applyAssignment(assigned);
+      const safe=assigned.every((item,index)=>assigned.slice(index+1).every(other=>
+        Math.hypot(item.candidate.x-other.candidate.x,item.candidate.y-other.candidate.y)>=
+          renderedCircleRadius(item.child)+renderedCircleRadius(other.child)-12));
+      return safe&&applyAssignment(assigned);
     };
     const beamWidth=children.length>6?512:256;
     let beam=[{cost:0,assigned:[]}];
@@ -511,7 +515,7 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
   };
 
   for(const [parentId,visibleIds] of [...siblingGroups].sort(([a],[b])=>a.localeCompare(b)))
-    if((canonicalChildrenByParent.get(parentId)||visibleIds).length>=4) placeDenseSiblingGroup(parentId,visibleIds);
+    if((canonicalChildrenByParent.get(parentId)||visibleIds).length>=4&&!placeDenseSiblingGroup(parentId,visibleIds)) denseOverflow=true;
 
   for(let pass=0;pass<nodes.length;pass++) {
     let changed=false;
@@ -539,6 +543,7 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     }
     if(bestPoint) {node.x=bestPoint.x;node.y=bestPoint.y;node.z=bestPoint.z;placed.add(node.id);}
   }
+  return {denseOverflow};
 }
 
 function separateInitialViewOverlaps(nodes,edges) {
@@ -722,13 +727,14 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
       if(category) edges.push({source:category.id,target:node.id});
     }
   }
+  let denseOverflow=false;
   if(expanded.size>0) {
-    arrangeOutwardWorldLayout(nodes,edges,childrenByParent);
+    denseOverflow=arrangeOutwardWorldLayout(nodes,edges,childrenByParent).denseOverflow;
     for(const node of nodes.filter(node=>node.isDetail&&vectorLength(node)>648)) {
       const direction=unit(node);node.x=direction.x*648;node.y=direction.y*648;node.z=direction.z*648;
     }
   }
-  return {nodes,edges,relationships};
+  return {nodes,edges,relationships,denseOverflow};
 }
 
 export function projectNode(node, view) {

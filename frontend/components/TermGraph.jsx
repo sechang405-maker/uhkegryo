@@ -3,9 +3,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { buildExpandedTermGraph, projectGraph, INITIAL_VIEW, clamp, toggleExpanded } from '../lib/term-graph.mjs';
 
-export default function TermGraph({terms, catalogTerms=terms, selectedIds, onToggle, onAdd, onSearch, focusedId, onFocus, list, onListChange}) {
+export default function TermGraph({terms, catalogTerms=terms, selectedIds, onToggle, onAdd, onSearch, focusedId, onFocus, list:listRequested, onListChange}) {
   const [expandedIds,setExpandedIds]=useState([]);
   const graph=useMemo(()=>buildExpandedTermGraph(terms,catalogTerms,expandedIds),[terms,catalogTerms,expandedIds]);
+  const list=listRequested||graph.denseOverflow;
   const [view,setView]=useState(INITIAL_VIEW);
   const [notice,setNotice]=useState('');
   const gesture=useRef(null);
@@ -17,6 +18,8 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
   onListChangeRef.current=onListChange;
   const focused=catalogTerms.find(term=>term.term_id===focusedId);
   const selected=catalogTerms.filter(term=>selectedIds.includes(term.term_id));
+  // An over-capacity fan has no honest non-overlapping 3D placement. Keep all
+  // terms available through the existing list instead of rendering overlaps.
   const points=useMemo(()=>projectGraph(graph,view),[graph,view]);
   useEffect(()=>{
     if(responsiveModeChecked.current) return;

@@ -291,5 +291,17 @@ test('a sixteen-child fan uses the deterministic dense fallback without stacked 
  for(let first=0;first<visible.length;first++) for(let second=first+1;second<visible.length;second++)
   minimum=Math.min(minimum,Math.hypot(visible[first].x-visible[second].x,visible[first].y-visible[second].y));
  assert.ok(minimum>=68,`dense fallback stacked child centers at ${minimum}px`);
+ assert.equal(graph.denseOverflow,false);
  assert.deepEqual(buildExpandedTermGraph([root],[root,...children],['dense_root']).nodes,graph.nodes);
+});
+
+test('an unsafe synthetic dense fan requests the readable list representation',()=>{
+ const root={role:'pose',term_id:'overflow_root',label_ko:'overflow root',requires_all_of:[],requires_any_of:[]};
+ const children=Array.from({length:20},(_,index)=>({role:'pose',term_id:`overflow_child_${String(index).padStart(2,'0')}`,
+  label_ko:`overflow child ${index}`,requires_all_of:['overflow_root'],requires_any_of:[]}));
+ const graph=buildExpandedTermGraph([root],[root,...children],['overflow_root']);
+ assert.equal(graph.denseOverflow,true);
+ const ids=new Set(graph.nodes.map(node=>node.id));
+ assert.ok(['overflow_root',...children.map(child=>child.term_id)].every(id=>ids.has(id)));
+ assert.equal(graph.relationships.filter(edge=>edge.source==='overflow_root').length,20);
 });
