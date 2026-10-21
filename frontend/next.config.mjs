@@ -12,7 +12,10 @@ const nextConfig = {
   turbopack: { root: repositoryRoot },
   async rewrites() {
     if (demoMode === "1") return [];
-    return [{ source: "/api/:path*", destination: `${apiOrigin}/api/:path*` }];
+    return [
+      { source: "/api/:path*", destination: `${apiOrigin}/api/:path*` },
+      { source: "/service-health", destination: `${apiOrigin}/health` },
+    ];
   },
 };
 

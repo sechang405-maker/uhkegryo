@@ -40,6 +40,7 @@ test("AC-02: 유효한 원문을 같은 origin에 UUID 키와 쿠키로 제출�
   const rewrites = await nextConfig.rewrites();
   assert.equal(rewrites[0].source, "/api/:path*");
   assert.match(rewrites[0].destination, /^https?:\/\/[^/]+\/api\/:path\*$/);
+  assert.deepEqual(rewrites[1],{source:'/service-health',destination:rewrites[0].destination.replace('/api/:path*','/health')});
 });
 
 test("AC-03: 요청 중 중복 제출을 막고 서버의 사용자 메시지만 반환한다", async () => {

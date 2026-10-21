@@ -89,5 +89,6 @@ if (-not (Get-Listener 3100)) {
     }
 }
 Wait-Http 'http://127.0.0.1:3100/'
-Write-Output 'Ready: http://127.0.0.1:3100 (API health OK). No generation request was sent.'
+Wait-Http 'http://127.0.0.1:3100/service-health'
+Write-Output 'Ready: http://127.0.0.1:3100 (API and frontend proxy health OK). No generation request was sent.'
 Write-Output "Logs: $logs"

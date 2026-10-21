@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { countCharacters, createSubmissionController, validateRequestText, shouldSubmitOnEnter } from "../lib/agent-submit.mjs";
 import { resizeComposerInput, createScrollEndAnchor } from "../lib/composer-autosize.mjs";
 import { createGallerySelection } from "../lib/gallery-selection.mjs";
-import { createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, ensureLocalProfile, deleteConversation } from "../lib/server-conversation.mjs";
+import { createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, SERVICE_UNAVAILABLE_ERROR, ensureServiceAvailable, ensureLocalProfile, deleteConversation } from "../lib/server-conversation.mjs";
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
 import { DEMO_SCENARIOS, DEMO_NOTICE, DEMO_INPUT_ERROR, demoTerm } from "../lib/portfolio-demo-fixtures.mjs";
 import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
@@ -195,7 +195,7 @@ export default function HomePage() {
     gallerySelectionRef.current.reset(sessionIdRef.current);
     setRestoreError("");
     setConversationReady(false);
-    ensureLocalProfile({ signal: controller.signal }).then((persistent) => {
+    ensureServiceAvailable({ signal: controller.signal }).then(() => ensureLocalProfile({ signal: controller.signal })).then((persistent) => {
       if (controller.signal.aborted) return;
       setPersistentProfile(persistent);
       refreshSessions();
@@ -212,7 +212,7 @@ export default function HomePage() {
       gallerySelectionRef.current.reset(restored.sessionId);
       gallerySelectionRef.current.live(restored.referenceJob || restored.turns.at(-1)?.job || null, restored.sessionId);
       setConversationReady(true);
-    }).catch(() => { if (!controller.signal.aborted && loadId === sessionLoadRef.current) setRestoreError(RESTORE_ERROR); });
+    }).catch((error) => { if (!controller.signal.aborted && loadId === sessionLoadRef.current) setRestoreError(error?.message === SERVICE_UNAVAILABLE_ERROR ? SERVICE_UNAVAILABLE_ERROR : RESTORE_ERROR); });
     return () => controller.abort();
   }, [restoreAttempt]);
 
@@ -1102,7 +1102,7 @@ export default function HomePage() {
           {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
           <h2 id="prompt-title">UH케 그릴 건가요?</h2>
           {restoreError && <div role="alert"><p>{restoreError}</p>
-            <button type="button" onClick={() => setRestoreAttempt((value) => value + 1)}>대화 다시 불러오기</button></div>}
+            <button type="button" onClick={() => setRestoreAttempt((value) => value + 1)}>{restoreError === SERVICE_UNAVAILABLE_ERROR ? "연결 다시 확인" : "대화 다시 불러오기"}</button></div>}
           {storageFailed && <p className="form-error" role="status">브라우저 기록을 읽거나 쓰지 못했습니다. 일부 기록이 복원되지 않을 수 있지만 현재 대화는 계속 사용할 수 있습니다.</p>}
           {!uiDemoEnabled && historyPage.hasMore && <button type="button" disabled={olderLoading} onClick={loadOlder}>이전 대화 불러오기</button>}
           {olderError && <p role="alert">{olderError}</p>}

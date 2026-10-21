@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {deleteConversation,ensureLocalProfile} from '../lib/server-conversation.mjs';
+import {deleteConversation,ensureLocalProfile,ensureServiceAvailable,SERVICE_UNAVAILABLE_ERROR} from '../lib/server-conversation.mjs';
 import {createDemoSessionStore} from '../lib/portfolio-demo-sessions.mjs';
 const id='00000000-0000-0000-0000-000000000001';
 test('delete uses credentials and action header; success does not require JSON',async()=>{
@@ -16,6 +16,20 @@ test('failed and busy deletion give actionable errors',async()=>{
 test('profile bootstrap is explicit and errors are not silently ignored',async()=>{
  assert.equal(await ensureLocalProfile({fetchImpl:async(url,o)=>{assert.equal(url,'/api/local/profile');assert.equal(o.method,'POST');assert.equal(o.headers['X-Conversation-Action'],'profile');return {ok:true,json:async()=>({persistent:true})};}}),true);
  await assert.rejects(ensureLocalProfile({fetchImpl:async()=>({ok:false})}));
+});
+test('service availability is checked without mutating data and reports a precise reconnect error',async()=>{
+ let request;
+ assert.equal(await ensureServiceAvailable({fetchImpl:async(...args)=>{
+  request=args;return {ok:true,json:async()=>({status:'ok'})};
+ }}),true);
+ assert.equal(request[0],'/service-health');
+ assert.equal(request[1].method,'GET');
+ assert.equal(request[1].cache,'no-store');
+ for(const response of [
+  async()=>({ok:false,status:503}),
+  async()=>({ok:true,json:async()=>({status:'starting'})}),
+  async()=>{throw new TypeError('fetch failed')},
+ ]) await assert.rejects(ensureServiceAvailable({fetchImpl:response}),error=>error.message===SERVICE_UNAVAILABLE_ERROR);
 });
 test('demo deletion persists without resurrecting removed samples',()=>{
  const data=new Map(),storage={getItem:k=>data.get(k),setItem:(k,v)=>data.set(k,v)};

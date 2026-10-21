@@ -2,8 +2,24 @@ import { upsertTurn, isTurnPending, mergeHistoryTurns } from "./conversation.mjs
 import { createJobPoller, STATUS_LABELS } from "./job-polling.mjs";
 import { sessionUsage } from './session-usage.mjs';
 
+export const SERVICE_UNAVAILABLE_ERROR = "대화 서비스에 연결할 수 없습니다. 로컬 API가 실행 중인지 확인한 뒤 연결을 다시 확인해 주세요.";
+
 export const RESTORE_ERROR = "대화를 복원하지 못했습니다. 다시 불러온 뒤 요청해 주세요.";
 export const DELETE_CONFIRM = "이 대화를 영구 삭제할까요? 연결된 입력·답변·참고링크가 함께 삭제되며 복구할 수 없습니다. 다른 대화와 외부 Pinterest 원본은 삭제하지 않습니다.";
+export async function ensureServiceAvailable(options = {}) {
+  try {
+    const response = await (options.fetchImpl || globalThis.fetch)("/service-health", {
+      method: "GET", cache: "no-store", signal: options.signal,
+    });
+    if (!response.ok) throw new Error(SERVICE_UNAVAILABLE_ERROR);
+    const health = await response.json();
+    if (health?.status !== "ok") throw new Error(SERVICE_UNAVAILABLE_ERROR);
+    return true;
+  } catch (error) {
+    if (options.signal?.aborted || error?.name === "AbortError") throw error;
+    throw new Error(SERVICE_UNAVAILABLE_ERROR);
+  }
+}
 export async function ensureLocalProfile(options = {}) {
   const response = await (options.fetchImpl || globalThis.fetch)("/api/local/profile", {
     method: "POST", credentials: "include", cache: "no-store", signal: options.signal,
