@@ -6,20 +6,43 @@ export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export function buildTermGraph(terms) {
   const seen = new Set();
   const slots = createMindMapSlots(terms);
-  const centers = [[-235,-135,140],[225,-135,-150],[230,145,150],[-225,145,-140]];
+  const centers = [[-160,-110,70],[160,-110,-70],[160,110,70],[-160,110,-70]];
   const nodes = [], edges = [];
   slots.forEach((slot, index) => {
     const [x,y,z] = centers[index];
     const id = `category:${slot.role}`;
-    nodes.push({id, label:slot.roleLabel, role:slot.role, x,y,z});
+    const category={id,label:slot.roleLabel,role:slot.role,x,y,z};
+    nodes.push(category);
     slot.terms.forEach((term,i) => {
       if(seen.has(term.term_id)) return;
       seen.add(term.term_id);
-      const angle = i * Math.PI * (3-Math.sqrt(5));
-      const latitude = slot.terms.length > 1 ? 1 - 2 * i / (slot.terms.length-1) : 0;
-      const radius = Math.sqrt(1-latitude*latitude);
+      const axis=unit(category),cameraRight={x:Math.cos(INITIAL_VIEW.yaw),y:0,z:Math.sin(INITIAL_VIEW.yaw)};
+      const fallback=Math.abs(axis.y)<.88?unit(cross(axis,{x:0,y:1,z:0})):unit(cross(axis,{x:1,y:0,z:0}));
+      const tangentA=unit(add(cameraRight,scale(axis,-dot(cameraRight,axis))),fallback),tangentB=unit(cross(axis,tangentA));
+      // Give every parent a stable angular territory in the category cone.
+      // A two-dimensional fan avoids stacking all parent axes on one screen line,
+      // while the fixed id-derived phase keeps expansion/selection from moving them.
+      const ring=Math.floor(i/4),slotIndex=i%4,slotsInRing=Math.min(4,slot.terms.length-ring*4);
+      const azimuth=stableAngle(slot.role)*.08+2*Math.PI*(slotIndex+(ring%2)*.5)/Math.max(1,slotsInRing);
+      const deviation=slot.terms.length===1?0:.24+ring*.055;
+      const radius=vectorLength(category)+125+ring*78;
+      let direction=axis,bestScore=-Infinity;
+      for(let sample=0;sample<72;sample++) {
+        const angle=azimuth+2*Math.PI*sample/72;
+        const lateral=add(scale(tangentA,Math.cos(angle)),scale(tangentB,Math.sin(angle)));
+        const candidateDirection=unit(add(scale(axis,Math.cos(deviation)),scale(lateral,Math.sin(deviation))),axis);
+        const candidate={x:candidateDirection.x*radius,y:candidateDirection.y*radius,z:candidateDirection.z*radius};
+        const point=projectNode(candidate,INITIAL_VIEW);
+        const clearance=Math.min(...nodes.map(existing=>{
+          const projected=projectNode(existing,INITIAL_VIEW);
+          return Math.hypot(point.x-projected.x,point.y-projected.y);
+        }));
+        const framePenalty=Math.max(0,34-point.x,point.x-966,34-point.y,point.y-666)*4;
+        const score=clearance-framePenalty;
+        if(score>bestScore) {direction=candidateDirection;bestScore=score;}
+      }
       nodes.push({id:term.term_id,label:term.label_ko,role:slot.role,term,
-        x:x+130*radius*Math.cos(angle),y:y+110*latitude,z:z+145*radius*Math.sin(angle)});
+        x:direction.x*radius,y:direction.y*radius,z:direction.z*radius});
       edges.push({source:id,target:term.term_id});
     });
   });
@@ -77,64 +100,94 @@ function fanDirection(axis,categoryAxis,index,count,ring,key) {
   return clampDirectionToCone(add(scale(outward,Math.cos(deviation)),scale(lateral,Math.sin(deviation))),categoryAxis);
 }
 
-function arrangeOutwardWorldLayout(nodes,edges,revealOrigin) {
+function arrangeOutwardWorldLayout(nodes,edges) {
   const byId=new Map(nodes.map(node=>[node.id,node]));
   const categories=new Map(nodes.filter(node=>!node.term).map(node=>[node.role,node]));
-  const relationParents=new Map(),relationChildren=new Map();
-  for(const edge of edges.filter(edge=>edge.relation)) {
-    if(!relationParents.has(edge.target)) relationParents.set(edge.target,[]);
-    if(!relationChildren.has(edge.source)) relationChildren.set(edge.source,[]);
-    relationParents.get(edge.target).push(edge.source);
-    relationChildren.get(edge.source).push(edge.target);
-  }
+  const visualParent=new Map();
+  for(const edge of edges.filter(edge=>edge.relation)) visualParent.set(edge.target,edge.source);
   const siblingGroups=new Map();
-  for(const [childId,parentId] of revealOrigin) {
+  for(const [childId,parentId] of visualParent) {
     if(!siblingGroups.has(parentId)) siblingGroups.set(parentId,[]);
     siblingGroups.get(parentId).push(childId);
   }
   for(const children of siblingGroups.values()) children.sort();
+
+  // Base nodes are immutable territory markers. Using every base axis, rather
+  // than only currently expanded parents, keeps a branch's territory stable
+  // when an unrelated branch appears or disappears.
+  const baseAxesByRole=new Map();
+  const baseRadiusByRole=new Map();
+  for(const node of nodes.filter(node=>node.term&&!node.isDetail)) {
+    if(node.expandable) {
+      if(!baseAxesByRole.has(node.role)) baseAxesByRole.set(node.role,[]);
+      baseAxesByRole.get(node.role).push({id:node.id,axis:unit(node)});
+    }
+    baseRadiusByRole.set(node.role,Math.max(baseRadiusByRole.get(node.role)||0,vectorLength(node)));
+  }
+  const angleBetween=(a,b)=>Math.acos(clamp(dot(unit(a),unit(b)),-1,1));
+  const territoryHalfAngle=parent=>{
+    const axis=unit(parent),neighbors=(baseAxesByRole.get(parent.role)||[]).filter(candidate=>candidate.id!==parent.id);
+    const nearest=Math.min(...neighbors.map(candidate=>angleBetween(axis,candidate.axis)),Math.PI/2);
+    return clamp(nearest/2-.001,.08,.24);
+  };
+  const localFanDirection=(parent,index,count,phase=0)=>{
+    const axis=unit(parent),cameraRight={x:Math.cos(INITIAL_VIEW.yaw),y:0,z:Math.sin(INITIAL_VIEW.yaw)};
+    const fallback=Math.abs(axis.y)<.88?unit(cross(axis,{x:0,y:1,z:0})):unit(cross(axis,{x:1,y:0,z:0}));
+    const tangentA=unit(add(cameraRight,scale(axis,-dot(cameraRight,axis))),fallback),tangentB=unit(cross(axis,tangentA));
+    const ring=Math.floor(index/4),slots=Math.min(4,count-ring*4),slot=index%4,half=territoryHalfAngle(parent)*.95;
+    if(count===1) return axis;
+    const azimuth=stableAngle(parent.id)+2*Math.PI*(slot+(ring%2)*.5)/slots+phase;
+    const lateral=add(scale(tangentA,Math.cos(azimuth)),scale(tangentB,Math.sin(azimuth)));
+    return unit(add(scale(axis,Math.cos(half)),scale(lateral,Math.sin(half))),axis);
+  };
   const placed=new Set(nodes.filter(node=>!node.isDetail).map(node=>node.id)),placing=new Set();
   const setAt=(node,direction,radius)=>{
-    const fixed=clampDirectionToCone(direction,categories.get(node.role)||direction);
+    const fixed=unit(direction,categories.get(node.role)||direction);
     node.x=fixed.x*radius;node.y=fixed.y*radius;node.z=fixed.z*radius;placed.add(node.id);
   };
   const placePrimary=id=>{
     if(placed.has(id)) return true;
-    const node=byId.get(id),primaryId=revealOrigin.get(id);
+    const node=byId.get(id),primaryId=visualParent.get(id);
     if(!node||!primaryId||placing.has(id)) return false;
     placing.add(id);
     const primary=byId.get(primaryId);
     if(primary?.isDetail) placePrimary(primaryId);
-    const parentNodes=(relationParents.get(id)||[]).map(parentId=>byId.get(parentId)).filter(parent=>parent&&placed.has(parent.id));
-    if(primary&&placed.has(primary.id)&&!parentNodes.includes(primary)) parentNodes.push(primary);
-    if(!parentNodes.length) {placing.delete(id);return false;}
-    const categoryAxis=unit(categories.get(node.role)||primary),combined=parentNodes.reduce((sum,parent)=>add(sum,unit(parent)),scale(categoryAxis,.45));
-    const siblings=siblingGroups.get(primaryId)||[id],index=Math.max(0,siblings.indexOf(id)),ring=Math.floor(index/8);
-    const direction=fanDirection(combined,categoryAxis,index,siblings.length,ring,primaryId);
-    const radius=Math.max(...parentNodes.map(vectorLength))+125+ring*82;
-    setAt(node,direction,radius);placing.delete(id);return true;
+    if(!primary||!placed.has(primary.id)) {placing.delete(id);return false;}
+    const siblings=siblingGroups.get(primaryId)||[id],index=Math.max(0,siblings.indexOf(id)),ring=Math.floor(index/4);
+    const branchStart=vectorLength(primary);
+    const radius=branchStart+101+ring*20;
+    const obstacles=nodes.filter(candidate=>candidate.id!==primaryId&&(!candidate.isDetail||
+      (placed.has(candidate.id)&&visualParent.get(candidate.id)===primaryId)));
+    let bestDirection=localFanDirection(primary,index,siblings.length),bestClearance=-Infinity;
+    for(let sample=0;sample<72;sample++) {
+      const direction=localFanDirection(primary,index,siblings.length,2*Math.PI*sample/72);
+      const candidate={...node,x:direction.x*radius,y:direction.y*radius,z:direction.z*radius};
+      const point=projectNode(candidate,INITIAL_VIEW);
+      const clearance=Math.min(...obstacles.map(obstacle=>{
+        const projected=projectNode(obstacle,INITIAL_VIEW);
+        return Math.hypot(point.x-projected.x,point.y-projected.y);
+      }));
+      if(clearance>bestClearance) {bestDirection=direction;bestClearance=clearance;}
+    }
+    setAt(node,bestDirection,radius);
+    placing.delete(id);return true;
   };
   for(let pass=0;pass<nodes.length;pass++) {
     let changed=false;
     for(const node of nodes.filter(node=>node.isDetail&&!placed.has(node.id))) if(placePrimary(node.id)) changed=true;
     if(!changed) break;
   }
-  const supplemental=nodes.filter(node=>node.isDetail&&!placed.has(node.id)).sort((a,b)=>a.id.localeCompare(b.id));
-  supplemental.forEach((node,index)=>{
-    const category=categories.get(node.role)||{x:1,y:0,z:0},categoryAxis=unit(category);
-    const dependents=(relationChildren.get(node.id)||[]).map(id=>byId.get(id)).filter(child=>child&&placed.has(child.id));
-    const direction=dependents.length?dependents.reduce((sum,child)=>add(sum,unit(child)),scale(categoryAxis,.5)):categoryAxis;
-    const outerRadius=dependents.length?Math.min(...dependents.map(vectorLength))-82:vectorLength(category)+90;
-    setAt(node,fanDirection(direction,categoryAxis,index,supplemental.length,Math.floor(index/8),node.role),
-      Math.max(vectorLength(category)+70,outerRadius));
-  });
-  // A shared child must remain beyond every visible parent. Primary hierarchy is
-  // acyclic in reviewed data; supplemental parents are already placed inward.
-  for(const edge of edges.filter(edge=>edge.relation)) {
-    const parent=byId.get(edge.source),child=byId.get(edge.target);
-    if(!parent||!child||!child.isDetail||placing.has(child.id)) continue;
-    const needed=vectorLength(parent)+72;
-    if(vectorLength(child)<needed) setAt(child,unit(child),needed);
+
+  // Supporting prerequisite nodes with no displayed relation edge receive a
+  // fixed category-relative slot derived only from their own id.
+  for(const node of nodes.filter(node=>node.isDetail&&!placed.has(node.id)).sort((a,b)=>a.id.localeCompare(b.id))) {
+    const category=categories.get(node.role)||{x:1,y:0,z:0},axis=unit(category);
+    const cameraRight={x:Math.cos(INITIAL_VIEW.yaw),y:0,z:Math.sin(INITIAL_VIEW.yaw)};
+    const fallback=Math.abs(axis.y)<.88?unit(cross(axis,{x:0,y:1,z:0})):unit(cross(axis,{x:1,y:0,z:0}));
+    const tangent=unit(add(cameraRight,scale(axis,-dot(cameraRight,axis))),fallback);
+    const vertical=unit(cross(axis,tangent)),deviation=node.layoutIndex%2?.65:-.65;
+    const direction=unit(add(scale(axis,Math.cos(deviation)),scale(vertical,Math.sin(deviation))),axis);
+    setAt(node,direction,vectorLength(category)+135+Math.floor((node.layoutIndex%6)/2)*35);
   }
 }
 
@@ -250,8 +303,13 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
   const nodes=base.nodes.map(node=>node.term ? {...node,expandable:(childrenByParent.get(node.id)||[]).length>0} : node);
   const nodeById=new Map(nodes.map(node=>[node.id,node]));
   const categoryByRole=new Map(nodes.filter(node=>!node.term).map(node=>[node.role,node]));
+  const roleCounts=new Map(),catalogIndexById=new Map();
+  for(const term of catalogTerms) {
+    const index=roleCounts.get(term.role)||0;catalogIndexById.set(term.term_id,index);roleCounts.set(term.role,index+1);
+  }
   const makeNode=(term,anchor,angle,distance)=>({id:term.term_id,label:term.label_ko,role:term.role,term,isDetail:true,
     expandable:(childrenByParent.get(term.term_id)||[]).length>0,
+    layoutIndex:catalogIndexById.get(term.term_id)||0,
     x:anchor.x+Math.cos(angle)*distance,y:anchor.y+Math.sin(angle)*distance*.78,
     z:anchor.z+Math.sin(angle*1.7)*distance*.72});
   const groups=new Map();
@@ -314,8 +372,7 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
     }
   }
   if(expanded.size>0) {
-    arrangeOutwardWorldLayout(nodes,edges,revealOrigin);
-    separateInitialViewOverlaps(nodes,edges);
+    arrangeOutwardWorldLayout(nodes,edges);
   }
   return {nodes,edges,relationships};
 }
@@ -327,7 +384,7 @@ export function projectNode(node, view) {
   const depth = node.y*Math.sin(view.pitch)+z*Math.cos(view.pitch);
   const perspective = 1100/(1100-depth);
   const zoom=clamp(view.zoom,.65,1.6);
-  return {x:500+x*perspective*zoom,y:350+y*perspective*zoom,depth,scale:clamp(perspective,.65,1.6),
+  return {x:500+x*perspective*zoom,y:480+y*perspective*zoom,depth,scale:clamp(perspective,.65,1.6),
     opacity:clamp(.76+depth/1000,.42,1)};
 }
 

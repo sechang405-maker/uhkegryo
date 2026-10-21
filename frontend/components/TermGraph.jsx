@@ -18,6 +18,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.6)})); }
   function start(event) {
     if(event.button!==0) return;
+    if(event.target.closest?.('.term-graph-node')) return;
     pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});
     suppressClick.current=false;
     const pair=[...pointers.current.values()];
@@ -93,7 +94,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         {graph.edges.some(edge=>edge.relation) && <div className="term-graph-relation-legend" aria-label="조건 연결선 안내">
           <span data-relation="all">실선: 모두 필요</span><span data-relation="any">점선: 하나 이상</span>
         </div>}
-        <svg viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">
+        <svg viewBox="0 0 1000 840" preserveAspectRatio="none" aria-hidden="true">
           {graph.edges.map(edge=><line key={`${edge.source}:${edge.target}:${edge.relation||'category'}`} x1={points[edge.source].x} y1={points[edge.source].y}
             x2={points[edge.target].x} y2={points[edge.target].y}
             style={{opacity:(points[edge.source].opacity+points[edge.target].opacity)/2*.55}}
@@ -102,18 +103,17 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         </svg>
         {graph.nodes.map(node=>{
           const p=points[node.id];
-          const style={left:`${p.x/10}%`,top:`${p.y/7}%`,zIndex:Math.round(p.depth+500),opacity:p.opacity,'--node-scale':p.scale};
-          const expandLength=Math.hypot(p.x-500,p.y-350)||1;
-          const expandStyle={...style,'--node-scale':Math.max(1,p.scale),
-            '--expand-x':`${(p.x-500)/expandLength*42}px`,'--expand-y':`${(p.y-350)/expandLength*42}px`};
+          const nodeScale=node.term?clamp(p.scale,.75,1):p.scale;
+          const style={left:`${p.x/10}%`,top:`${p.y/8.4}%`,zIndex:Math.round(p.depth+500),opacity:p.opacity,'--node-scale':nodeScale};
+          const expandStyle={...style,'--node-scale':Math.max(1,nodeScale),
+            '--expand-x':'13px','--expand-y':'13px'};
           return node.term ? <Fragment key={node.id}><button type="button" style={style} className="term-graph-node"
-            data-focused={focusedId===node.id} data-selected={selectedIds.includes(node.id)}
+            data-focused={focusedId===node.id} data-selected={selectedIds.includes(node.id)} data-expandable={node.expandable}
             data-node-id={node.id} data-detail={Boolean(node.isDetail)} data-world-x={node.x.toFixed(3)} data-world-y={node.y.toFixed(3)}
             data-world-z={node.z.toFixed(3)} data-layout-x={p.x.toFixed(3)} data-layout-y={p.y.toFixed(3)}
             data-depth={p.depth.toFixed(3)} data-distant={p.depth < -40}
             aria-label={`${node.label} ${selectedIds.includes(node.id)?'선택 해제':'선택'}`} aria-pressed={selectedIds.includes(node.id)}
             onFocus={()=>{suppressClick.current=false;onFocus(node.id);}} onClick={()=>pick(node.id)}>
-            <span className="term-graph-dot" aria-hidden="true">{selectedIds.includes(node.id)?'✓':''}</span>
             <span className="term-graph-label">{node.label}</span>
           </button>{node.expandable && <button type="button" className="term-graph-expand" style={expandStyle}
             data-node-id={`${node.id}:expand`} aria-label={`${node.label}: 이 조건이 필요한 세부 용어 ${expandedIds.includes(node.id)?'접기':'펼치기'}`}

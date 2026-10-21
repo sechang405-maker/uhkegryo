@@ -5,19 +5,23 @@ function geometry(page) {
  return page.evaluate(()=>{
   const scene=document.querySelector('.term-graph-scene'),sr=scene.getBoundingClientRect();
   const nodes=[...document.querySelectorAll('.term-graph-node,.term-graph-category')].map(element=>{
-   const rect=element.getBoundingClientRect(),label=element.querySelector('.term-graph-label'),dot=element.querySelector('.term-graph-dot');
-   const anchor=(dot||element).getBoundingClientRect();
+   const rect=element.getBoundingClientRect(),label=element.querySelector('.term-graph-label');
+   const anchor=rect;
+   const style=getComputedStyle(element);
    return {id:element.dataset.nodeId,isDetail:element.dataset.detail==='true',x:rect.x-sr.x,y:rect.y-sr.y,width:rect.width,height:rect.height,
     cx:anchor.x-sr.x+anchor.width/2,cy:anchor.y-sr.y+anchor.height/2,
     world:[+element.dataset.worldX,+element.dataset.worldY,+element.dataset.worldZ],depth:+element.dataset.depth,
-    labelVisible:Boolean(label)&&getComputedStyle(label).display!=='none'};
+    labelVisible:Boolean(label)&&getComputedStyle(label).display!=='none',borderRadius:style.borderRadius};
   });
   const labeled=nodes.filter(node=>node.labelVisible),overlaps=[];
+  const severeOverlaps=[];
   for(let first=0;first<labeled.length;first++) for(let second=first+1;second<labeled.length;second++) {
    const a=labeled[first],b=labeled[second];
    const width=Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x);
    const height=Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y);
    if(width>1&&height>1) overlaps.push([a.id,b.id,Math.round(width*height)]);
+   const distance=Math.hypot(a.cx-b.cx,a.cy-b.cy),combined=(a.width+b.width)/2;
+   if(distance<combined*.4) severeOverlaps.push([a.id,b.id,Math.round(distance),Math.round(combined)]);
   }
   const obstacles=[...document.querySelectorAll('.recommended-query,.term-graph-view-toggle,.term-graph-tools,.term-graph-lower-overlay')]
    .filter(element=>getComputedStyle(element).display!=='none').map(element=>{const rect=element.getBoundingClientRect();
@@ -29,9 +33,9 @@ function geometry(page) {
    if(width>1&&height>1) overlayOverlaps.push([node.id,obstacle.name,Math.round(width*height)]);
   }
   const byId=Object.fromEntries(nodes.map(node=>[node.id,node]));
-  const expandAnchorErrors=[...document.querySelectorAll('.term-graph-expand')].map(element=>{
+  const expandContainmentErrors=[...document.querySelectorAll('.term-graph-expand')].map(element=>{
    const parent=byId[element.dataset.nodeId.replace(/:expand$/,'')],rect=element.getBoundingClientRect();
-   return parent?Math.abs(Math.hypot(rect.x-sr.x+rect.width/2-parent.cx,rect.y-sr.y+rect.height/2-parent.cy)-42):Infinity;
+   return {id:element.dataset.nodeId,error:parent?Math.max(0,parent.x-(rect.x-sr.x),parent.y-(rect.y-sr.y),rect.right-sr.x-(parent.x+parent.width),rect.bottom-sr.y-(parent.y+parent.height)):Infinity};
   });
   const labelContainmentErrors=[...document.querySelectorAll('.term-graph-node .term-graph-label')]
    .filter(element=>getComputedStyle(element).display!=='none').map(element=>{
@@ -40,8 +44,8 @@ function geometry(page) {
    });
   const edges=[...document.querySelectorAll('.term-graph-scene line')].map(element=>({
    source:element.dataset.source,target:element.dataset.target,relation:element.dataset.relation,
-   x1:+element.getAttribute('x1')*sr.width/1000,y1:+element.getAttribute('y1')*sr.height/700,
-   x2:+element.getAttribute('x2')*sr.width/1000,y2:+element.getAttribute('y2')*sr.height/700,
+   x1:+element.getAttribute('x1')*sr.width/1000,y1:+element.getAttribute('y1')*sr.height/840,
+   x2:+element.getAttribute('x2')*sr.width/1000,y2:+element.getAttribute('y2')*sr.height/840,
   }));
   const endpointErrors=edges.flatMap(edge=>{
    const source=byId[edge.source],target=byId[edge.target];
@@ -53,8 +57,12 @@ function geometry(page) {
   const outwardViolations=edges.filter(edge=>edge.relation!=='category'&&byId[edge.target]?.isDetail&&
    worldRadius(byId[edge.target])<=worldRadius(byId[edge.source])+1).map(edge=>[edge.source,edge.target]);
   const worstEndpoint=endpointErrors.reduce((worst,item)=>item.error>worst.error?item:worst,{error:0});
-  return {overlaps,overlayOverlaps,outwardViolations,maxEndpointError:worstEndpoint.error,worstEndpoint,
-   maxExpandAnchorError:Math.max(...expandAnchorErrors),maxLabelContainmentError:Math.max(...labelContainmentErrors),nodes,edges};
+  const worstExpand=expandContainmentErrors.reduce((worst,item)=>item.error>worst.error?item:worst,{error:0});
+  const circularNodeErrors=nodes.filter(node=>!node.id.startsWith('category:')).map(node=>Math.max(
+   Math.abs(node.width-node.height),node.borderRadius==='50%'?0:Math.abs(parseFloat(node.borderRadius)-node.width/2)));
+  return {overlaps,severeOverlaps,overlayOverlaps,outwardViolations,maxEndpointError:worstEndpoint.error,worstEndpoint,
+   maxExpandContainmentError:worstExpand.error,worstExpand,maxCircularNodeError:Math.max(0,...circularNodeErrors),
+   dotCount:document.querySelectorAll('.term-graph-dot').length,maxLabelContainmentError:Math.max(...labelContainmentErrors),nodes,edges};
  });
 }
 
@@ -74,11 +82,14 @@ function geometry(page) {
   for(const id of ['pose_sitting','pose_standing','pose_contrapposto'])
    await page.locator(`[data-node-id="${id}:expand"]`).click({force:true});
 
-  const check=async (label,overlapLimit=Infinity)=>{
+  const check=async (label,overlapLimit=Infinity,requireSeparatedCenters=false)=>{
    const result=await geometry(page);
    assert(result.overlaps.length<=overlapLimit,`${label}: visible-label overlaps grew to ${result.overlaps.length}: ${JSON.stringify(result.overlaps.slice(0,8))}`);
+   if(requireSeparatedCenters) assert.deepEqual(result.severeOverlaps,[],`${label}: circular node centers stack: ${JSON.stringify(result.severeOverlaps)}`);
    assert(result.maxEndpointError<1,`${label}: edge endpoint misses its visible anchor: ${JSON.stringify(result.worstEndpoint)}`);
-   assert(result.maxExpandAnchorError<1,`${label}: expand control drifts from its node by ${result.maxExpandAnchorError}px`);
+   assert(result.maxExpandContainmentError<1,`${label}: expand control escaped its node: ${JSON.stringify(result.worstExpand)}`);
+   assert(result.maxCircularNodeError<1,`${label}: term nodes are not centered circles (${result.maxCircularNodeError}px)`);
+   assert.equal(result.dotCount,0,`${label}: detached dot remains`);
    assert(result.maxLabelContainmentError<1,`${label}: label drifts outside its node by ${result.maxLabelContainmentError}px`);
    assert.deepEqual(result.outwardViolations,[],`${label}: branches returned inward: ${JSON.stringify(result.outwardViolations)}`);
    const incoming=new Map();
@@ -91,7 +102,7 @@ function geometry(page) {
     .map(edge=>edge.source),['pose_sitting'],`${label}: OR child visual owner changed`);
    return result;
   };
-  const initial=await check('desktop initial',0);
+  const initial=await check('desktop initial',Infinity,true);
   const scene=page.locator('.term-graph-scene');
   const before=await geometry(page),beforeById=Object.fromEntries(before.nodes.map(node=>[node.id,node]));
   const bounds=await scene.boundingBox(),depthChanges=[];
@@ -102,13 +113,28 @@ function geometry(page) {
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const frameGeometry=await geometry(page);
    assert(frameGeometry.maxEndpointError<1,`drag frame ${step}: edge endpoint misses its node center by ${frameGeometry.maxEndpointError}px`);
-   assert(frameGeometry.maxExpandAnchorError<1,`drag frame ${step}: expand control drifts from its node by ${frameGeometry.maxExpandAnchorError}px`);
+   assert(frameGeometry.maxExpandContainmentError<1,`drag frame ${step}: expand control escaped its node by ${frameGeometry.maxExpandContainmentError}px`);
    assert(frameGeometry.maxLabelContainmentError<1,`drag frame ${step}: label drifts outside its node by ${frameGeometry.maxLabelContainmentError}px`);
    for(const node of frameGeometry.nodes) assert.deepEqual(node.world,beforeById[node.id].world,`drag frame ${step}: ${node.id} world anchor mutated`);
    depthChanges.push(Math.max(...frameGeometry.nodes.map(node=>Math.abs(node.depth-beforeById[node.id].depth))));
   }
   await page.mouse.up();
   assert(Math.max(...depthChanges)>1,'pointer drag did not change 3D depth');
+  await scene.press('Home');
+  const stableNode=page.locator('.term-graph-node[data-node-id="pose_contrapposto"]'),stableBox=await stableNode.boundingBox();
+  const stableBefore=await geometry(page),stableView=await scene.evaluate(element=>[element.dataset.yaw,element.dataset.pitch,element.dataset.zoom]);
+  await page.mouse.move(stableBox.x+stableBox.width/2,stableBox.y+stableBox.height/2);
+  await page.mouse.down();await page.mouse.move(stableBox.x+stableBox.width/2+9,stableBox.y+stableBox.height/2+7);await page.mouse.up();
+  const stableAfter=await geometry(page);
+  assert.deepEqual(await scene.evaluate(element=>[element.dataset.yaw,element.dataset.pitch,element.dataset.zoom]),stableView,'pointer jitter on a node rotated the scene');
+  assert.deepEqual(stableAfter.nodes.map(node=>[node.id,node.world,node.cx,node.cy]),stableBefore.nodes.map(node=>[node.id,node.world,node.cx,node.cy]),
+   'selecting a node moved graph anchors');
+  const selectedBeforeClick=await stableNode.getAttribute('data-selected');
+  await stableNode.hover();await stableNode.click();
+  assert.notEqual(await stableNode.getAttribute('data-selected'),selectedBeforeClick,'ordinary node click still toggles selection');
+  const selectedGeometry=await geometry(page);
+  assert.deepEqual(selectedGeometry.nodes.map(node=>[node.id,node.world,node.cx,node.cy]),stableBefore.nodes.map(node=>[node.id,node.world,node.cx,node.cy]),
+   'hover or selection changed circular node anchors');
   await scene.press('Home');
   const home=await geometry(page),homeById=Object.fromEntries(home.nodes.map(node=>[node.id,node]));
   await scene.press('ArrowRight');
@@ -131,6 +157,7 @@ function geometry(page) {
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({multipleBranches:true,initialVisibleLabelOverlaps:initial.overlaps.length,
    initialOverlapPairs:initial.overlaps,
-   outwardBranches:true,singleDisplayedParent:true,rigid3DWorld:true,independentYawPitch:true,depthChanges:true,endpointsMatchVisibleAnchors:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
+   outwardBranches:true,singleDisplayedParent:true,circularNodes:true,integratedExpand:true,selectionStable:true,
+   rigid3DWorld:true,independentYawPitch:true,depthChanges:true,endpointsMatchVisibleAnchors:true,andOr:true,noDuplicates:true,rotated:true,narrow:true}));
  } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

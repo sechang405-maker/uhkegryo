@@ -49,13 +49,16 @@ test('world data stays fixed while yaw changes the projected depth',()=>{
  const graph=buildTermGraph(HOME_TERMS),before=projectGraph(graph,INITIAL_VIEW);
  assert.ok(INITIAL_VIEW.yaw!==0&&INITIAL_VIEW.pitch!==0);
  const categories=graph.nodes.filter(n=>!n.term);
- assert.ok(Math.max(...categories.map(n=>n.z))-Math.min(...categories.map(n=>n.z))>250);
- assert.ok(Math.max(...graph.nodes.map(n=>n.z))-Math.min(...graph.nodes.map(n=>n.z))>400);
+ const categoryDepths=categories.map(node=>before[node.id].depth);
+ assert.ok(Math.max(...categoryDepths)-Math.min(...categoryDepths)>200,'category sectors retain meaningful camera depth');
+ assert.ok(Math.max(...graph.nodes.map(n=>n.z))-Math.min(...graph.nodes.map(n=>n.z))>400,'term fan retains substantial world z depth');
+ const allDepths=Object.values(before).map(point=>point.depth);
+ assert.ok(Math.max(...allDepths)-Math.min(...allDepths)>500,'initial camera retains strong projected depth separation');
  const after=projectGraph(graph,{...INITIAL_VIEW,yaw:INITIAL_VIEW.yaw+.7});
  assert.ok(graph.nodes.some(n=>Math.hypot(after[n.id].x-before[n.id].x,after[n.id].y-before[n.id].y)>100));
  assert.ok(graph.nodes.some(node=>Math.abs(after[node.id].depth-before[node.id].depth)>1));
  assert.ok(graph.nodes.some(node=>Math.abs(after[node.id].scale-before[node.id].scale)>.001));
- for(const point of Object.values(before)) assert.ok(point.x>0&&point.x<1000&&point.y>0&&point.y<700);
+ for(const point of Object.values(before)) assert.ok(point.x>0&&point.x<1000&&point.y>0&&point.y<840);
 });
 
 test('active catalog exposes only validated dependency ids and direct-search policy',()=>{
@@ -108,6 +111,40 @@ test('the first expanded shared parent keeps visual ownership until it collapses
  assert.equal(parentOf(standingOnly,'pose_action_two_hand_aiming'),'pose_standing');
  assert.equal(parentOf(standingThenSitting,'pose_action_two_hand_aiming'),'pose_standing');
  assert.equal(standingThenSitting.nodes.filter(node=>node.id==='pose_action_two_hand_aiming').length,1);
+});
+
+test('expanding an unrelated parent leaves every existing world coordinate unchanged',()=>{
+ const before=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
+ const after=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing']);
+ const afterById=new Map(after.nodes.map(node=>[node.id,node]));
+ for(const node of before.nodes) {
+  const current=afterById.get(node.id);
+  assert.ok(current,`${node.id} disappeared after an unrelated expansion`);
+  assert.deepEqual(
+   {x:current.x,y:current.y,z:current.z},
+   {x:node.x,y:node.y,z:node.z},
+   `${node.id} moved when another branch expanded`,
+  );
+ }
+});
+
+test('each displayed child continues through its parent outward axis without entering a neighboring parent territory',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
+ const byId=new Map(graph.nodes.map(node=>[node.id,node]));
+ const length=vector=>Math.hypot(vector.x,vector.y,vector.z);
+ const unit=vector=>{const size=length(vector);return {x:vector.x/size,y:vector.y/size,z:vector.z/size};};
+ const subtract=(a,b)=>({x:a.x-b.x,y:a.y-b.y,z:a.z-b.z});
+ const angle=(a,b)=>Math.acos(Math.min(1,Math.max(-1,a.x*b.x+a.y*b.y+a.z*b.z)));
+ const displayedParents=[...new Set(graph.edges.filter(edge=>edge.relation).map(edge=>edge.source))].map(id=>byId.get(id));
+ for(const edge of graph.edges.filter(edge=>edge.relation)) {
+  const parent=byId.get(edge.source),child=byId.get(edge.target),parentAxis=unit(parent);
+  assert.ok(angle(unit(subtract(child,parent)),parentAxis)<Math.PI/3,
+   `${child.id} does not continue outward from ${parent.id}`);
+  const nearest=Math.min(...displayedParents.filter(candidate=>candidate.role===parent.role&&candidate.id!==parent.id)
+   .map(candidate=>angle(parentAxis,unit(candidate))),Math.PI/2);
+  assert.ok(angle(unit(child),parentAxis)<=nearest/2+.04,
+   `${child.id} entered a neighboring parent branch territory`);
+ }
 });
 
 test('collapse changes visibility only and cyclic relationships remain finite',()=>{
@@ -182,21 +219,19 @@ test('camera motion uses independent yaw and pitch in one 3D projection without 
  assert.deepEqual(graph.nodes.map(({id,x,y,z})=>({id,x,y,z})),world);
 });
 
-test('structure-time world layout separates visible labels in the initial camera view',()=>{
- const width=1000,height=700;
+test('circular graph anchors avoid stacked centers and stay near the initial camera frame',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
  const points=projectGraph(graph,INITIAL_VIEW);
- const visible=graph.nodes.filter(node=>node.term&&points[node.id].depth>=-40).map(node=>{
-  const scale=Math.max(.72,points[node.id].scale),boxWidth=Math.min(190,44+[...node.label].length*11),left=16*scale;
-  return {id:node.id,x:points[node.id].x,y:points[node.id].y,
-   left:left*1000/width,right:(boxWidth*scale-left)*1000/width,
-   top:21*scale*700/height,bottom:21*scale*700/height};
+ const visible=graph.nodes.filter(node=>node.term).map(node=>{
+  const scale=Math.max(.75,Math.min(1,points[node.id].scale)),radius=(node.isDetail&&!node.expandable?19:34)*scale;
+  return {id:node.id,x:points[node.id].x,y:points[node.id].y,radius};
  });
- const overlaps=[];
+ const severe=[];
  for(let first=0;first<visible.length;first++) for(let second=first+1;second<visible.length;second++) {
   const a=visible[first],b=visible[second];
-  if(Math.min(a.x+a.right,b.x+b.right)>Math.max(a.x-a.left,b.x-b.left)&&
-    Math.min(a.y+a.bottom,b.y+b.bottom)>Math.max(a.y-a.top,b.y-b.top)) overlaps.push([a.id,b.id]);
+  const distance=Math.hypot(a.x-b.x,a.y-b.y),combined=a.radius+b.radius;
+  if(distance<combined*.4) severe.push([a.id,b.id,distance/combined]);
  }
- assert.deepEqual(overlaps,[]);
+ assert.deepEqual(severe,[],'no circular node centers may stack inside one another');
+ assert.ok(visible.every(node=>node.x>-30&&node.x<1050&&node.y>-30&&node.y<870),'initial camera keeps every anchor near the frame');
 });

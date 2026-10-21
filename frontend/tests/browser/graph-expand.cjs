@@ -24,7 +24,7 @@ const assert=require('node:assert/strict');
    const scene=page.locator('.term-graph-scene');
    const initialView=await scene.evaluate(element=>[element.dataset.yaw,element.dataset.pitch,element.dataset.zoom]);
    const expand=page.locator('[data-node-id="pose_sitting:expand"]');
-   const box=await expand.boundingBox();assert(box.width>=32&&box.height>=32,'expand control remains touchable');
+   const box=await expand.boundingBox();assert(box.width>=24&&box.height>=24,'integrated expand control remains touchable');
    await expand.click({force:true});
    await page.locator('.term-graph-node[data-node-id="pose_sitting_leaning_forward"]').waitFor();
    assert.equal(await page.locator('.term-graph-node[data-node-id="pose_sitting_on_edge"]').count(),1);
@@ -44,8 +44,13 @@ const assert=require('node:assert/strict');
    await expand.click({force:true});
    assert.equal(await page.locator('.term-graph-node[data-node-id="pose_sitting_leaning_forward"][data-selected="true"]').count(),1,'re-expansion preserves selection');
    assert.equal(await page.locator('.term-graph-node[data-node-id="pose_sitting_on_edge"]').count(),1,'repeated expansion never duplicates nodes');
+   const world=()=>page.locator('.term-graph-node').evaluateAll(nodes=>Object.fromEntries(nodes.map(node=>[node.dataset.nodeId,
+    [node.dataset.worldX,node.dataset.worldY,node.dataset.worldZ]])));
+   const beforeStanding=await world();
    const standingExpand=page.locator('[data-node-id="pose_standing:expand"]');
    await standingExpand.click({force:true});
+   const afterStanding=await world();
+   for(const [id,coordinates] of Object.entries(beforeStanding)) assert.deepEqual(afterStanding[id],coordinates,`${id} moved when an unrelated branch expanded`);
    assert.equal(await page.locator('line[data-source="pose_sitting"][data-target="pose_action_two_hand_aiming"]').count(),1,
     'later expansion does not attach another parent to an existing child');
    assert.equal(await page.locator('line[data-source="pose_standing"][data-target="pose_action_two_hand_aiming"]').count(),0);

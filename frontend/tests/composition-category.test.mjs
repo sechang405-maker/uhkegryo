@@ -26,7 +26,8 @@ test('home graph grows actual reviewed nodes and keeps bounded projection',()=>{
  for(const node of buildTermGraph(HOME_TERMS).nodes){
   const point=projectNode(node,INITIAL_VIEW);
   assert.ok(Number.isFinite(point.x)&&Number.isFinite(point.y));
-  assert.ok(Math.abs(node.z)<=300);
+  assert.ok(point.x>0&&point.x<1000&&point.y>0&&point.y<840);
+  assert.ok(Math.hypot(node.x,node.y,node.z)<600);
  }
 });
 test('old demo prose restores from fixture IDs without discarding saved turns',()=>{
