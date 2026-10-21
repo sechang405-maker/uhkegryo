@@ -11,7 +11,7 @@ function geometry(page) {
    return {id:element.dataset.nodeId,isDetail:element.dataset.detail==='true',x:rect.x-sr.x,y:rect.y-sr.y,width:rect.width,height:rect.height,
     cx:anchor.x-sr.x+anchor.width/2,cy:anchor.y-sr.y+anchor.height/2,
     world:[+element.dataset.worldX,+element.dataset.worldY,+element.dataset.worldZ],depth:+element.dataset.depth,
-    labelVisible:Boolean(label)&&getComputedStyle(label).display!=='none',borderRadius:style.borderRadius};
+    labelVisible:Boolean(label)&&getComputedStyle(label).display!=='none',borderRadius:style.borderRadius,fontSize:parseFloat(style.fontSize)};
   });
   const labeled=nodes.filter(node=>node.labelVisible),overlaps=[];
   const severeOverlaps=[];
@@ -23,7 +23,7 @@ function geometry(page) {
    const distance=Math.hypot(a.cx-b.cx,a.cy-b.cy),combined=(a.width+b.width)/2;
    if(distance<combined*.4) severeOverlaps.push([a.id,b.id,Math.round(distance),Math.round(combined)]);
   }
-  const obstacles=[...document.querySelectorAll('.recommended-query,.term-graph-view-toggle,.term-graph-tools,.term-graph-lower-overlay')]
+  const obstacles=[...document.querySelectorAll('.history-logo,.recommended-query,.term-graph-view-toggle,.term-graph-tools,.term-graph-lower-overlay,.term-graph-relation-legend')]
    .filter(element=>getComputedStyle(element).display!=='none').map(element=>{const rect=element.getBoundingClientRect();
     return {name:element.className,x:rect.x-sr.x,y:rect.y-sr.y,width:rect.width,height:rect.height};});
   const overlayOverlaps=[];
@@ -60,9 +60,14 @@ function geometry(page) {
   const worstExpand=expandContainmentErrors.reduce((worst,item)=>item.error>worst.error?item:worst,{error:0});
   const circularNodeErrors=nodes.filter(node=>!node.id.startsWith('category:')).map(node=>Math.max(
    Math.abs(node.width-node.height),node.borderRadius==='50%'?0:Math.abs(parseFloat(node.borderRadius)-node.width/2)));
+  const offscreen=nodes.filter(node=>node.x<0||node.y<0||node.x+node.width>sr.width||node.y+node.height>sr.height)
+   .map(node=>[node.id,Math.round(node.x),Math.round(node.y),Math.round(node.width),Math.round(node.height)]);
+  const detailNodes=nodes.filter(node=>node.isDetail),logo=document.querySelector('.history-logo')?.getBoundingClientRect(),legend=document.querySelector('.term-graph-relation-legend')?.getBoundingClientRect();
+  const logoLegendOverlap=logo&&legend?Math.max(0,Math.min(logo.right,legend.right)-Math.max(logo.left,legend.left))*Math.max(0,Math.min(logo.bottom,legend.bottom)-Math.max(logo.top,legend.top)):0;
   return {overlaps,severeOverlaps,overlayOverlaps,outwardViolations,maxEndpointError:worstEndpoint.error,worstEndpoint,
    maxExpandContainmentError:worstExpand.error,worstExpand,maxCircularNodeError:Math.max(0,...circularNodeErrors),
-   dotCount:document.querySelectorAll('.term-graph-dot').length,maxLabelContainmentError:Math.max(...labelContainmentErrors),nodes,edges};
+   dotCount:document.querySelectorAll('.term-graph-dot').length,maxLabelContainmentError:Math.max(...labelContainmentErrors),
+   minDetailSize:Math.min(...detailNodes.map(node=>node.width)),minDetailFont:Math.min(...detailNodes.map(node=>node.fontSize)),offscreen,logoLegendOverlap,nodes,edges};
  });
 }
 
@@ -103,6 +108,12 @@ function geometry(page) {
    return result;
   };
   const initial=await check('desktop initial',Infinity,true);
+  if(process.env.GRAPH_CAPTURE) await page.screenshot({path:process.env.GRAPH_CAPTURE,fullPage:true});
+  assert(initial.overlaps.length<=25,`desktop initial: dense circular layout still has ${initial.overlaps.length} overlaps: ${JSON.stringify(initial.overlaps.slice(0,20))}`);
+  assert(initial.minDetailSize>=48,`desktop initial: detail circles shrink below 48px (${initial.minDetailSize}px)`);
+  assert(initial.minDetailFont>=9,`desktop initial: detail text shrinks below 9px (${initial.minDetailFont}px)`);
+  assert.deepEqual(initial.offscreen,[],`desktop initial: nodes are clipped: ${JSON.stringify(initial.offscreen)}`);
+  assert.equal(initial.logoLegendOverlap,0,'desktop initial: relation legend overlaps the logo');
   const scene=page.locator('.term-graph-scene');
   const before=await geometry(page),beforeById=Object.fromEntries(before.nodes.map(node=>[node.id,node]));
   const bounds=await scene.boundingBox(),depthChanges=[];

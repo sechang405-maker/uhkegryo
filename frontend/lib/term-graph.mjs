@@ -3,46 +3,73 @@ import { createMindMapSlots } from './term-mind-map.mjs';
 export const INITIAL_VIEW = Object.freeze({ yaw: -.32, pitch: .18, zoom: .9 });
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export function buildTermGraph(terms) {
+const INITIAL_FRAME = Object.freeze({x:500,y:480});
+const GRAPH_CENTER = Object.freeze({x:500,y:420});
+const CATEGORY_ANGLE = Object.freeze({
+  body:-3*Math.PI/4,
+  pose:-Math.PI/4,
+  composition:Math.PI/4,
+  perspective:3*Math.PI/4,
+});
+
+function worldFromInitialProjection(screenX,screenY,depth) {
+  const perspective=1100/(1100-depth),factor=perspective*INITIAL_VIEW.zoom;
+  const cameraX=(screenX-INITIAL_FRAME.x)/factor,cameraY=(screenY-INITIAL_FRAME.y)/factor;
+  const worldY=cameraY*Math.cos(INITIAL_VIEW.pitch)+depth*Math.sin(INITIAL_VIEW.pitch);
+  const yawZ=-cameraY*Math.sin(INITIAL_VIEW.pitch)+depth*Math.cos(INITIAL_VIEW.pitch);
+  return {
+    x:cameraX*Math.cos(INITIAL_VIEW.yaw)-yawZ*Math.sin(INITIAL_VIEW.yaw),
+    y:worldY,
+    z:cameraX*Math.sin(INITIAL_VIEW.yaw)+yawZ*Math.cos(INITIAL_VIEW.yaw),
+  };
+}
+
+export function buildTermGraph(terms, childCounts=new Map()) {
   const seen = new Set();
   const slots = createMindMapSlots(terms);
-  const centers = [[-160,-110,70],[160,-110,-70],[160,110,70],[-160,110,-70]];
   const nodes = [], edges = [];
   slots.forEach((slot, index) => {
-    const [x,y,z] = centers[index];
+    const angle=CATEGORY_ANGLE[slot.role]??(-3*Math.PI/4+index*Math.PI/2);
+    const categoryScreen={x:GRAPH_CENTER.x+115*Math.cos(angle),y:GRAPH_CENTER.y+115*Math.sin(angle)};
+    const categoryDepth=index%2?-160:160;
+    const {x,y,z}=worldFromInitialProjection(categoryScreen.x,categoryScreen.y,categoryDepth);
     const id = `category:${slot.role}`;
     const category={id,label:slot.roleLabel,role:slot.role,x,y,z};
     nodes.push(category);
+    const visualOrder=[...slot.terms].sort((a,b)=>(childCounts.get(b.term_id)||0)-(childCounts.get(a.term_id)||0)||
+      slot.terms.indexOf(a)-slot.terms.indexOf(b));
+    const priorityCount=visualOrder.filter(term=>(childCounts.get(term.term_id)||0)>0).length;
     slot.terms.forEach((term,i) => {
       if(seen.has(term.term_id)) return;
       seen.add(term.term_id);
-      const axis=unit(category),cameraRight={x:Math.cos(INITIAL_VIEW.yaw),y:0,z:Math.sin(INITIAL_VIEW.yaw)};
-      const fallback=Math.abs(axis.y)<.88?unit(cross(axis,{x:0,y:1,z:0})):unit(cross(axis,{x:1,y:0,z:0}));
-      const tangentA=unit(add(cameraRight,scale(axis,-dot(cameraRight,axis))),fallback),tangentB=unit(cross(axis,tangentA));
-      // Give every parent a stable angular territory in the category cone.
-      // A two-dimensional fan avoids stacking all parent axes on one screen line,
-      // while the fixed id-derived phase keeps expansion/selection from moving them.
-      const ring=Math.floor(i/4),slotIndex=i%4,slotsInRing=Math.min(4,slot.terms.length-ring*4);
-      const azimuth=stableAngle(slot.role)*.08+2*Math.PI*(slotIndex+(ring%2)*.5)/Math.max(1,slotsInRing);
-      const deviation=slot.terms.length===1?0:.24+ring*.055;
-      const radius=vectorLength(category)+125+ring*78;
-      let direction=axis,bestScore=-Infinity;
-      for(let sample=0;sample<72;sample++) {
-        const angle=azimuth+2*Math.PI*sample/72;
-        const lateral=add(scale(tangentA,Math.cos(angle)),scale(tangentB,Math.sin(angle)));
-        const candidateDirection=unit(add(scale(axis,Math.cos(deviation)),scale(lateral,Math.sin(deviation))),axis);
-        const candidate={x:candidateDirection.x*radius,y:candidateDirection.y*radius,z:candidateDirection.z*radius};
-        const point=projectNode(candidate,INITIAL_VIEW);
-        const clearance=Math.min(...nodes.map(existing=>{
-          const projected=projectNode(existing,INITIAL_VIEW);
-          return Math.hypot(point.x-projected.x,point.y-projected.y);
-        }));
-        const framePenalty=Math.max(0,34-point.x,point.x-966,34-point.y,point.y-666)*4;
-        const score=clearance-framePenalty;
-        if(score>bestScore) {direction=candidateDirection;bestScore=score;}
+      const visualIndex=visualOrder.findIndex(candidate=>candidate.term_id===term.term_id);
+      // Four deterministic lanes fill the role's quadrant without collapsing
+      // every label onto one narrow arc. Expandable roots are sorted first, so
+      // their outward child territory remains close to the hub.
+      let screen;
+      if(priorityCount>0&&visualIndex<priorityCount) {
+        const priorityOffsets=[.14,-.36,.62,-.62,.4,-.12,0],offset=priorityOffsets[visualIndex]??0,
+          radial=185+Math.floor(visualIndex/3)*60+(stableAngle(term.term_id)/(2*Math.PI)-.5)*6;
+        screen={x:GRAPH_CENTER.x+radial*Math.cos(angle+offset),y:GRAPH_CENTER.y+radial*Math.sin(angle+offset)};
+      } else {
+        const restIndex=priorityCount>0?visualIndex-priorityCount:visualIndex,perRing=priorityCount>0?3:4,
+          ring=Math.floor(restIndex/perRing),slotIndex=restIndex%perRing,
+          slotsInRing=Math.min(perRing,slot.terms.length-(priorityCount>0?priorityCount:0)-ring*perRing);
+        if(priorityCount>0) {
+          const radial=250+ring*90+(stableAngle(term.term_id)/(2*Math.PI)-.5)*8,
+            offset=.82+(slotIndex-(slotsInRing-1)/2)*.18;
+          screen={x:GRAPH_CENTER.x+radial*Math.cos(angle+offset),y:GRAPH_CENTER.y+radial*Math.sin(angle+offset)};
+        } else {
+          const radial=180+ring*80+(stableAngle(term.term_id)/(2*Math.PI)-.5)*8,
+            lateral=(slotIndex-(slotsInRing-1)/2)*80;
+          screen={x:GRAPH_CENTER.x+radial*Math.cos(angle)-lateral*Math.sin(angle),
+            y:GRAPH_CENTER.y+radial*Math.sin(angle)+lateral*Math.cos(angle)};
+        }
       }
-      nodes.push({id:term.term_id,label:term.label_ko,role:slot.role,term,
-        x:direction.x*radius,y:direction.y*radius,z:direction.z*radius});
+      const depthBand=[-100,-50,0,50,100][i%5],roleDepth=index%2?-160:160;
+      const point=worldFromInitialProjection(screen.x,screen.y,depthBand+roleDepth);
+      nodes.push({id:term.term_id,label:term.label_ko,role:slot.role,term,childCount:childCounts.get(term.term_id)||0,
+        x:point.x,y:point.y,z:point.z});
       edges.push({source:id,target:term.term_id});
     });
   });
@@ -124,6 +151,20 @@ function arrangeOutwardWorldLayout(nodes,edges) {
     }
     baseRadiusByRole.set(node.role,Math.max(baseRadiusByRole.get(node.role)||0,vectorLength(node)));
   }
+  const screenAxesByRole=new Map();
+  for(const node of nodes.filter(node=>node.term&&!node.isDetail&&node.expandable)) {
+    const point=projectNode(node,INITIAL_VIEW),angle=Math.atan2(point.y-GRAPH_CENTER.y,point.x-GRAPH_CENTER.x);
+    if(!screenAxesByRole.has(node.role)) screenAxesByRole.set(node.role,[]);
+    screenAxesByRole.get(node.role).push({id:node.id,angle,childCount:node.childCount||0});
+  }
+  const angularDistance=(a,b)=>Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));
+  const screenTerritoryHalfAngle=parent=>{
+    const point=projectNode(parent,INITIAL_VIEW),angle=Math.atan2(point.y-GRAPH_CENTER.y,point.x-GRAPH_CENTER.x);
+    const neighbors=(screenAxesByRole.get(parent.role)||[]).filter(candidate=>candidate.id!==parent.id&&
+      ((parent.childCount||0)<3||candidate.childCount>=3));
+    const nearest=Math.min(...neighbors.map(candidate=>angularDistance(angle,candidate.angle)),Math.PI/2);
+    return clamp(nearest/2-.06,.07,.32);
+  };
   const angleBetween=(a,b)=>Math.acos(clamp(dot(unit(a),unit(b)),-1,1));
   const territoryHalfAngle=parent=>{
     const axis=unit(parent),neighbors=(baseAxesByRole.get(parent.role)||[]).filter(candidate=>candidate.id!==parent.id);
@@ -135,7 +176,6 @@ function arrangeOutwardWorldLayout(nodes,edges) {
     const fallback=Math.abs(axis.y)<.88?unit(cross(axis,{x:0,y:1,z:0})):unit(cross(axis,{x:1,y:0,z:0}));
     const tangentA=unit(add(cameraRight,scale(axis,-dot(cameraRight,axis))),fallback),tangentB=unit(cross(axis,tangentA));
     const ring=Math.floor(index/4),slots=Math.min(4,count-ring*4),slot=index%4,half=territoryHalfAngle(parent)*.95;
-    if(count===1) return axis;
     const azimuth=stableAngle(parent.id)+2*Math.PI*(slot+(ring%2)*.5)/slots+phase;
     const lateral=add(scale(tangentA,Math.cos(azimuth)),scale(tangentB,Math.sin(azimuth)));
     return unit(add(scale(axis,Math.cos(half)),scale(lateral,Math.sin(half))),axis);
@@ -153,23 +193,34 @@ function arrangeOutwardWorldLayout(nodes,edges) {
     const primary=byId.get(primaryId);
     if(primary?.isDetail) placePrimary(primaryId);
     if(!primary||!placed.has(primary.id)) {placing.delete(id);return false;}
-    const siblings=siblingGroups.get(primaryId)||[id],index=Math.max(0,siblings.indexOf(id)),ring=Math.floor(index/4);
-    const branchStart=vectorLength(primary);
-    const radius=branchStart+101+ring*20;
+    const siblings=siblingGroups.get(primaryId)||[id],index=Math.max(0,siblings.indexOf(id));
+    const parentPoint=projectNode(primary,INITIAL_VIEW),parentScreenRadius=Math.hypot(parentPoint.x-GRAPH_CENTER.x,parentPoint.y-GRAPH_CENTER.y);
+    const parentScreenAngle=Math.atan2(parentPoint.y-GRAPH_CENTER.y,parentPoint.x-GRAPH_CENTER.x),half=screenTerritoryHalfAngle(primary);
+    const slotsPerRing=half<.18?2:3,screenRing=Math.floor(index/slotsPerRing),
+      slots=Math.min(slotsPerRing,siblings.length-screenRing*slotsPerRing),slot=index%slotsPerRing;
+    const targetScreenRadius=parentScreenRadius+115+screenRing*75;
+    const slotFraction=slots===1?0:(slot-(slots-1)/2)/((slots-1)/2);
+    const baseOffset=slotFraction*half*.92+(screenRing%2&&slots===3?half*.14:0);
     const obstacles=nodes.filter(candidate=>candidate.id!==primaryId&&(!candidate.isDetail||
       (placed.has(candidate.id)&&visualParent.get(candidate.id)===primaryId)));
-    let bestDirection=localFanDirection(primary,index,siblings.length),bestClearance=-Infinity;
-    for(let sample=0;sample<72;sample++) {
-      const direction=localFanDirection(primary,index,siblings.length,2*Math.PI*sample/72);
-      const candidate={...node,x:direction.x*radius,y:direction.y*radius,z:direction.z*radius};
-      const point=projectNode(candidate,INITIAL_VIEW);
+    let bestPoint=null,bestClearance=-Infinity;
+    for(let sample=0;sample<75;sample++) {
+      const angleSample=sample%25,radialSample=Math.floor(sample/25),candidateRadius=targetScreenRadius+[-24,0,18][radialSample];
+      const offset=clamp(baseOffset+(angleSample-12)/12*(half/Math.max(3,slots)*.7),-half*.98,half*.98),
+        angle=parentScreenAngle+offset;
+      const screen={x:GRAPH_CENTER.x+candidateRadius*Math.cos(angle),y:GRAPH_CENTER.y+candidateRadius*Math.sin(angle)};
+      const depthDelta=[-32,0,32][slot%3],depth=clamp(parentPoint.depth*(candidateRadius/Math.max(1,parentScreenRadius))+depthDelta,-420,420);
+      const candidate=worldFromInitialProjection(screen.x,screen.y,depth),point=projectNode(candidate,INITIAL_VIEW);
       const clearance=Math.min(...obstacles.map(obstacle=>{
         const projected=projectNode(obstacle,INITIAL_VIEW);
         return Math.hypot(point.x-projected.x,point.y-projected.y);
       }));
-      if(clearance>bestClearance) {bestDirection=direction;bestClearance=clearance;}
+      const framePenalty=Math.max(0,48-point.x,point.x-952,92-point.y,point.y-748)*6;
+      const score=clearance-framePenalty;
+      if(score>bestClearance) {bestPoint=candidate;bestClearance=score;}
     }
-    setAt(node,bestDirection,radius);
+    if(!bestPoint) {placing.delete(id);return false;}
+    node.x=bestPoint.x;node.y=bestPoint.y;node.z=bestPoint.z;placed.add(node.id);
     placing.delete(id);return true;
   };
   for(let pass=0;pass<nodes.length;pass++) {
@@ -180,14 +231,25 @@ function arrangeOutwardWorldLayout(nodes,edges) {
 
   // Supporting prerequisite nodes with no displayed relation edge receive a
   // fixed category-relative slot derived only from their own id.
+  const supplementalByRole=new Map();
   for(const node of nodes.filter(node=>node.isDetail&&!placed.has(node.id)).sort((a,b)=>a.id.localeCompare(b.id))) {
-    const category=categories.get(node.role)||{x:1,y:0,z:0},axis=unit(category);
-    const cameraRight={x:Math.cos(INITIAL_VIEW.yaw),y:0,z:Math.sin(INITIAL_VIEW.yaw)};
-    const fallback=Math.abs(axis.y)<.88?unit(cross(axis,{x:0,y:1,z:0})):unit(cross(axis,{x:1,y:0,z:0}));
-    const tangent=unit(add(cameraRight,scale(axis,-dot(cameraRight,axis))),fallback);
-    const vertical=unit(cross(axis,tangent)),deviation=node.layoutIndex%2?.65:-.65;
-    const direction=unit(add(scale(axis,Math.cos(deviation)),scale(vertical,Math.sin(deviation))),axis);
-    setAt(node,direction,vectorLength(category)+135+Math.floor((node.layoutIndex%6)/2)*35);
+    if(!supplementalByRole.has(node.role)) supplementalByRole.set(node.role,0);
+    const supplementalIndex=supplementalByRole.get(node.role);supplementalByRole.set(node.role,supplementalIndex+1);
+    const category=categories.get(node.role)||{x:1,y:0,z:0},categoryPoint=projectNode(category,INITIAL_VIEW);
+    const categoryAngle=Math.atan2(categoryPoint.y-GRAPH_CENTER.y,categoryPoint.x-GRAPH_CENTER.x);
+    let bestPoint=null,bestScore=-Infinity;
+    const obstacles=nodes.filter(candidate=>!candidate.isDetail||placed.has(candidate.id));
+    for(let sample=0;sample<216;sample++) {
+      const angleSample=sample%72,radiusSample=Math.floor(sample/72),targetRadius=280+radiusSample*62+Math.floor(supplementalIndex/3)*50;
+      const angle=categoryAngle-.72+1.44*((angleSample+stableAngle(node.id)/(2*Math.PI))%72)/71;
+      const screen={x:GRAPH_CENTER.x+targetRadius*Math.cos(angle),y:GRAPH_CENTER.y+targetRadius*Math.sin(angle)};
+      const depth=clamp(categoryPoint.depth*(targetRadius/115)+((supplementalIndex%3)-1)*45,-420,420);
+      const candidate=worldFromInitialProjection(screen.x,screen.y,depth),point=projectNode(candidate,INITIAL_VIEW);
+      const clearance=Math.min(...obstacles.map(obstacle=>{const projected=projectNode(obstacle,INITIAL_VIEW);return Math.hypot(point.x-projected.x,point.y-projected.y);}));
+      const framePenalty=Math.max(0,48-point.x,point.x-952,92-point.y,point.y-748)*6,score=clearance-framePenalty;
+      if(score>bestScore) {bestPoint=candidate;bestScore=score;}
+    }
+    if(bestPoint) {node.x=bestPoint.x;node.y=bestPoint.y;node.z=bestPoint.z;placed.add(node.id);}
   }
 }
 
@@ -277,10 +339,11 @@ function separateInitialViewOverlaps(nodes,edges) {
 }
 
 export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) {
-  const base=buildTermGraph(baseTerms);
+  const {termsById,childrenByParent}=relationshipIndex(catalogTerms);
+  const childCounts=new Map([...childrenByParent].map(([id,children])=>[id,children.length]));
+  const base=buildTermGraph(baseTerms,childCounts);
   const baseIds=new Set(baseTerms.map(term=>term.term_id));
   const expandedOrder=[...new Set(expandedIds)],expanded=new Set(expandedOrder);
-  const {termsById,childrenByParent}=relationshipIndex(catalogTerms);
   const visible=new Set(baseIds);
   const revealedChildren=new Set();
   const revealOrigin=new Map();
@@ -385,7 +448,7 @@ export function projectNode(node, view) {
   const perspective = 1100/(1100-depth);
   const zoom=clamp(view.zoom,.65,1.6);
   return {x:500+x*perspective*zoom,y:480+y*perspective*zoom,depth,scale:clamp(perspective,.65,1.6),
-    opacity:clamp(.76+depth/1000,.42,1)};
+    opacity:clamp(.84+depth/1800,.72,1)};
 }
 
 export function toggleTerm(ids, id) {

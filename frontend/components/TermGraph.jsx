@@ -103,7 +103,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, onTog
         </svg>
         {graph.nodes.map(node=>{
           const p=points[node.id];
-          const nodeScale=node.term?clamp(p.scale,.75,1):p.scale;
+          const nodeScale=node.term?(node.isDetail?1:clamp(p.scale,.9,1)):p.scale;
           const style={left:`${p.x/10}%`,top:`${p.y/8.4}%`,zIndex:Math.round(p.depth+500),opacity:p.opacity,'--node-scale':nodeScale};
           const expandStyle={...style,'--node-scale':Math.max(1,nodeScale),
             '--expand-x':'13px','--expand-y':'13px'};

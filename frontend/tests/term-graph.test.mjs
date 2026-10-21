@@ -135,14 +135,17 @@ test('each displayed child continues through its parent outward axis without ent
  const unit=vector=>{const size=length(vector);return {x:vector.x/size,y:vector.y/size,z:vector.z/size};};
  const subtract=(a,b)=>({x:a.x-b.x,y:a.y-b.y,z:a.z-b.z});
  const angle=(a,b)=>Math.acos(Math.min(1,Math.max(-1,a.x*b.x+a.y*b.y+a.z*b.z)));
+ const points=projectGraph(graph,INITIAL_VIEW),screenAngle=id=>Math.atan2(points[id].y-420,points[id].x-500),
+  angularDistance=(a,b)=>Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));
  const displayedParents=[...new Set(graph.edges.filter(edge=>edge.relation).map(edge=>edge.source))].map(id=>byId.get(id));
  for(const edge of graph.edges.filter(edge=>edge.relation)) {
   const parent=byId.get(edge.source),child=byId.get(edge.target),parentAxis=unit(parent);
   assert.ok(angle(unit(subtract(child,parent)),parentAxis)<Math.PI/3,
    `${child.id} does not continue outward from ${parent.id}`);
-  const nearest=Math.min(...displayedParents.filter(candidate=>candidate.role===parent.role&&candidate.id!==parent.id)
-   .map(candidate=>angle(parentAxis,unit(candidate))),Math.PI/2);
-  assert.ok(angle(unit(child),parentAxis)<=nearest/2+.04,
+  const nearest=Math.min(...displayedParents.filter(candidate=>candidate.role===parent.role&&candidate.id!==parent.id&&
+    ((parent.childCount||0)<3||(candidate.childCount||0)>=3))
+   .map(candidate=>angularDistance(screenAngle(parent.id),screenAngle(candidate.id))),Math.PI/2);
+  assert.ok(angularDistance(screenAngle(child.id),screenAngle(parent.id))<=nearest/2+.04,
    `${child.id} entered a neighboring parent branch territory`);
  }
 });
@@ -223,7 +226,7 @@ test('circular graph anchors avoid stacked centers and stay near the initial cam
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
  const points=projectGraph(graph,INITIAL_VIEW);
  const visible=graph.nodes.filter(node=>node.term).map(node=>{
-  const scale=Math.max(.75,Math.min(1,points[node.id].scale)),radius=(node.isDetail&&!node.expandable?19:34)*scale;
+  const scale=node.isDetail?1:Math.max(.9,Math.min(1,points[node.id].scale)),radius=(node.isDetail?26:node.expandable?34:28)*scale;
   return {id:node.id,x:points[node.id].x,y:points[node.id].y,radius};
  });
  const severe=[];

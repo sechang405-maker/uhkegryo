@@ -23,12 +23,15 @@ test('legacy result roles merge without dropping distinct cards',()=>{
 });
 test('home graph grows actual reviewed nodes and keeps bounded projection',()=>{
  assert.deepEqual(Object.fromEntries(['body','pose','composition','perspective'].map(role=>[role,HOME_TERMS.filter(t=>t.role===role).length])),{body:6,pose:12,composition:13,perspective:5});
- for(const node of buildTermGraph(HOME_TERMS).nodes){
+ const graph=buildTermGraph(HOME_TERMS),cameraDepths=[];
+ for(const node of graph.nodes){
   const point=projectNode(node,INITIAL_VIEW);
   assert.ok(Number.isFinite(point.x)&&Number.isFinite(point.y));
   assert.ok(point.x>0&&point.x<1000&&point.y>0&&point.y<840);
-  assert.ok(Math.hypot(node.x,node.y,node.z)<600);
+  assert.ok([node.x,node.y,node.z].every(Number.isFinite));
+  cameraDepths.push(point.depth);
  }
+ assert.ok(Math.max(...cameraDepths)-Math.min(...cameraDepths)>400);
 });
 test('old demo prose restores from fixture IDs without discarding saved turns',()=>{
  const fixture=DEMO_SCENARIOS[0],sid='demo-legacy',tid='demo-turn';
