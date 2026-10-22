@@ -78,6 +78,10 @@ def test_default_compose_is_a_complete_local_app_without_observability_secrets()
     assert services["api"]["environment"]["MCP_ENABLED"] == "true"
     assert services["api"]["environment"]["MCP_BASE_URL"] == "http://mcp:8001/mcp"
     assert services["api"]["environment"]["SEARXNG_BASE_URL"] == "http://searxng:8080"
+    assert services["api"]["environment"]["INTERPRETER_PROMPT_PATH"] == (
+        "/app/prompts/uhkegryo-interpreter-v4.md"
+    )
+    assert 'os.path.basename(path)' in "\n".join(services["api"]["command"])
     assert services["mcp"]["environment"]["DATABASE_URL"].startswith(
         "postgresql://uhkegryo:"
     )

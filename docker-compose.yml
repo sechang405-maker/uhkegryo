@@ -109,6 +109,8 @@ services:
         version = os.environ.get("COMPOSE_PROMPT_VERSION", "")
         if bool(path) != bool(version):
             sys.exit("Set both INTERPRETER_PROMPT_PATH and INTERPRETER_PROMPT_VERSION in .env")
+        if path.startswith("./prompts/"):
+            os.environ["INTERPRETER_PROMPT_PATH"] = "/app/prompts/" + os.path.basename(path)
         os.execvp("uvicorn", ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"])
     restart: unless-stopped
     ports:
