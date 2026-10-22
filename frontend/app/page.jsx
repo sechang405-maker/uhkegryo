@@ -23,6 +23,7 @@ import TermGraph from "../components/TermGraph";
 import MasonryGallery from "../components/MasonryGallery";
 import HistoryDrawer, { HistoryLogo } from "../components/HistoryDrawer";
 import { toggleTerm, appendTerms } from "../lib/term-graph.mjs";
+import { graphCategoryColor } from "../lib/term-graph-colors.mjs";
 import { createScreenHistory } from "../lib/screen-history.mjs";
 import { sessionUsage } from '../lib/session-usage.mjs';
 import { readConversationUsage } from '../lib/server-conversation.mjs';
@@ -1113,13 +1114,14 @@ export default function HomePage() {
             aria-label="카테고리별 Pinterest 핀 썸네일" onScroll={handleGalleryScroll}>
             <button className="gallery-back-button" type="button" onClick={() => navigateBoard("home")}>← 용어 둘러보기</button>
             {galleryRows.map(({ role, roleLabel, term, pins }) => (
-              <section className="pin-gallery-row" data-gallery-role={role} data-gallery-term-id={term.term_id} key={term.term_id} aria-label={`${roleLabel} 검색 결과`}>
+              <section className="pin-gallery-row" data-gallery-role={role} data-gallery-term-id={term.term_id} key={term.term_id}
+                style={{ '--category-color': graphCategoryColor(role) }} aria-label={`${roleLabel} 검색 결과`}>
                 <div className="pin-gallery-toolbar">
                 <button className="pin-gallery-heading" type="button"
                   aria-pressed={term.term_id === galleryTerm?.term_id}
                   aria-label={`${roleLabel} ${term.label_ko} 검색어 보기`}
                   onClick={() => { setSelectedTermId(term.term_id); setActiveGalleryTermId(term.term_id); }}>
-                  <span>{roleLabel}</span>
+                  <span className="pin-gallery-category-badge">{roleLabel}</span>
                   <strong>{term.label_ko}</strong>
                   {term.term_id === galleryTerm?.term_id && <span className="active-term-badge">보고 있는 용어</span>}
                 </button>

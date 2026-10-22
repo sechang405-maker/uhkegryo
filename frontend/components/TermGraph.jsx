@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { buildExpandedTermGraph, INITIAL_VIEW, clamp, projectGraph, toggleExpanded } from '../lib/term-graph.mjs';
-import { graphNodeColor } from '../lib/term-graph-colors.mjs';
+import { graphCategoryColor, graphNodeColor } from '../lib/term-graph-colors.mjs';
 import { buildGraphDepthLayers } from '../lib/term-graph-edges.mjs';
 import { assessGraphViewport } from '../lib/term-graph-responsive.mjs';
 import {
@@ -30,11 +30,10 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
   const [view,setView]=useState(INITIAL_VIEW);
   const [notice,setNotice]=useState('');
   const [sceneSize,setSceneSize]=useState({width:1000,height:680});
-  const [responsiveFallback,setResponsiveFallback]=useState(false);
   const responsivePoints=useMemo(()=>projectGraph(logicalGraph,INITIAL_VIEW),[logicalGraph]);
   const viewportAssessment=useMemo(()=>assessGraphViewport(logicalGraph.nodes,responsivePoints,sceneSize),
     [logicalGraph.nodes,responsivePoints,sceneSize]);
-  const list=listRequested||logicalGraph.denseOverflow||responsiveFallback;
+  const list=listRequested||logicalGraph.denseOverflow;
   const gesture=useRef(null);
   const rootRef=useRef(null);
   const sceneRef=useRef(null);
@@ -103,11 +102,6 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
   useEffect(()=>{
     if(list) setMotionState(current=>createGraphMotionState(current.logicalGraph,current.expandedIds));
   },[list]);
-  useEffect(()=>{
-    // Responsive fallback is an initial presentation choice. Expanding a node
-    // must never replace the graph the user is actively exploring.
-    if(!listRequested&&!logicalGraph.denseOverflow&&expandedIds.length===0&&viewportAssessment.unsafe) setResponsiveFallback(true);
-  },[listRequested,logicalGraph.denseOverflow,expandedIds.length,viewportAssessment.unsafe]);
   useEffect(()=>{
     if(responsiveModeChecked.current) return;
     responsiveModeChecked.current=true;
@@ -204,27 +198,22 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
   function toggleList() {
     suppressClick.current=false;
     if(list) {
-      if(viewportAssessment.unsafe) return;
-      if(responsiveFallback) setResponsiveFallback(false);
-      else onListChange(false);
+      onListChange(false);
       return;
     }
     onListChange(true);
   }
-  const listUnavailable=logicalGraph.denseOverflow||(list&&viewportAssessment.unsafe);
+  const listUnavailable=logicalGraph.denseOverflow;
   const listTitle=logicalGraph.denseOverflow?'노드가 많아 읽기 쉬운 목록으로 표시합니다':
-    list&&viewportAssessment.unsafe?'그래프 공간이 좁아 노드가 겹치는 동안 목록으로 표시합니다':undefined;
+    list&&viewportAssessment.unsafe?'좁은 화면에서도 3D 보기로 전환할 수 있습니다':undefined;
   return <section ref={rootRef} className="term-graph" aria-label="예시 용어 3D 그래프">
     <div className="term-graph-view-toggle">
       <button type="button" aria-pressed={list} disabled={listUnavailable}
         title={listTitle} onClick={toggleList}>{list?'3D 보기':'목록 보기'}</button>
     </div>
-    {responsiveFallback&&<p className="term-graph-responsive-notice" role="status">
-      {viewportAssessment.unsafe?'좁은 그래프 공간에서 노드가 겹치지 않도록 목록으로 표시합니다.':
-        '패널을 넓힌 뒤 3D 보기를 선택하면 같은 선택과 펼침 상태로 돌아갑니다.'}
-    </p>}
     {list ? <div className="term-graph-list" aria-label="전체 예시 용어 목록">
-      {logicalGraph.nodes.filter(n=>!n.term).map(category=><fieldset key={category.id}><legend>{category.label}</legend>
+      {logicalGraph.nodes.filter(n=>!n.term).map(category=><fieldset key={category.id} className="term-graph-list-category"
+        data-category={category.role} style={{'--category-color':graphCategoryColor(category.role)}}><legend>{category.label}</legend>
         {logicalGraph.nodes.filter(n=>n.term && n.role===category.role).map(node=><div key={node.id}>
           <label><input type="checkbox" checked={selectedIds.includes(node.id)} onChange={()=>onToggle(node.id)}/>{node.label}</label>
           <span className="term-graph-list-actions">
