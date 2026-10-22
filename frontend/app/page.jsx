@@ -13,7 +13,7 @@ import { ACTIVE_TERMS, HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
 import { getRecommendedSearchQuery, createGraphSearchScope } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode, applySketchResult, applyPreviewRecovery } from "../lib/term-search.mjs";
-import { createGalleryRows, renderedResultTerms, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
+import { createGalleryRows, renderedResultTerms, reopenableReferenceTurnIds, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
 import { usableGalleryPins } from "../lib/gallery-pins.mjs";
 import { createRecoveryBudget, claimRecovery, finishRecovery } from "../lib/recovery-budget.mjs";
 import { stopTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from "../lib/conversation.mjs";
@@ -110,9 +110,10 @@ export default function HomePage() {
   const screenSnapshotRef = useRef(null);
   const screenGenerationRef = useRef(0);
   const mindMapSlots = useMemo(
-    () => createMindMapSlots(historyTurnId ? resultTerms(job) : renderedResultTerms(job, turns, referenceJob)),
+    () => createMindMapSlots(renderedResultTerms(job, turns, referenceJob)),
     [job, turns, historyTurnId, referenceJob],
   );
+  const reopenableTurnIds = useMemo(() => reopenableReferenceTurnIds(turns), [turns]);
   const hasTerms = homeSlots.some((slot) => slot.terms.length > 0);
   const activeTermId = homeSlots.some((slot) => slot.terms.some((term) => term.term_id === selectedTermId))
     ? selectedTermId
@@ -576,7 +577,7 @@ export default function HomePage() {
   }
 
   function openTurn(turn) {
-    if (!conversationReady || turn.job?.job_status !== "completed") return;
+    if (!conversationReady || !reopenableTurnIds.has(turn.id)) return;
     visitScreen(`turn:${turn.job.session_id || sessionIdRef.current}:${turn.id}`);
     termSearchControllerRef.current?.abort();
     resetSketchSearches(false);
@@ -1218,7 +1219,8 @@ export default function HomePage() {
           {storageFailed && <p className="form-error" role="status">브라우저 기록을 읽거나 쓰지 못했습니다. 일부 기록이 복원되지 않을 수 있지만 현재 대화는 계속 사용할 수 있습니다.</p>}
           {!uiDemoEnabled && historyPage.hasMore && <button type="button" disabled={olderLoading} onClick={loadOlder}>이전 대화 불러오기</button>}
           {olderError && <p role="alert">{olderError}</p>}
-          <ConversationPanel key={sessionId || "no-session"} turns={turns} />
+          <ConversationPanel key={sessionId || "no-session"} turns={turns}
+            reopenableTurnIds={reopenableTurnIds} onOpenReferences={openTurn} />
           <TermGuide term={termGuide} />
           {uiDemoEnabled && <div className="demo-scenarios" aria-label="대표 샘플 입력">
             <p>대표 예시를 선택한 뒤 전송해 보세요.</p>

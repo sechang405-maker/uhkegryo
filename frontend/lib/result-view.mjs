@@ -39,6 +39,16 @@ export function renderedResultTerms(job, turns = [], previousReferenceJob = null
   });
 }
 
+export function reopenableReferenceTurnIds(turns = []) {
+  return new Set(turns.flatMap((turn) => {
+    const result = turn.job?.job_status === "completed" ? turn.job.result : null;
+    if (!["success", "partial_result"].includes(result?.agent_status)) return [];
+    const hasStoredReference = renderedResultTerms(turn.job, turns)
+      .some((term) => (term.pins || []).some((pin) => pin.status === "available"));
+    return hasStoredReference ? [turn.id] : [];
+  }));
+}
+
 export function roleNotice(term) {
   if (term?.search_failure === 'access_restricted') return '검색 서비스 접근이 제한되어 있습니다. 원문 링크를 확인해 주세요.';
   if (term?.search_failure === 'rate_limited') return `요청 한도에 도달했습니다. ${Math.ceil(term.retry_after_seconds || 60)}초 후 다시 시도해 주세요.`;

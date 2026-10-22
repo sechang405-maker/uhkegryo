@@ -3,7 +3,7 @@ import { STATUS_LABELS } from "../lib/job-polling.mjs";
 import { LoadingIndicator } from "./LoadingIndicator.mjs";
 import MarkdownAnswer from "./MarkdownAnswer.mjs";
 
-export default function ConversationPanel({ turns }) {
+export default function ConversationPanel({ turns, reopenableTurnIds = new Set(), onOpenReferences }) {
   return <div className="conversation-thread" role="log" aria-label="캐릭터 설명 대화" aria-live="polite" aria-relevant="additions text">
     {turns.map((turn) => <div className="conversation-turn" key={turn.id}>
       <article className="chat-request" aria-label="사용자 요청">
@@ -16,6 +16,8 @@ export default function ConversationPanel({ turns }) {
         : <article className="term-detail conversation-answer" aria-label="통합 답변">
           <span className="term-detail-eyebrow">{turn.demo ? "UH · 더미 답변" : "UH · 답변"}</span>
           <MarkdownAnswer job={turn.job} />
+          {reopenableTurnIds.has(turn.id) && <button className="conversation-reference-button" type="button"
+            onClick={() => onOpenReferences(turn)}>이 답변의 레퍼런스 보기</button>}
         </article>}
     </div>)}
   </div>;

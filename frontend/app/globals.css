@@ -264,6 +264,8 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 .term-detail h3 { margin: 0; color: var(--text); font-size: 20px; }
 .term-detail p { margin: 0; color: var(--text-secondary); font-weight: 400; line-height: 1.75; }
 .conversation-answer p, .chat-request p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.conversation-reference-button { justify-self: start; min-height: 44px; padding: 9px 12px; border: 2px solid var(--accent); border-radius: 10px; background: var(--accent-surface); color: var(--text); font-weight: 700; cursor: pointer; }
+.conversation-reference-button:hover { background: var(--accent); color: var(--on-accent); }
 .answer-prose { min-width: 0; }
 .answer-sections { min-width: 0; display: grid; gap: 24px; }
 .answer-card-section { min-width: 0; }
