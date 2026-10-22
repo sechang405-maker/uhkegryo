@@ -79,8 +79,14 @@ const UPWARD_PERSPECTIVE_BRANCH_ROTATIONS=Object.freeze({
   perspective_one_point:-110*Math.PI/180,
   perspective_two_point:165*Math.PI/180,
 });
+const BODY_INWARD_SHIFT=.15;
 
 function adjustedRawAnchor(id,anchor) {
+  if(id==='category:body'||id.startsWith('body_')) {
+    const hub=RAW_APPROVED_LAYOUT['category:body'];
+    return [anchor[0]-hub[0]*BODY_INWARD_SHIFT,anchor[1]-hub[1]*BODY_INWARD_SHIFT,
+      anchor[2]-hub[2]*BODY_INWARD_SHIFT];
+  }
   const angle=UPWARD_PERSPECTIVE_BRANCH_ROTATIONS[id];
   if(angle===undefined) return anchor;
   const hub=RAW_APPROVED_LAYOUT['category:perspective'],dx=anchor[0]-hub[0],dy=anchor[1]-hub[1],

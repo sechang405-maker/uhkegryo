@@ -75,27 +75,40 @@ test('world data stays fixed while yaw changes the projected depth',()=>{
  for(const point of Object.values(before)) assert.ok(point.x>0&&point.x<1000&&point.y>0&&point.y<840);
 });
 
-test('approved 3D layout uses the final inward body cluster and fixed 57-node universe',()=>{
+test('approved 3D layout keeps the body branch rigid while moving its hub 15% inward',()=>{
  const parents=['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling'];
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,parents),byId=new Map(graph.nodes.map(node=>[node.id,node]));
  assert.equal(graph.nodes.length,57);
  const bodyHub=byId.get('category:body');
- assert.ok(Math.abs(Math.hypot(bodyHub.x,bodyHub.y,bodyHub.z)-159.44840043098582)<1e-6,
-  'body cluster must retain the approved additional 15% inward shift');
+ assert.ok(Math.abs(Math.hypot(bodyHub.x,bodyHub.y,bodyHub.z)-135.53114036633795)<1e-6,
+  'body hub must retain the approved additional 15% inward shift');
+ const expectedOffsets=new Map([
+  ['body_hourglass',[-64.084123723,-90.015313109,-69.573958191]],
+  ['body_inverted_triangle',[-8.607809433,-95.151283627,-62.679757323]],
+  ['body_triangle',[-40.990772683,-85.456996594,7.19087874]],
+  ['body_slim',[-124.568337629,-31.71024556,68.565046651]],
+  ['body_childlike',[-101.846107325,10.540331231,-32.380081097]],
+  ['body_human_proportion',[-65.724962291,-18.023104955,-89.599009186]],
+ ]);
+ for(const [id,offset] of expectedOffsets) {
+  const node=byId.get(id),actual=[node.x-bodyHub.x,node.y-bodyHub.y,node.z-bodyHub.z];
+  assert.ok(actual.every((value,index)=>Math.abs(value-offset[index])<1e-6),`${id} moved inside the body branch`);
+ }
  const first=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
  const second=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_contrapposto']);
  const secondById=new Map(second.nodes.map(node=>[node.id,node]));
  for(const node of first.nodes) assert.deepEqual({x:node.x,y:node.y,z:node.z},
   (({x,y,z})=>({x,y,z}))(secondById.get(node.id)),`${node.id} moved when another approved branch opened`);
+ const points=projectGraph(graph,INITIAL_VIEW);
+ assert.ok(Math.abs(points.perspective_two_point.y-231.26112277630244)<1e-6,'approved upward perspective layout changed');
 });
 
-test('perspective cluster aligns with the body hub height while preserving every branch length',()=>{
+test('perspective cluster keeps its fixed hub height while preserving every branch length',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,
   ['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling']);
  const byId=new Map(graph.nodes.map(node=>[node.id,node])),points=projectGraph(graph,INITIAL_VIEW);
- const body=byId.get('category:body'),perspective=byId.get('category:perspective');
- assert.ok(Math.abs(points[body.id].y-points[perspective.id].y)<.01,
-  `perspective hub is ${Math.abs(points[body.id].y-points[perspective.id].y).toFixed(2)}px away from body height`);
+ const perspective=byId.get('category:perspective');
+ assert.ok(Math.abs(points[perspective.id].y-362.4171474573997)<1e-6,'unrelated perspective hub moved');
  const expectedRelativeOffsets=new Map([
   ['perspective_three_point',[15.06220973,69.775171819,98.14055625]],
   ['perspective_foreshortening',[53.906035835,24.647514165,88.833945045]],
