@@ -70,9 +70,28 @@ const RAW_APPROVED_LAYOUT=Object.freeze({
   'pose_contrapposto_s_curve':[-561.901185,49.447847,940.134136],
 });
 
+// The approved front view left the upper-right sector unused because the
+// three longest perspective branches all pointed below their fixed hub.
+// Rotate only those direct branches in camera-space XY. Their raw Z values,
+// hub distance, straight edge lengths, and every unrelated anchor stay fixed.
+const UPWARD_PERSPECTIVE_BRANCH_ROTATIONS=Object.freeze({
+  perspective_vanishing_point:-45*Math.PI/180,
+  perspective_one_point:-110*Math.PI/180,
+  perspective_two_point:165*Math.PI/180,
+});
+
+function adjustedRawAnchor(id,anchor) {
+  const angle=UPWARD_PERSPECTIVE_BRANCH_ROTATIONS[id];
+  if(angle===undefined) return anchor;
+  const hub=RAW_APPROVED_LAYOUT['category:perspective'],dx=anchor[0]-hub[0],dy=anchor[1]-hub[1],
+    cosine=Math.cos(angle),sine=Math.sin(angle);
+  return [hub[0]+dx*cosine-dy*sine,hub[1]+dx*sine+dy*cosine,anchor[2]];
+}
+
 export function approvedCatalogWorldLayout(view) {
   const cosPitch=Math.cos(view.pitch),sinPitch=Math.sin(view.pitch),cosYaw=Math.cos(view.yaw),sinYaw=Math.sin(view.yaw);
-  return new Map(Object.entries(RAW_APPROVED_LAYOUT).map(([id,[rawX,rawY,rawZ]])=>{
+  return new Map(Object.entries(RAW_APPROVED_LAYOUT).map(([id,anchor])=>{
+    const [rawX,rawY,rawZ]=adjustedRawAnchor(id,anchor);
     const cameraX=rawX*APPROVED_LAYOUT_SCALE,cameraY=rawY*APPROVED_LAYOUT_SCALE,depth=rawZ*APPROVED_LAYOUT_SCALE,
       worldYOffset=id==='category:perspective'||id.startsWith('perspective_')?PERSPECTIVE_WORLD_Y_OFFSET:0,
       worldY=cameraY*cosPitch+depth*sinPitch+worldYOffset,yawZ=-cameraY*sinPitch+depth*cosPitch,

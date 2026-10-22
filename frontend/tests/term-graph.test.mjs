@@ -89,7 +89,7 @@ test('approved 3D layout uses the final inward body cluster and fixed 57-node un
   (({x,y,z})=>({x,y,z}))(secondById.get(node.id)),`${node.id} moved when another approved branch opened`);
 });
 
-test('perspective cluster aligns with the body hub height without changing its internal 3D offsets',()=>{
+test('perspective cluster aligns with the body hub height while preserving every branch length',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,
   ['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling']);
  const byId=new Map(graph.nodes.map(node=>[node.id,node])),points=projectGraph(graph,INITIAL_VIEW);
@@ -105,10 +105,28 @@ test('perspective cluster aligns with the body hub height without changing its i
  ]);
  for(const [id,[dx,dy,dz]] of expectedRelativeOffsets) {
   const node=byId.get(id);
-  assert.ok(Math.abs(node.x-perspective.x-dx)<1e-6,`${id} x offset changed`);
-  assert.ok(Math.abs(node.y-perspective.y-dy)<1e-6,`${id} y offset changed`);
-  assert.ok(Math.abs(node.z-perspective.z-dz)<1e-6,`${id} z offset changed`);
+  const expectedLength=Math.hypot(dx,dy,dz),actualLength=Math.hypot(
+   node.x-perspective.x,node.y-perspective.y,node.z-perspective.z);
+  assert.ok(Math.abs(actualLength-expectedLength)<1e-6,`${id} branch length changed`);
+  if(['perspective_three_point','perspective_foreshortening'].includes(id)) {
+   assert.ok(Math.abs(node.x-perspective.x-dx)<1e-6,`${id} x offset changed`);
+   assert.ok(Math.abs(node.y-perspective.y-dy)<1e-6,`${id} y offset changed`);
+   assert.ok(Math.abs(node.z-perspective.z-dz)<1e-6,`${id} z offset changed`);
+  }
  }
+});
+
+test('three long perspective branches fill the initial upper space without moving the hub or camera',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,[]),points=projectGraph(graph,INITIAL_VIEW);
+ const hub=points['category:perspective'];
+ const upward=['perspective_two_point','perspective_one_point','perspective_vanishing_point'];
+ assert.deepEqual(INITIAL_VIEW,{yaw:-.32,pitch:.18,zoom:.9});
+ assert.ok(upward.every(id=>points[id].y<hub.y),`upward branch positions: ${upward.map(id=>points[id].y.toFixed(1)).join(', ')}`);
+ assert.ok(points.perspective_two_point.y<points.perspective_one_point.y);
+ assert.ok(points.perspective_one_point.y<points.perspective_vanishing_point.y);
+ const ys=graph.nodes.map(node=>points[node.id].y);
+ assert.ok(ys.filter(y=>y<420).length>=22,'upper half remains underused');
+ assert.ok(Math.min(...ys)<=232,'upper branch does not reach the previously empty region');
 });
 
 test('active catalog exposes only validated dependency ids and direct-search policy',()=>{
