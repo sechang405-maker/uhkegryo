@@ -192,10 +192,20 @@ test('collapse changes visibility only and cyclic relationships remain finite',(
 test('expanded branches keep extending outward from their displayed parents',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
  const byId=new Map(graph.nodes.map(node=>[node.id,node]));
+ const projected=projectGraph(graph,INITIAL_VIEW);
  const radius=node=>Math.hypot(node.x,node.y,node.z);
+ const angle=(first,second)=>Math.acos(Math.min(1,Math.max(-1,
+  (first.x*second.x+first.y*second.y+first.z*second.z)/(radius(first)*radius(second)))));
  for(const edge of graph.edges.filter(edge=>edge.relation&&byId.get(edge.target)?.isDetail)) {
   const parent=byId.get(edge.source),child=byId.get(edge.target);
   assert.ok(radius(child)>radius(parent)+1,`${child.id} returned inward past ${parent.id}`);
+  const branch={x:child.x-parent.x,y:child.y-parent.y,z:child.z-parent.z};
+  assert.ok(angle(parent,branch)<Math.PI/2,
+   `${child.id} reversed across the outward axis of ${parent.id}`);
+  const parentPoint=projected[parent.id],childPoint=projected[child.id],panelScale=680/840,center={x:500,y:480*panelScale};
+  assert.ok((parentPoint.x-center.x)*(childPoint.x-parentPoint.x)+
+    (parentPoint.y*panelScale-center.y)*(childPoint.y-parentPoint.y)*panelScale>0,
+  `${child.id} reversed across the visible outward axis of ${parent.id}`);
  }
 });
 
@@ -346,6 +356,29 @@ test('every expansion subset keeps the fixed catalog layout collision-free',()=>
  const parents=['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling'];
  const universe=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,parents);
  const stable=new Map(universe.nodes.map(node=>[node.id,{x:node.x,y:node.y,z:node.z}]));
+ const byId=new Map(universe.nodes.map(node=>[node.id,node])),points=projectGraph(universe,INITIAL_VIEW),panelScale=680/840;
+ const length=value=>Math.hypot(value.x,value.y,value.z),radius=node=>node.isDetail?(node.expandable?48:40):(node.childCount>0?46:38);
+ const potential=[];
+ for(const term of ACTIVE_TERMS) for(const source of [...(term.requires_all_of||[]),...(term.requires_any_of||[])])
+  if(parents.includes(source)) potential.push({source,target:term.term_id});
+ assert.equal(potential.length,21,'the active catalog potential-edge contract changed');
+ for(const edge of potential) {
+  const source=byId.get(edge.source),target=byId.get(edge.target),branch={x:target.x-source.x,y:target.y-source.y,z:target.z-source.z};
+  assert.ok(length(target)>length(source)+1,`${edge.target} did not extend beyond ${edge.source}`);
+  assert.ok((source.x*branch.x+source.y*branch.y+source.z*branch.z)>0,
+   `${edge.source} -> ${edge.target} reversed in world space`);
+  const a={x:points[edge.source].x,y:points[edge.source].y*panelScale},b={x:points[edge.target].x,y:points[edge.target].y*panelScale};
+  for(const centerY of [420*panelScale,480*panelScale]) assert.ok(
+   (a.x-500)*(b.x-a.x)+(a.y-centerY)*(b.y-a.y)>0,
+   `${edge.source} -> ${edge.target} reversed in the visible fan around ${centerY/panelScale}`);
+  for(const obstacle of universe.nodes) if(obstacle.id!==edge.source&&obstacle.id!==edge.target) {
+   const p={x:points[obstacle.id].x,y:points[obstacle.id].y*panelScale},dx=b.x-a.x,dy=b.y-a.y,squared=dx*dx+dy*dy,
+    amount=squared?Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/squared)):0,
+    clearance=Math.hypot(p.x-(a.x+dx*amount),p.y-(a.y+dy*amount))-radius(obstacle);
+   assert.ok(amount<=.04||amount>=.96||clearance>=2,
+    `${edge.source} -> ${edge.target} crossed ${obstacle.id} by ${clearance.toFixed(2)}px`);
+  }
+ }
  for(let mask=0;mask<2**parents.length;mask++) {
   const expanded=parents.filter((_,index)=>mask&(1<<index));
   const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,expanded);
