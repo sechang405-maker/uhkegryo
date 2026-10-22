@@ -18,3 +18,11 @@ test('large graph and chat regions remain transparent while reading surfaces sta
  assert.match(css,/--surface:\s*#fbfaf7/i);
  assert.match(css,/--text:\s*#20242a/i);
 });
+
+test('graph nodes and lower controls use readable category-tinted light surfaces',()=>{
+ assert.match(css,/\.term-graph-node\s*\{[^}]*background:color-mix\(in srgb,var\(--category-color,var\(--border\)\) 22%,var\(--surface\)\)[^}]*color:var\(--text\)/s);
+ assert.match(css,/\.term-graph-category\s*\{[^}]*color:var\(--text\)[^}]*background:color-mix\(in srgb,var\(--category-color,var\(--accent\)\) 20%,var\(--surface\)\)/s);
+ assert.match(css,/\.term-graph-expand\s*\{[^}]*background:color-mix\(in srgb,var\(--category-color,var\(--accent\)\) 16%,var\(--surface\)\)[^}]*color:var\(--text\)/s);
+ assert.match(css,/\.term-graph:not\(:has\(> \.term-graph-list\)\) \.term-graph-detail,[\s\S]*?background:var\(--surface\)/);
+ assert.match(css,/\.term-graph-selection-actions > :is\(button,a\):disabled\s*\{[^}]*opacity:\.58/s);
+});
