@@ -5,8 +5,10 @@ export function HistoryLogo({ open, onClick, className = "" }) {
     aria-label={`UH케그려 기록 ${open ? "닫기" : "열기"}`} aria-expanded={open}
     aria-controls="history-sidebar" aria-haspopup="dialog" onClick={onClick}>
     <span className="brand-mark" aria-hidden="true">
-      <svg className="brand-mark-art" viewBox="0 0 34 34" aria-hidden="true" focusable="false">
-        <path fill="currentColor" fillRule="evenodd" d="M12 0h10c6.627 0 12 5.373 12 12v10c0 6.627-5.373 12-12 12H12C5.373 34 0 28.627 0 22V12C0 5.373 5.373 0 12 0Zm-4 9h3v10c0 2.2 1.2 3.5 3 3.5s3-1.3 3-3.5V9h3v10c0 4.2-2.4 6.5-6 6.5S8 23.2 8 19V9Zm14 0h3v6h3V9h3v16h-3v-7h-3v7h-3V9Z" />
+      <svg className="brand-mark-art" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+        <path className="brand-mark-frame" d="M15 4H9a5 5 0 0 0-5 5v6M4 25v6a5 5 0 0 0 5 5h6M25 36h6a5 5 0 0 0 5-5v-6" />
+        <path className="brand-mark-monogram" fillRule="evenodd" d="M10 9h12l9 9v9a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5V14a5 5 0 0 1 5-5Zm1.5 5h3v7.1c0 1.6.8 2.5 2.1 2.5s2.1-.9 2.1-2.5V14h3v7.1c0 3.4-1.9 5.3-5.1 5.3s-5.1-1.9-5.1-5.3V14Zm11.6 0h3v4.1h2.5V14h3v12.4h-3v-5.2h-2.5v5.2h-3V14Z" />
+        <path className="brand-mark-pencil" d="m24 16 1.5-5.5 8-8 4 4-8 8-5.5 1.5Z" />
       </svg>
     </span>
     <span className="brand-name">UH케그려</span>
