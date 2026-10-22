@@ -158,7 +158,109 @@ SearXNG 검색 규칙은 [SearXNG Pinterest 검색 Spec](docs/specs/searxng-pint
 
 `/mcp`를 공개 데모 API처럼 무제한 노출하지 않습니다. 실제 배포 전 Cloud Run IAM, 연결 방법, 도구 목록과 외부 클라이언트 호출 결과를 함께 검증·기록합니다.
 
-## 로컬 실행
+## 신규 사용자를 위한 Docker Compose 실행
+
+현재 저장소는 비공개입니다. 저장소 소유자가 GitHub 접근 권한을 부여했거나 별도로 전달한 소스 사본을 가진 사람만 내려받을 수 있습니다. 이 절차는 저장소를 공개하거나 사용 권한을 새로 부여하지 않습니다.
+
+### 준비물
+
+- Docker Desktop 또는 Docker Engine + Docker Compose v2
+- GitHub 접근 권한이 있는 경우 Git
+- 사용자 본인의 OpenRouter API key
+
+기본 실행은 다음 컨테이너를 시작합니다.
+
+| 서비스 | 역할 | 호스트 주소 |
+| --- | --- | --- |
+| `frontend` | Next.js UI와 API proxy | `http://127.0.0.1:3100` |
+| `api` | FastAPI, job worker, migration 적용 후 시작 | `http://127.0.0.1:8000` |
+| `app-db` | 애플리케이션 PostgreSQL과 영속 볼륨 | 컨테이너 내부 전용 |
+| `mcp` | 검색 도구 gateway | `http://127.0.0.1:8001` |
+| `searxng` | 이미지 검색 | `http://127.0.0.1:8080` |
+
+Langfuse와 그 저장소는 기본 실행에 포함되지 않으며 `observability` profile을 선택할 때만 시작됩니다.
+
+### 처음 실행
+
+```powershell
+git clone https://github.com/sechang405-maker/proj2-4-rag-langgraph-lab.git
+cd proj2-4-rag-langgraph-lab
+Copy-Item .env.example .env
+```
+
+macOS/Linux에서는 마지막 명령 대신 `cp .env.example .env`를 사용합니다.
+
+`.env`에서 `OPENROUTER_API_KEY=` 뒤에 **본인의 키**를 입력합니다. 실제 키나 개인 DB URL을 Git에 커밋하지 마세요. 기본 로컬 DB를 쓸 때 다른 필수 값은 없습니다.
+
+```powershell
+docker compose up --build -d
+docker compose ps
+```
+
+`db-migrate`가 내부 PostgreSQL이 준비될 때까지 기다린 뒤 001~현재 migration을 순서대로 적용합니다. 성공한 migration은 다시 적용되지 않으며, migration이 실패하면 API와 frontend가 시작되지 않습니다.
+
+다음 주소를 확인합니다.
+
+```powershell
+(Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health')
+(Invoke-RestMethod -Uri 'http://127.0.0.1:3100/service-health')
+```
+
+두 응답 모두 `status`가 `ok`여야 합니다. UI는 `http://127.0.0.1:3100`에서 엽니다. 이 health 확인은 DB migration과 서비스 연결을 확인하지만 유료 LLM 요청이나 외부 검색 결과까지 검증하지는 않습니다.
+
+### 종료, 재시작, 업데이트
+
+```powershell
+# 컨테이너만 종료. app_postgres_data 등 named volume은 유지됩니다.
+docker compose down
+
+# 다시 시작
+docker compose up -d
+
+# 저장소 업데이트 후 이미지 재빌드
+git pull --ff-only
+docker compose up --build -d
+```
+
+`docker compose down -v`는 로컬 DB와 관측 데이터를 삭제하므로 데이터 삭제를 의도한 경우가 아니면 사용하지 마세요.
+
+### 포트와 외부 PostgreSQL
+
+3100, 8000, 8001, 8080이 이미 사용 중이면 `.env`의 `FRONTEND_PORT`, `API_PORT`, `MCP_PORT`, `SEARXNG_PORT`를 변경합니다. 서비스는 기본적으로 `127.0.0.1`에만 바인딩됩니다.
+
+기존 Neon 또는 다른 PostgreSQL을 사용하려면 `.env`의 `DATABASE_URL`에 전체 연결 문자열을 입력합니다. `db-migrate`와 API가 같은 URL을 사용합니다. 이 경우에도 로컬 `app-db` 컨테이너는 안전한 기본 구성으로 함께 시작되지만 애플리케이션 데이터에는 사용되지 않습니다.
+
+### 선택: Langfuse 관측 스택
+
+```powershell
+docker compose --profile observability up --build -d
+```
+
+Langfuse UI는 기본 `http://127.0.0.1:3000`입니다. `.env.example`의 Langfuse 값은 localhost 개발 예시이며 공유 서버의 비밀값이 아닙니다. 공유 환경에서는 모두 새 임의 값으로 교체해야 합니다. Langfuse에서 organization/project와 API key를 만든 뒤 `LANGFUSE_APP_URL=http://langfuse-web:3000`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`를 설정하고 API를 다시 생성합니다.
+
+```powershell
+docker compose up -d --force-recreate api
+```
+
+### 문제 해결
+
+```powershell
+docker compose config --quiet
+docker compose ps
+docker compose logs db-migrate api frontend
+```
+
+- `OPENROUTER_API_KEY` 오류: `.env`에 본인의 키가 비어 있지 않은지 확인합니다.
+- API가 시작되지 않음: `db-migrate` 로그와 `DATABASE_URL`을 확인합니다.
+- frontend의 `/service-health` 실패: `api`가 healthy인지 확인합니다. 브라우저용 public URL이 아니라 컨테이너 내부 `http://api:8000`으로 proxy됩니다.
+- 포트 충돌: `.env`의 포트 값만 바꾸고 무관한 호스트 프로세스를 일괄 종료하지 않습니다.
+- 검색 실패: `searxng`와 `mcp` 로그를 확인합니다. 외부 검색 사이트 상태에 따라 실제 결과는 달라질 수 있습니다.
+
+이 구성은 개인 컴퓨터의 localhost 개발 실행용입니다. 인터넷 공개 배포를 위한 TLS, 인증, secret manager, 방화벽 정책을 제공하지 않습니다. 저장소 라이선스와 공개 여부도 이 패키징 변경에서 결정하지 않았습니다.
+
+## 기존 수동 개발 실행
+
+아래 절차는 외부 Neon DB와 호스트 Node.js, 기본 Langfuse 스택을 직접 조합하던 기존 개발 경로입니다. 신규 사용자는 위의 완결된 기본 Compose 실행을 권장합니다.
 
 현재 재현 절차의 계약은 [로컬 개발 재현 Spec](./docs/specs/local-development-reproduction.md)을 기준으로 합니다. 아래 절차는 API health와 frontend 입력·제출·polling까지의 현재 구현 범위를 실행합니다. **결과 UI는 구현되어 있으며 최종 버전의 실제 Pinterest·MCP·Langfuse·브라우저 E2E는 별도 검증 대상입니다.**
 

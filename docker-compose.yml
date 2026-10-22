@@ -1,127 +1,101 @@
-x-langfuse-env: &langfuse-env
-  DATABASE_URL: postgresql://postgres:${LANGFUSE_POSTGRES_PASSWORD:?Set LANGFUSE_POSTGRES_PASSWORD in .env}@postgres:5432/postgres
-  NEXTAUTH_URL: http://localhost:3000
-  SALT: ${LANGFUSE_SALT:?Set LANGFUSE_SALT in .env}
-  ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:?Set LANGFUSE_ENCRYPTION_KEY in .env}
+x-app-environment: &app-environment
+  DATABASE_URL: ${DATABASE_URL:-postgresql://uhkegryo:uhkegryo-local-only@app-db:5432/uhkegryo}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?Set your own OPENROUTER_API_KEY in .env}
+  OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+  LLM_MODEL: ${LLM_MODEL:-openai/gpt-4.1-mini}
+  LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-180}
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+  ENVIRONMENT: development
+  TERM_CARDS_PATH: /app/term-cards
+  STRUCTURED_OUTPUT_SKILL_PATH: /app/skills/structured-output/SKILL.md
+  INTERPRETER_PROMPT_PATH: ${INTERPRETER_PROMPT_PATH:-/app/prompts/uhkegryo-interpreter-v4.md}
+  INTERPRETER_PROMPT_VERSION: ${INTERPRETER_PROMPT_VERSION:-uhkegryo-interpreter-v4}
+  SEARXNG_BASE_URL: http://searxng:8080
+  MCP_ENABLED: "true"
+  MCP_BASE_URL: http://mcp:8001/mcp
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+  LANGFUSE_HOST: ${LANGFUSE_APP_URL:-}
+  LANGFUSE_BASE_URL: ${LANGFUSE_APP_URL:-}
+
+x-langfuse-environment: &langfuse-environment
+  DATABASE_URL: postgresql://postgres:${LANGFUSE_POSTGRES_PASSWORD:-langfuse-local-only}@langfuse-db:5432/postgres
+  NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3000}
+  SALT: ${LANGFUSE_SALT:-langfuse-local-only-salt}
+  ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
   CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
   CLICKHOUSE_URL: http://clickhouse:8123
   CLICKHOUSE_USER: langfuse
-  CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:?Set LANGFUSE_CLICKHOUSE_PASSWORD in .env}
+  CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-langfuse-local-only}
   CLICKHOUSE_CLUSTER_ENABLED: "false"
   REDIS_HOST: redis
   REDIS_PORT: 6379
-  REDIS_AUTH: ${LANGFUSE_REDIS_AUTH:?Set LANGFUSE_REDIS_AUTH in .env}
+  REDIS_AUTH: ${LANGFUSE_REDIS_AUTH:-langfuse-local-only}
   LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
   LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
   LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: langfuse
-  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_ROOT_PASSWORD:?Set LANGFUSE_MINIO_ROOT_PASSWORD in .env}
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_ROOT_PASSWORD:-langfuse-local-only}
   LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
   LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
   LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
 
 services:
-  searxng:
-    image: proj2-4/searxng:local
-    build: ./searxng
-    restart: unless-stopped
-    ports:
-      - 127.0.0.1:8080:8080
-    environment:
-      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET in .env}
-    volumes:
-      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
-
-  langfuse-web:
-    image: docker.langfuse.com/langfuse/langfuse:4
-    restart: unless-stopped
-    depends_on: &langfuse-depends-on
-      postgres:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    ports:
-      - 127.0.0.1:3000:3000
-    environment:
-      <<: *langfuse-env
-      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:?Set LANGFUSE_NEXTAUTH_SECRET in .env}
-      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
-      LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
-
-  langfuse-worker:
-    image: docker.langfuse.com/langfuse/langfuse-worker:4
-    restart: unless-stopped
-    depends_on: *langfuse-depends-on
-    environment: *langfuse-env
-
-  clickhouse:
-    image: docker.io/clickhouse/clickhouse-server:25.12
-    restart: unless-stopped
-    user: "101:101"
-    environment:
-      CLICKHOUSE_DB: default
-      CLICKHOUSE_USER: langfuse
-      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:?Set LANGFUSE_CLICKHOUSE_PASSWORD in .env}
-    volumes:
-      - langfuse_clickhouse_data:/var/lib/clickhouse
-      - langfuse_clickhouse_logs:/var/log/clickhouse-server
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  minio:
-    image: cgr.dev/chainguard/minio
-    restart: unless-stopped
-    entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
-    environment:
-      MINIO_ROOT_USER: langfuse
-      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_ROOT_PASSWORD:?Set LANGFUSE_MINIO_ROOT_PASSWORD in .env}
-    ports:
-      - 127.0.0.1:9090:9000
-    volumes:
-      - langfuse_minio_data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 2s
-      timeout: 5s
-      retries: 10
-
-  redis:
-    image: docker.io/redis:7.2
-    restart: unless-stopped
-    command: ["redis-server", "--requirepass", "${LANGFUSE_REDIS_AUTH:?Set LANGFUSE_REDIS_AUTH in .env}", "--maxmemory-policy", "noeviction"]
-    environment:
-      REDISCLI_AUTH: ${LANGFUSE_REDIS_AUTH:?Set LANGFUSE_REDIS_AUTH in .env}
-    volumes:
-      - langfuse_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 3s
-      timeout: 5s
-      retries: 10
-
-  postgres:
+  app-db:
     image: docker.io/postgres:17
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${LANGFUSE_POSTGRES_PASSWORD:?Set LANGFUSE_POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: postgres
+      POSTGRES_USER: uhkegryo
+      POSTGRES_PASSWORD: ${APP_POSTGRES_PASSWORD:-uhkegryo-local-only}
+      POSTGRES_DB: uhkegryo
       TZ: UTC
       PGTZ: UTC
     volumes:
-      - langfuse_postgres_data:/var/lib/postgresql/data
+      - app_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U uhkegryo -d uhkegryo"]
       interval: 3s
       timeout: 3s
-      retries: 10
+      retries: 20
+
+  db-migrate:
+    build: .
+    command: ["python", "-m", "backend.db.run_migrations"]
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://uhkegryo:uhkegryo-local-only@app-db:5432/uhkegryo}
+    depends_on:
+      app-db:
+        condition: service_healthy
+
+  searxng:
+    image: ${SEARXNG_IMAGE:-proj2-4/searxng:local}
+    build: ./searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-8080}:8080"
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-uhkegryo-local-search-only}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mcp:
+    build: .
+    command: uvicorn mcp_server.server:app --host 0.0.0.0 --port 8001
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8001}:8001"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://uhkegryo:uhkegryo-local-only@app-db:5432/uhkegryo}
+      SEARXNG_BASE_URL: http://searxng:8080
+      MCP_ALLOWED_HOST: mcp:8001
+    depends_on:
+      searxng:
+        condition: service_healthy
 
   api:
     build: .
@@ -136,43 +110,151 @@ services:
         if bool(path) != bool(version):
             sys.exit("Set both INTERPRETER_PROMPT_PATH and INTERPRETER_PROMPT_VERSION in .env")
         os.execvp("uvicorn", ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"])
+    restart: unless-stopped
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     environment:
+      <<: *app-environment
       COMPOSE_PROMPT_PATH: ${INTERPRETER_PROMPT_PATH:-}
       COMPOSE_PROMPT_VERSION: ${INTERPRETER_PROMPT_VERSION:-}
-      LLM_MODEL: ${LLM_MODEL:-openai/gpt-4.1-mini}
-      INTERPRETER_PROMPT_PATH: ${INTERPRETER_PROMPT_PATH:-/app/prompts/uhkegryo-interpreter-v4.md}
-      INTERPRETER_PROMPT_VERSION: ${INTERPRETER_PROMPT_VERSION:-uhkegryo-interpreter-v4}
-      LANGFUSE_HOST: ${LANGFUSE_APP_URL:-http://langfuse-web:3000}
-      LANGFUSE_BASE_URL: ${LANGFUSE_APP_URL:-http://langfuse-web:3000}
-      SEARXNG_BASE_URL: http://searxng:8080
-      MCP_BASE_URL: http://mcp:8001/mcp
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3100,http://127.0.0.1:3100}
     depends_on:
-      langfuse-web:
-        condition: service_started
+      db-migrate:
+        condition: service_completed_successfully
       searxng:
-        condition: service_started
+        condition: service_healthy
       mcp:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
-  mcp:
-    build: .
-    command: uvicorn mcp_server.server:app --host 0.0.0.0 --port 8001
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        AGENT_API_ORIGIN: http://api:8000
+        NEXT_PUBLIC_API_BASE_URL: /api
+        NEXT_PUBLIC_UI_DEMO: "0"
+    restart: unless-stopped
     ports:
-      - "127.0.0.1:8001:8001"
-    env_file:
-      - .env
+      - "127.0.0.1:${FRONTEND_PORT:-3100}:3000"
     environment:
-      SEARXNG_BASE_URL: http://searxng:8080
-      MCP_ALLOWED_HOST: mcp:8001
+      AGENT_API_ORIGIN: http://api:8000
+      NEXT_PUBLIC_API_BASE_URL: /api
+      NEXT_PUBLIC_UI_DEMO: "0"
     depends_on:
-      searxng:
-        condition: service_started
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/service-health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  langfuse-web:
+    profiles: ["observability"]
+    image: docker.langfuse.com/langfuse/langfuse:4
+    restart: unless-stopped
+    depends_on: &langfuse-depends-on
+      langfuse-db:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${LANGFUSE_PORT:-3000}:3000"
+    environment:
+      <<: *langfuse-environment
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-langfuse-local-only-nextauth}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:${LANGFUSE_MINIO_PORT:-9090}
+      LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
+
+  langfuse-worker:
+    profiles: ["observability"]
+    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    restart: unless-stopped
+    depends_on: *langfuse-depends-on
+    environment: *langfuse-environment
+
+  clickhouse:
+    profiles: ["observability"]
+    image: docker.io/clickhouse/clickhouse-server:25.12
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-langfuse-local-only}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    profiles: ["observability"]
+    image: cgr.dev/chainguard/minio
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: langfuse
+      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_ROOT_PASSWORD:-langfuse-local-only}
+    ports:
+      - "127.0.0.1:${LANGFUSE_MINIO_PORT:-9090}:9000"
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    profiles: ["observability"]
+    image: docker.io/redis:7.2
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${LANGFUSE_REDIS_AUTH:-langfuse-local-only}", "--maxmemory-policy", "noeviction"]
+    environment:
+      REDISCLI_AUTH: ${LANGFUSE_REDIS_AUTH:-langfuse-local-only}
+    volumes:
+      - langfuse_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  langfuse-db:
+    profiles: ["observability"]
+    image: docker.io/postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${LANGFUSE_POSTGRES_PASSWORD:-langfuse-local-only}
+      POSTGRES_DB: postgres
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
 volumes:
+  app_postgres_data:
   langfuse_postgres_data:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
