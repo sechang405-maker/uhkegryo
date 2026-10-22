@@ -10,3 +10,5 @@ f709df4d3a0b6d2ac5e957886fabaca838b57baf:evals/runs/20261002-154511-openai-gpt-4
 9ad96b203d261c70163d838ede8d02fca4435cf1:evals/runs/20261014-luna-initial-16/metadata.json:generic-api-key:82
 9ad96b203d261c70163d838ede8d02fca4435cf1:evals/runs/20261014-luna-initial-16/metadata.json:generic-api-key:90
 9ad96b203d261c70163d838ede8d02fca4435cf1:evals/runs/20261014-luna-initial-16/metadata.json:generic-api-key:130
+# Docker Compose localhost-only example value from 5cb3195, not a credential.
+5cb31955ed6ddb7ccd4bd7f7b4668ab991529476:.env.example:generic-api-key:41
