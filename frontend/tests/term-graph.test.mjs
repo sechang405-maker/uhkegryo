@@ -89,6 +89,28 @@ test('approved 3D layout uses the final inward body cluster and fixed 57-node un
   (({x,y,z})=>({x,y,z}))(secondById.get(node.id)),`${node.id} moved when another approved branch opened`);
 });
 
+test('perspective cluster aligns with the body hub height without changing its internal 3D offsets',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,
+  ['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling']);
+ const byId=new Map(graph.nodes.map(node=>[node.id,node])),points=projectGraph(graph,INITIAL_VIEW);
+ const body=byId.get('category:body'),perspective=byId.get('category:perspective');
+ assert.ok(Math.abs(points[body.id].y-points[perspective.id].y)<.01,
+  `perspective hub is ${Math.abs(points[body.id].y-points[perspective.id].y).toFixed(2)}px away from body height`);
+ const expectedRelativeOffsets=new Map([
+  ['perspective_three_point',[15.06220973,69.775171819,98.14055625]],
+  ['perspective_foreshortening',[53.906035835,24.647514165,88.833945045]],
+  ['perspective_vanishing_point',[122.476531601,38.593195276,13.83525244]],
+  ['perspective_one_point',[71.438236531,60.834736765,-51.615323909]],
+  ['perspective_two_point',[22.604121029,139.704407408,34.14477631]],
+ ]);
+ for(const [id,[dx,dy,dz]] of expectedRelativeOffsets) {
+  const node=byId.get(id);
+  assert.ok(Math.abs(node.x-perspective.x-dx)<1e-6,`${id} x offset changed`);
+  assert.ok(Math.abs(node.y-perspective.y-dy)<1e-6,`${id} y offset changed`);
+  assert.ok(Math.abs(node.z-perspective.z-dz)<1e-6,`${id} z offset changed`);
+ }
+});
+
 test('active catalog exposes only validated dependency ids and direct-search policy',()=>{
  assert.equal(ACTIVE_TERMS.length,82);
  const ids=new Set(ACTIVE_TERMS.map(term=>term.term_id));

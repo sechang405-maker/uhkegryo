@@ -4,6 +4,11 @@
 // The mockup renderer applies a final 1.05 scene scale. Remove that presentation
 // scale while mapping its approved 398.6-unit body radius into this camera.
 export const APPROVED_LAYOUT_SCALE=.4/1.05;
+// The perspective branch is translated as one rigid world-space group so its
+// hub shares the body hub's projected height in INITIAL_VIEW. Keeping this in
+// world Y (rather than changing raw camera-space Y) preserves every internal
+// branch direction and length through rotation.
+export const PERSPECTIVE_WORLD_Y_OFFSET=-198.62762577155928;
 
 const RAW_APPROVED_LAYOUT=Object.freeze({
   'category:body':[-288.2775,-182.07,-242.76],
@@ -69,7 +74,8 @@ export function approvedCatalogWorldLayout(view) {
   const cosPitch=Math.cos(view.pitch),sinPitch=Math.sin(view.pitch),cosYaw=Math.cos(view.yaw),sinYaw=Math.sin(view.yaw);
   return new Map(Object.entries(RAW_APPROVED_LAYOUT).map(([id,[rawX,rawY,rawZ]])=>{
     const cameraX=rawX*APPROVED_LAYOUT_SCALE,cameraY=rawY*APPROVED_LAYOUT_SCALE,depth=rawZ*APPROVED_LAYOUT_SCALE,
-      worldY=cameraY*cosPitch+depth*sinPitch,yawZ=-cameraY*sinPitch+depth*cosPitch,
+      worldYOffset=id==='category:perspective'||id.startsWith('perspective_')?PERSPECTIVE_WORLD_Y_OFFSET:0,
+      worldY=cameraY*cosPitch+depth*sinPitch+worldYOffset,yawZ=-cameraY*sinPitch+depth*cosPitch,
       worldX=cameraX*cosYaw-yawZ*sinYaw,worldZ=cameraX*sinYaw+yawZ*cosYaw;
     return [id,Object.freeze({x:worldX,y:worldY,z:worldZ})];
   }));
