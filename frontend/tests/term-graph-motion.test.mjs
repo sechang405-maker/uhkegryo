@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { INITIAL_VIEW, projectNode } from '../lib/term-graph.mjs';
+import { buildExpandedTermGraph, INITIAL_VIEW, projectNode } from '../lib/term-graph.mjs';
+import { ACTIVE_TERMS, HOME_TERMS } from '../lib/home-catalog.mjs';
 import {
   createGraphMotionState,
   reconcileGraphMotion,
@@ -32,6 +33,68 @@ test('new children enter from their toggled parent without moving another branch
  assert.notEqual(middle.points.child.x,parentPoint.x);
  assert.equal(middle.points.other.x,otherPoint.x);
  assert.equal(middle.points.other.y,otherPoint.y);
+});
+
+test('a routed connector grows from the same parent during child motion',()=>{
+ const initial=graph([node('parent',0)]),route={x:20,y:30,z:10};
+ const expanded=graph([node('parent',0),node('child',60)],
+  [{source:'parent',target:'child',relation:'all',route:[route]}]);
+ const state=reconcileGraphMotion(createGraphMotionState(initial),expanded,['parent'],'parent',100,200,false);
+ const start=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,100),
+  middle=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,200),
+  finish=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,300),
+  key='parent:child:all';
+ assert.deepEqual(start.edgeRoutes[key],[]);
+ assert.ok(Math.hypot(middle.points.child.x-start.points.parent.x,middle.points.child.y-start.points.parent.y)>0);
+ assert.ok(middle.edgeRoutes[key].length<=1);
+ const finalPoint=projectNode(route,INITIAL_VIEW);
+ assert.equal(finish.edgeRoutes[key][0].x,finalPoint.x);
+ assert.equal(finish.edgeRoutes[key][0].y,finalPoint.y);
+ assert.equal(finish.edgeRoutes[key][0].opacity,finish.points.child.opacity);
+});
+
+test('routed connectors and their scaled child circles stay clear during expansion frames',()=>{
+ const collapsed=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,[]),
+  expanded=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']),
+  state=reconcileGraphMotion(createGraphMotionState(collapsed),expanded,['pose_sitting'],'pose_sitting',100,180,false),
+  byId=new Map(state.displayGraph.nodes.map(item=>[item.id,item])),
+  finalProjection=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,280),
+  radius=item=>item?.isDetail?(item.expandable?48:40):(item?.childCount>0?46:38),
+  panelPoint=point=>({x:point.x,y:point.y*680/840}),
+  distanceToSegment=(rawStart,rawEnd,rawPoint)=>{
+   const start=panelPoint(rawStart),end=panelPoint(rawEnd),point=panelPoint(rawPoint),
+    dx=end.x-start.x,dy=end.y-start.y,lengthSquared=dx*dx+dy*dy,
+    t=lengthSquared?Math.max(0,Math.min(1,((point.x-start.x)*dx+(point.y-start.y)*dy)/lengthSquared)):0;
+   return Math.hypot(point.x-(start.x+t*dx),point.y-(start.y+t*dy));
+  };
+ for(let now=100;now<=280;now+=15) {
+  const projection=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,now);
+  for(const edge of state.displayGraph.edges.filter(item=>item.relation)) {
+   const source=projection.points[edge.source],target=projection.points[edge.target],
+    path=[source,...(projection.edgeRoutes[`${edge.source}:${edge.target}:${edge.relation}`]||[]),target],
+    sourceRadius=radius(byId.get(edge.source))*((projection.amounts[edge.source]??1)**10),
+    targetRadius=radius(byId.get(edge.target))*((projection.amounts[edge.target]??1)**10);
+   for(const obstacleNode of state.displayGraph.nodes.filter(item=>item.term&&item.id!==edge.source&&item.id!==edge.target)) {
+    const obstacle=projection.points[obstacleNode.id],obstacleRadius=(radius(obstacleNode)+2)*((projection.amounts[obstacleNode.id]??1)**10),
+     sourceGap=Math.hypot(panelPoint(obstacle).x-panelPoint(source).x,panelPoint(obstacle).y-panelPoint(source).y),
+     targetGap=Math.hypot(panelPoint(obstacle).x-panelPoint(target).x,panelPoint(obstacle).y-panelPoint(target).y),
+     finalObstacle=finalProjection.points[obstacleNode.id],finalSource=finalProjection.points[edge.source],
+     finalTarget=finalProjection.points[edge.target],finalObstacleRadius=radius(obstacleNode)+2;
+    if(Math.hypot(panelPoint(finalObstacle).x-panelPoint(finalSource).x,panelPoint(finalObstacle).y-panelPoint(finalSource).y)<
+        finalObstacleRadius+radius(byId.get(edge.source))||
+      Math.hypot(panelPoint(finalObstacle).x-panelPoint(finalTarget).x,panelPoint(finalObstacle).y-panelPoint(finalTarget).y)<
+        finalObstacleRadius+radius(byId.get(edge.target))) continue;
+    // During the first few frames every new child is intentionally a
+    // sub-pixel seed inside the common parent; it is not yet a visible node
+    // footprint that a connector can appear to pierce.
+    if(obstacleRadius<8) continue;
+    if(sourceGap<obstacleRadius+sourceRadius||targetGap<obstacleRadius+targetRadius) continue;
+    for(let leg=0;leg<path.length-1;leg++) assert.ok(
+     distanceToSegment(path[leg],path[leg+1],obstacle)>=obstacleRadius,
+     `${edge.source}->${edge.target} crosses ${obstacleNode.id} at ${now-100}ms`);
+   }
+  }
+ }
 });
 
 test('collapse keeps an inert snapshot until completion and then removes it',()=>{

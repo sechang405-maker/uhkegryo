@@ -29,7 +29,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
   const hasMotion=Object.keys(motionState.presence).length>0;
   const [view,setView]=useState(INITIAL_VIEW);
   const [notice,setNotice]=useState('');
-  const [sceneSize,setSceneSize]=useState({width:1000,height:840});
+  const [sceneSize,setSceneSize]=useState({width:1000,height:680});
   const [responsiveFallback,setResponsiveFallback]=useState(false);
   const responsivePoints=useMemo(()=>projectGraph(logicalGraph,INITIAL_VIEW),[logicalGraph]);
   const viewportAssessment=useMemo(()=>assessGraphViewport(logicalGraph.nodes,responsivePoints,sceneSize),
@@ -52,8 +52,9 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     [graph,motionState.presence,view,motionNow]);
   const points=projection.points;
   const colorByNodeId=useMemo(()=>new Map(graph.nodes.map(node=>[node.id,graphNodeColor(node.role,Boolean(node.isDetail))])),[graph.nodes]);
-  const depthComposition=useMemo(()=>buildGraphDepthLayers(graph.nodes,graph.edges,points,{viewport:sceneSize}),
-    [graph.nodes,graph.edges,points,sceneSize]);
+  const depthComposition=useMemo(()=>buildGraphDepthLayers(graph.nodes,graph.edges,points,
+    {viewport:sceneSize,edgeRoutes:projection.edgeRoutes}),
+    [graph.nodes,graph.edges,points,projection.edgeRoutes,sceneSize]);
   useEffect(()=>{
     setMotionState(current=>createGraphMotionState(
       buildExpandedTermGraph(terms,catalogTerms,current.expandedIds),current.expandedIds));
@@ -130,17 +131,22 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     return ()=>scene.removeEventListener('wheel',handleWheel);
   },[list]);
   useEffect(()=>{
-    const root=rootRef.current;
-    if(!root) return;
+    const scene=sceneRef.current,root=rootRef.current,target=scene||root;
+    if(!target) return;
     const update=()=>{
-      const {width,height}=root.getBoundingClientRect();
+      let {width,height}=target.getBoundingClientRect();
+      if(!scene&&root) {
+        const style=getComputedStyle(root);
+        width-=parseFloat(style.paddingLeft)||0;width-=parseFloat(style.paddingRight)||0;
+        height=window.matchMedia('(max-width: 760px)').matches?360:clamp(window.innerHeight*.6,480,680);
+      }
       setSceneSize(current=>current.width===width&&current.height===height?current:{width,height});
     };
     update();
     const observer=new ResizeObserver(update);
-    observer.observe(root);
+    observer.observe(target);
     return ()=>observer.disconnect();
-  },[]);
+  },[list]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.25)})); }
   function start(event) {
@@ -267,11 +273,21 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
           const motionAmount=projection.amounts[node.id]??1;
           const exiting=motion?.target===0;
           const interactive=!motion;
-          const nodeScale=node.term?1:p.scale;
+          // A relationship route and its child move from the same parent. Scale
+          // the rendered child footprint by that same presence amount so an
+          // entering/exiting circle cannot temporarily cover its own routed
+          // connector or a neighbouring route before reaching its fixed size.
+          // Keep emerging siblings as a tiny seed while their safe paths fan
+          // out from the same parent, then settle to full size near the fixed
+          // destination. This avoids a readable circle being crossed by a
+          // sibling connector during the short expansion transition.
+          const presenceScale=motion?Math.max(.001,motionAmount**10):1;
+          const baseNodeScale=node.term?1:p.scale;
+          const nodeScale=baseNodeScale*presenceScale;
           const style={left:`${p.x/10}%`,top:`${p.y/8.4}%`,zIndex:depthComposition.nodeZ[node.id],opacity:p.opacity,
             pointerEvents:node.term?(interactive?'auto':'none'):undefined,'--node-scale':nodeScale,'--motion-presence':motionAmount,
             '--category-color':categoryColor};
-          const expandStyle={...style,'--node-scale':Math.max(1,nodeScale),
+          const expandStyle={...style,'--node-scale':Math.max(1,baseNodeScale)*presenceScale,
             '--expand-x':'20px','--expand-y':'20px'};
           return node.term ? <Fragment key={node.id}><button type="button" style={style} className="term-graph-node"
             data-focused={focusedId===node.id} data-selected={selectedIds.includes(node.id)} data-expandable={node.expandable}

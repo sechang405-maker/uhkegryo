@@ -115,6 +115,153 @@ const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
 const nodeCircleRadius=node=>node.isDetail?(node.expandable?56:48):(node.childCount>0?52:44);
 const renderedCircleRadius=node=>node.isDetail?(node.expandable?48:40):(node.childCount>0?46:38);
 
+// The SVG viewBox is intentionally stretched to the real graph panel while
+// node circles stay a fixed CSS-pixel size. Route in representative desktop
+// panel pixels, not raw viewBox units, so vertical compression cannot turn a
+// safe design-space line into a line through a rendered circle.
+const ROUTE_PANEL_SCALE={x:1,y:680/840};
+const routeDistance=(a,b)=>Math.hypot((a.x-b.x)*ROUTE_PANEL_SCALE.x,(a.y-b.y)*ROUTE_PANEL_SCALE.y);
+
+function screenSegmentClearance(start,end,obstacle,obstacleRadius) {
+  const dx=(end.x-start.x)*ROUTE_PANEL_SCALE.x,dy=(end.y-start.y)*ROUTE_PANEL_SCALE.y,
+    ox=(obstacle.x-start.x)*ROUTE_PANEL_SCALE.x,oy=(obstacle.y-start.y)*ROUTE_PANEL_SCALE.y,
+    lengthSquared=dx*dx+dy*dy;
+  const t=lengthSquared?clamp((ox*dx+oy*dy)/lengthSquared,0,1):0;
+  return Math.hypot(ox-t*dx,oy-t*dy)-obstacleRadius;
+}
+
+function routeScreenPath(start,end,obstacles) {
+  const clears=(from,to)=>obstacles.every(obstacle=>
+    screenSegmentClearance(from,to,obstacle.point,obstacle.radius)>=0);
+  if(clears(start,end)) return [];
+  const step=16,minX=14,maxX=986,minY=82,maxY=766,
+    columns=Math.floor((maxX-minX)/step)+1,rows=Math.floor((maxY-minY)/step)+1,
+    key=(column,row)=>`${column}:${row}`,
+    point=(column,row)=>({x:minX+column*step,y:minY+row*step});
+  const blocked=(column,row)=>{
+    const candidate=point(column,row);
+    return obstacles.some(obstacle=>routeDistance(candidate,obstacle.point)<obstacle.radius);
+  };
+  const heap=[];
+  const push=item=>{
+    heap.push(item);
+    for(let index=heap.length-1;index>0;) {
+      const parent=Math.floor((index-1)/2);
+      if(heap[parent].score<=heap[index].score) break;
+      [heap[parent],heap[index]]=[heap[index],heap[parent]];index=parent;
+    }
+  };
+  const pop=()=>{
+    const first=heap[0],last=heap.pop();
+    if(heap.length&&last) {
+      heap[0]=last;
+      for(let index=0;;) {
+        const left=index*2+1,right=left+1;
+        let smallest=index;
+        if(left<heap.length&&heap[left].score<heap[smallest].score) smallest=left;
+        if(right<heap.length&&heap[right].score<heap[smallest].score) smallest=right;
+        if(smallest===index) break;
+        [heap[index],heap[smallest]]=[heap[smallest],heap[index]];index=smallest;
+      }
+    }
+    return first;
+  };
+  const cost=new Map(),previous=new Map(),visited=new Set();
+  for(let column=0;column<columns;column++) for(let row=0;row<rows;row++) {
+    if(blocked(column,row)) continue;
+    const candidate=point(column,row),distance=routeDistance(candidate,start);
+    if(distance>168||!clears(start,candidate)) continue;
+    const id=key(column,row);
+    cost.set(id,distance);previous.set(id,null);
+    push({column,row,id,score:distance+routeDistance(candidate,end)});
+  }
+  const neighbors=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+  let goal=null;
+  while(heap.length) {
+    const current=pop();
+    if(!current||visited.has(current.id)) continue;
+    visited.add(current.id);
+    const currentPoint=point(current.column,current.row);
+    if(clears(currentPoint,end)) {goal=current;break;}
+    for(const [dx,dy] of neighbors) {
+      const column=current.column+dx,row=current.row+dy;
+      if(column<0||column>=columns||row<0||row>=rows||blocked(column,row)) continue;
+      const nextPoint=point(column,row);
+      if(!clears(currentPoint,nextPoint)) continue;
+      const id=key(column,row),nextCost=cost.get(current.id)+routeDistance(nextPoint,currentPoint);
+      if(nextCost>=(cost.get(id)??Infinity)) continue;
+      cost.set(id,nextCost);previous.set(id,current.id);
+      push({column,row,id,score:nextCost+routeDistance(nextPoint,end)});
+    }
+  }
+  if(!goal) return null;
+  const reversed=[];
+  for(let id=goal.id;id;) {
+    const [column,row]=id.split(':').map(Number);reversed.push(point(column,row));id=previous.get(id);
+  }
+  const raw=[start,...reversed.reverse(),end],simplified=[start];
+  for(let from=0;from<raw.length-1;) {
+    let next=raw.length-1;
+    while(next>from+1&&!clears(raw[from],raw[next])) next-=1;
+    simplified.push(raw[next]);from=next;
+  }
+  return simplified.slice(1,-1);
+}
+
+function routeRelationshipEdges(nodes,edges) {
+  const byId=new Map(nodes.map(node=>[node.id,node])),points=projectGraph({nodes},INITIAL_VIEW),
+    parentByChild=new Map(edges.filter(edge=>edge.relation).map(edge=>[edge.target,edge.source]));
+  let overflow=false;
+  for(const edge of edges.filter(edge=>edge.relation)) {
+    const source=points[edge.source],target=points[edge.target];
+    if(!source||!target) continue;
+    const obstacles=nodes.filter(node=>node.id!==edge.source&&node.id!==edge.target&&
+      (!node.isDetail||parentByChild.get(node.id)===edge.source))
+      .map(node=>({point:points[node.id],radius:renderedCircleRadius(node)+2}))
+      // When two rendered endpoint circles already touch, no connector can
+      // enter its owner without also entering the neighbour. Leave that small
+      // endpoint footprint to the existing depth masks; route genuine mid-edge
+      // crossings around every other circle.
+      .filter(obstacle=>routeDistance(obstacle.point,source)>=
+          obstacle.radius+renderedCircleRadius(byId.get(edge.source))&&
+        routeDistance(obstacle.point,target)>=
+          obstacle.radius+renderedCircleRadius(byId.get(edge.target)));
+    const screenRoute=routeScreenPath(source,target,obstacles);
+    if(screenRoute===null) {overflow=true;continue;}
+    if(!screenRoute.length) continue;
+    const path=[source,...screenRoute,target],segmentLengths=[];
+    let total=0;
+    for(let index=0;index<path.length-1;index++) {
+      const length=Math.hypot(path[index+1].x-path[index].x,path[index+1].y-path[index].y);
+      segmentLengths.push(length);total+=length;
+    }
+    let travelled=0;
+    edge.route=screenRoute.map((screen,index)=>{
+      travelled+=segmentLengths[index];
+      const amount=total?travelled/total:0,
+        depth=clamp(source.depth+(target.depth-source.depth)*amount,-180,180);
+      return worldFromInitialProjection(screen.x,screen.y,depth);
+    });
+  }
+  // Routing stays stable when another branch appears. Validate that stable
+  // route against every currently visible circle; if branch territories ever
+  // become too dense to preserve, use the existing readable-list fallback
+  // instead of moving old nodes or silently drawing through the new branch.
+  for(const edge of edges.filter(edge=>edge.relation)) {
+    const source=points[edge.source],target=points[edge.target];
+    if(!source||!target) continue;
+    const path=[source,...(edge.route||[]).map(point=>projectNode(point,INITIAL_VIEW)),target],
+      sourceRadius=renderedCircleRadius(byId.get(edge.source)),targetRadius=renderedCircleRadius(byId.get(edge.target));
+    for(const node of nodes.filter(node=>node.id!==edge.source&&node.id!==edge.target)) {
+      const obstacle=points[node.id],radius=renderedCircleRadius(node)+2;
+      if(routeDistance(obstacle,source)<radius+sourceRadius||
+        routeDistance(obstacle,target)<radius+targetRadius) continue;
+      if(path.slice(0,-1).some((point,index)=>screenSegmentClearance(point,path[index+1],obstacle,radius)<0)) overflow=true;
+    }
+  }
+  return {overflow};
+}
+
 function separateBaseCircleOverlaps(nodes) {
   const terms=nodes.filter(node=>node.term),projected=projectGraph({nodes},INITIAL_VIEW),
     positions=new Map(terms.map(node=>[node.id,{x:projected[node.id].x,y:projected[node.id].y,depth:projected[node.id].depth}])),
@@ -742,6 +889,7 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
     for(const node of nodes.filter(node=>node.isDetail&&vectorLength(node)>648)) {
       const direction=unit(node);node.x=direction.x*648;node.y=direction.y*648;node.z=direction.z*648;
     }
+    denseOverflow=routeRelationshipEdges(nodes,edges).overflow||denseOverflow;
   }
   return {nodes,edges,relationships,denseOverflow};
 }

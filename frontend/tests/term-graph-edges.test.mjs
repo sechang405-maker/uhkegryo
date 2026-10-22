@@ -81,6 +81,36 @@ test('motion origin helpers do not create visible depth planes',()=>{
   assert.equal(result.layers.flatMap(layer=>layer.segments).length,1);
 });
 
+test('a routed edge keeps every leg in the shared depth composition and trims only real endpoints',()=>{
+  const nodes=[node('source',-200),node('middle',0),node('target',200)];
+  const points={source:point(100,200,-200),middle:point(500,500,0),target:point(900,200,200)};
+  const edge={source:'source',target:'target',relation:'all'};
+  const result=buildGraphDepthLayers(nodes,[edge],points,{endpointTrim:40,
+    edgeRoutes:{'source:target:all':[point(500,100,0)]}});
+  const segments=result.layers.flatMap(layer=>layer.segments);
+  assert.ok(segments.some(segment=>segment.x2===500&&segment.y2===100),'first routed leg was not rendered');
+  assert.ok(segments.some(segment=>segment.x1===500&&segment.y1===100),'second routed leg was not rendered');
+  assert.equal(segments.filter(segment=>segment.endpoint==='source').length,1);
+  assert.equal(segments.filter(segment=>segment.endpoint==='target').length,1);
+  assert.ok(segments.filter(segment=>segment.x1===500||segment.x2===500)
+    .some(segment=>segment.endpointMasks.length===0),'route joint was mistaken for a node footprint');
+});
+
+test('a front edge is locally clipped at an unrelated node instead of being flattened behind every node',()=>{
+  const nodes=[node('source',200),node('crossed',-200),node('target',200)];
+  const points={source:point(100,200,200),crossed:point(500,200,-200),target:point(900,200,200)};
+  for(const viewport of [{width:1000,height:840},{width:1474,height:680},{width:760,height:480}]) {
+    const result=buildGraphDepthLayers(nodes,[{source:'source',target:'target',relation:'all'}],points,{endpointTrim:0,viewport});
+    const segments=result.layers.flatMap(layer=>layer.segments.map(segment=>({...segment,zIndex:layer.zIndex}))),
+      designRadius=40/(viewport.width/1000),left=500-designRadius,right=500+designRadius;
+    assert.ok(segments.some(segment=>segment.zIndex>result.nodeZ.crossed),'the whole connector was incorrectly sent behind');
+    assert.ok(segments.every(segment=>segment.x2<=left+1e-6||segment.x1>=right-1e-6),
+      `a visible connector fragment remained inside the unrelated circle at ${viewport.width}x${viewport.height}`);
+    assert.ok(segments.some(segment=>Math.abs(segment.x2-left)<1e-6));
+    assert.ok(segments.some(segment=>Math.abs(segment.x1-right)<1e-6));
+  }
+});
+
 test('near-equal depth clustering never leaves a visible node without a layer',()=>{
   const nodes=[node('a',0),node('b',.75e-7),node('c',1.5e-7)];
   const points={a:point(0,0,0),b:point(10,0,.75e-7),c:point(20,0,1.5e-7)};

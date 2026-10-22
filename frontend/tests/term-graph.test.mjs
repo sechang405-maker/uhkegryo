@@ -290,6 +290,51 @@ test('circular graph anchors avoid stacked centers and stay near the initial cam
  assert.ok(visible.every(node=>node.x>-30&&node.x<1050&&node.y>-30&&node.y<870),'initial camera keeps every anchor near the frame');
 });
 
+test('expanded relationship edges keep clear of unrelated node circles in a 1000 by 680 graph panel',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,
+  ['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling']);
+ assert.equal(graph.denseOverflow,false,'representative expanded branches should remain in the 3D graph');
+ const points=projectGraph(graph,INITIAL_VIEW);
+ const radius=node=>node.isDetail?(node.expandable?48:40):(node.childCount>0?46:38);
+ const panelPoint=point=>({x:point.x,y:point.y*680/840});
+ const distanceToSegment=(rawStart,rawEnd,rawPoint)=>{
+  const start=panelPoint(rawStart),end=panelPoint(rawEnd),point=panelPoint(rawPoint),
+   dx=end.x-start.x,dy=end.y-start.y,lengthSquared=dx*dx+dy*dy;
+  const t=lengthSquared?Math.max(0,Math.min(1,((point.x-start.x)*dx+(point.y-start.y)*dy)/lengthSquared)):0;
+  return {distance:Math.hypot(point.x-(start.x+t*dx),point.y-(start.y+t*dy)),t};
+ };
+ const crossings=[];
+ for(const edge of graph.edges.filter(edge=>edge.relation)) {
+  const path=[points[edge.source],...(edge.route||[]).map(point=>projectNode(point,INITIAL_VIEW)),points[edge.target]];
+  for(let index=0;index<path.length-1;index++)
+   for(const node of graph.nodes.filter(node=>node.term&&node.id!==edge.source&&node.id!==edge.target&&
+    Math.hypot(panelPoint(points[node.id]).x-panelPoint(points[edge.source]).x,panelPoint(points[node.id]).y-panelPoint(points[edge.source]).y)>=radius(node)+2+radius(graph.nodes.find(item=>item.id===edge.source))&&
+    Math.hypot(panelPoint(points[node.id]).x-panelPoint(points[edge.target]).x,panelPoint(points[node.id]).y-panelPoint(points[edge.target]).y)>=radius(node)+2+radius(graph.nodes.find(item=>item.id===edge.target)))) {
+    const hit=distanceToSegment(path[index],path[index+1],points[node.id]);
+    if(hit.t>.04&&hit.t<.96&&hit.distance<radius(node)+2)
+     crossings.push(`${edge.source}->${edge.target} crosses ${node.id} by ${(radius(node)+2-hit.distance).toFixed(1)}px`);
+   }
+ }
+ assert.deepEqual(crossings,[],'relationship edges must not pierce unrelated node circles');
+});
+
+test('routed relationship controls stay fixed in world space through camera orbit and unrelated expansion',()=>{
+ const before=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
+ const after=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_contrapposto']);
+ const routeByKey=graph=>new Map(graph.edges.filter(edge=>edge.relation)
+  .map(edge=>[`${edge.source}:${edge.target}`,edge.route||[]]));
+ const beforeRoutes=routeByKey(before),afterRoutes=routeByKey(after);
+ for(const [key,route] of beforeRoutes) assert.deepEqual(afterRoutes.get(key),route,`${key} rerouted after an unrelated expansion`);
+ const worldRoutes=[...beforeRoutes.values()].flat().map(point=>({...point}));
+ assert.ok(worldRoutes.every(point=>Math.hypot(point.x,point.y,point.z)<=720),
+  'a route control approached the camera more closely than the bounded graph scene allows');
+ for(let step=0;step<18;step++) for(const point of worldRoutes) {
+  const projected=projectNode(point,{yaw:-Math.PI+step*Math.PI/9,pitch:(step%5-2)*.18,zoom:.9});
+  assert.ok(Number.isFinite(projected.x)&&Number.isFinite(projected.y)&&Number.isFinite(projected.depth));
+ }
+ assert.deepEqual([...beforeRoutes.values()].flat(),worldRoutes,'camera orbit mutated a route control');
+});
+
 test('a sixteen-child fan uses the deterministic dense fallback without stacked centers',()=>{
  const root={role:'pose',term_id:'dense_root',label_ko:'dense root',requires_all_of:[],requires_any_of:[]};
  const children=Array.from({length:16},(_,index)=>({role:'pose',term_id:`dense_child_${String(index).padStart(2,'0')}`,

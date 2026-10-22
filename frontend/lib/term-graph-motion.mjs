@@ -10,6 +10,27 @@ const interpolate=(from,to,amount)=>({
   y:from.y+(to.y-from.y)*amount,
   z:from.z+(to.z-from.z)*amount,
 });
+const worldDistance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
+
+function pathProgress(path,amount) {
+  const lengths=[];
+  let total=0;
+  for(let index=0;index<path.length-1;index++) {
+    const length=worldDistance(path[index],path[index+1]);lengths.push(length);total+=length;
+  }
+  const target=total*clamp01(amount);
+  let travelled=0,completedControls=0;
+  for(let index=0;index<lengths.length;index++) {
+    const next=travelled+lengths[index];
+    if(index<path.length-2&&next<target-1e-9) completedControls=index+1;
+    if(target<=next||index===lengths.length-1) {
+      const local=lengths[index]?clamp01((target-travelled)/lengths[index]):0;
+      return {point:interpolate(path[index],path[index+1],local),completedControls};
+    }
+    travelled=next;
+  }
+  return {point:path.at(-1),completedControls:Math.max(0,path.length-2)};
+}
 
 const motionProgress=(motion,now)=>motion.duration<=0?1:
   smoothstep(clamp01((now-motion.startedAt)/motion.duration));
@@ -128,13 +149,29 @@ export function pauseGraphMotion(state,elapsed) {
 }
 
 export function interpolateGraphMotion(displayGraph,presence,view,now) {
-  const byId=new Map(displayGraph.nodes.map(node=>[node.id,node])),points={},amounts={};
+  const byId=new Map(displayGraph.nodes.map(node=>[node.id,node])),points={},amounts={},routeProgress={},
+    routedEdgeByTarget=new Map(displayGraph.edges.filter(edge=>edge.relation&&edge.route?.length)
+      .map(edge=>[edge.target,edge]));
   for(const node of displayGraph.nodes) {
     const motion=presence[node.id],amount=motionAmount(motion,now),anchor=byId.get(motion?.anchorId)||node;
-    const world=motion?{...node,...interpolate(anchor,node,amount)}:node;
+    const routedEdge=routedEdgeByTarget.get(node.id),followsRoute=Boolean(motion&&routedEdge?.source===motion.anchorId),
+      progress=followsRoute?pathProgress([anchor,...routedEdge.route,node],amount):null,
+      world=motion?{...node,...(progress?.point||interpolate(anchor,node,amount))}:node;
+    if(progress) routeProgress[edgeKey(routedEdge)]=progress;
     const point=projectNode(world,view),alpha=motionOpacity(motion,now);
     points[node.id]={...point,opacity:(point.opacity??1)*alpha,presence:amount};
     amounts[node.id]=amount;
   }
-  return {points,amounts};
+  const edgeRoutes={};
+  for(const edge of displayGraph.edges) {
+    if(!edge.route?.length) continue;
+    const progress=routeProgress[edgeKey(edge)],visibleRoute=progress?
+      edge.route.slice(0,progress.completedControls):edge.route;
+    edgeRoutes[edgeKey(edge)]=visibleRoute.map(routePoint=>{
+      const point=projectNode(routePoint,view);
+      const opacity=points[edge.target]?.opacity??points[edge.source]?.opacity??1;
+      return {...point,opacity};
+    });
+  }
+  return {points,amounts,edgeRoutes};
 }
