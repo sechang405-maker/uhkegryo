@@ -28,3 +28,12 @@ test('detail nodes use a stable softer tone while parents keep the category colo
  assert.equal(graphNodeColor('unknown',false),GRAPH_CATEGORY_COLORS.fallback);
  assert.notEqual(graphNodeColor('unknown',true),GRAPH_CATEGORY_COLORS.fallback);
 });
+
+test('approved parent and child palettes match the final 3D mockup',()=>{
+ assert.deepEqual(Object.fromEntries(['body','pose','composition','perspective'].map(role=>[role,graphNodeColor(role,false)])),{
+  body:'#56C7D9',pose:'#F4A261',composition:'#B892FF',perspective:'#6FD3A3',
+ });
+ assert.deepEqual(Object.fromEntries(['body','pose','composition','perspective'].map(role=>[role,graphNodeColor(role,true)])),{
+  body:'#9CE4DA',pose:'#FFC28F',composition:'#D8C1FF',perspective:'#A9E58B',
+ });
+});

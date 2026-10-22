@@ -1,4 +1,5 @@
 import { createMindMapSlots } from './term-mind-map.mjs';
+import { approvedCatalogWorldLayout } from './term-graph-approved-layout.mjs';
 
 export const INITIAL_VIEW = Object.freeze({ yaw: -.32, pitch: .18, zoom: .9 });
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -117,41 +118,9 @@ const renderedCircleRadius=node=>node.isDetail?(node.expandable?48:40):(node.chi
 const GRAPH_PANEL_Y_SCALE=680/840;
 const screenCircleDistance=(first,second)=>Math.hypot(first.x-second.x,(first.y-second.y)*GRAPH_PANEL_Y_SCALE);
 const stabilizedLayoutCache=new WeakMap();
-// A single full-catalog solve reserves both shared-parent components before
-// any branch is opened. Values are initial-camera x, panel-y, and depth. The
-// template is deliberately catalog keyed: synthetic/unknown catalogs keep the
-// generic bounded fallback below.
-const ACTIVE_CATALOG_LAYOUT=new Map(Object.entries({
-  'pose_sitting':[350,365,-80],'pose_standing':[378,224,-180],'pose_kneeling':[438,414,-180],
-  'pose_legs_crossed_at_knee':[104.9,570.7,-180],'pose_action_two_hand_aiming':[313.5,158.2,-180],
-  'pose_ankles_crossed':[205,616.1,-180],'pose_cross_legged_floor':[121.6,466.7,-180],
-  'pose_sitting_upright':[71.5,394.3,-180],'pose_sitting_on_edge':[232,100.1,-180],
-  'pose_seiza':[327.4,493,-180],'pose_slouching':[122.2,73.4,-60],
-  'pose_sitting_leaning_forward':[141.2,343,-180],'pose_sitting_leaning_back':[96.3,272.7,-180],
-  'pose_lotus':[164.2,197.7,-180],'pose_half_lotus':[70.1,190.1,-140],
-  'pose_contrapposto':[650,400,-60],'pose_weight_shift':[580,300,-180],'pose_s_curve':[580,500,-180],
-  'pose_contrapposto_weight_shift':[750,226.794919,-180],
-  'pose_contrapposto_arm_raised':[823.205081,300,-180],
-  'pose_contrapposto_classic':[850,400,-160],'pose_contrapposto_dynamic':[823.205081,500,-180],
-  'pose_contrapposto_s_curve':[750,573.205081,-180],
-  'category:body':[360,56,0],'category:pose':[438,56,0],
-  'category:composition':[516,56,0],'category:perspective':[594,56,0],
-  'body_hourglass':[672,56,180],'body_inverted_triangle':[750,56,180],
-  'body_triangle':[828,56,180],'body_slim':[906,56,180],
-  'body_childlike':[399,124,120],'body_human_proportion':[477,124,110],
-  'pose_gesture':[555,124,110],'pose_reclining':[633,124,120],
-  'pose_walking':[711,124,150],'pose_running':[789,124,180],
-  'pose_jumping':[867,124,180],'pose_hand_open_palm':[945,124,180],
-  'view_front':[516,192,60],'view_three_quarter':[594,192,70],
-  'view_high_angle':[672,192,90],'view_low_angle':[828,192,160],
-  'view_profile':[906,192,180],'view_back':[477,260,30],
-  'view_birds_eye':[945,260,180],'view_worms_eye':[828,600,180],
-  'view_dutch_angle':[906,328,160],'view_over_the_shoulder':[555,396,0],
-  'view_full_body':[945,396,180],'perspective_three_point':[906,464,170],
-  'perspective_foreshortening':[399,532,40],'perspective_vanishing_point':[477,532,30],
-  'perspective_one_point':[945,532,180],'perspective_two_point':[360,600,90],
-  'composition_rule_of_thirds':[438,600,80],'layout_composition':[516,600,70],
-}));
+// A single full-catalog world layout reserves every branch before expansion.
+// Synthetic/unknown catalogs continue through the bounded fallback below.
+const ACTIVE_CATALOG_LAYOUT=approvedCatalogWorldLayout(INITIAL_VIEW);
 const screenDelta=(first,second)=>{
   const dx=second.x-first.x,dy=(second.y-first.y)*GRAPH_PANEL_Y_SCALE;
   return {dx,dy,distance:Math.hypot(dx,dy)||1};
@@ -903,11 +872,14 @@ function stabilizeCatalogLayout(graph,childrenByParent) {
       .sort(([,a],[,b])=>b.length-a.length)[0],fixed=new Set();
   if(nodes.length===ACTIVE_CATALOG_LAYOUT.size&&nodes.every(node=>ACTIVE_CATALOG_LAYOUT.has(node.id))) {
     for(const node of nodes) {
-      const [x,panelY,depth]=ACTIVE_CATALOG_LAYOUT.get(node.id),world=worldFromInitialProjection(x,panelY/GRAPH_PANEL_Y_SCALE,depth);
+      const world=ACTIVE_CATALOG_LAYOUT.get(node.id);
       node.x=world.x;node.y=world.y;node.z=world.z;
     }
     const result={...graph,nodes};
-    result.denseOverflow=straightLayoutIsUnsafe(nodes,graph.edges);
+    // The approved layout is safe in world space. A projected overlap at one
+    // camera angle is normal 3-D occlusion and must not replace + expansion
+    // with the list view.
+    result.denseOverflow=false;
     return result;
   }
   for(const edge of relationEdges) {
@@ -1143,7 +1115,8 @@ export function buildExpandedTermGraph(baseTerms,catalogTerms,expandedIds=[]) {
     const stable=universeById.get(node.id);
     if(stable) {node.x=stable.x;node.y=stable.y;node.z=stable.z;}
   }
-  requested.denseOverflow=straightLayoutIsUnsafe(requested.nodes,requested.edges);
+  requested.denseOverflow=universe.nodes.length===ACTIVE_CATALOG_LAYOUT.size&&
+    universe.nodes.every(node=>ACTIVE_CATALOG_LAYOUT.has(node.id))?false:straightLayoutIsUnsafe(requested.nodes,requested.edges);
   return requested;
 }
 

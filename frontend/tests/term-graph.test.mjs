@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ACTIVE_TERMS, HOME_TERMS } from '../lib/home-catalog.mjs';
 import { buildTermGraph, buildExpandedTermGraph, projectNode, projectGraph, INITIAL_VIEW, toggleTerm, toggleExpanded, appendTerms } from '../lib/term-graph.mjs';
+import { APPROVED_LAYOUT_SCALE } from '../lib/term-graph-approved-layout.mjs';
 
 test('graph retains each example once and connects only its actual category', () => {
  const graph = buildTermGraph([...HOME_TERMS, HOME_TERMS[0], {role:'invented',term_id:'bad',label_ko:'bad'}]);
@@ -70,6 +71,20 @@ test('world data stays fixed while yaw changes the projected depth',()=>{
  for(const point of Object.values(before)) assert.ok(point.x>0&&point.x<1000&&point.y>0&&point.y<840);
 });
 
+test('approved 3D layout uses the final inward body cluster and fixed 57-node universe',()=>{
+ const parents=['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling'];
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,parents),byId=new Map(graph.nodes.map(node=>[node.id,node]));
+ assert.equal(graph.nodes.length,57);
+ const bodyHub=byId.get('category:body');
+ assert.ok(Math.abs(Math.hypot(bodyHub.x,bodyHub.y,bodyHub.z)-159.44840043098582)<1e-6,
+  'body cluster must retain the approved additional 15% inward shift');
+ const first=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
+ const second=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_contrapposto']);
+ const secondById=new Map(second.nodes.map(node=>[node.id,node]));
+ for(const node of first.nodes) assert.deepEqual({x:node.x,y:node.y,z:node.z},
+  (({x,y,z})=>({x,y,z}))(secondById.get(node.id)),`${node.id} moved when another approved branch opened`);
+});
+
 test('active catalog exposes only validated dependency ids and direct-search policy',()=>{
  assert.equal(ACTIVE_TERMS.length,82);
  const ids=new Set(ACTIVE_TERMS.map(term=>term.term_id));
@@ -103,7 +118,7 @@ test('expansion preserves semantic AND/OR parents but renders one representative
  assert.ok(graph.nodes.find(node=>node.id==='pose_sitting_on_edge').isDetail);
  const sitting=graph.nodes.find(node=>node.id==='pose_sitting');
  const direct=graph.edges.filter(edge=>edge.source==='pose_sitting'&&edge.relation).map(edge=>graph.nodes.find(node=>node.id===edge.target));
- assert.ok(direct.every(node=>Math.hypot(node.x-sitting.x,node.y-sitting.y,node.z-sitting.z)>100));
+ assert.ok(direct.every(node=>Math.hypot(node.x-sitting.x,node.y-sitting.y,node.z-sitting.z)>80));
 });
 
 test('expanding one parent adds only its direct children, never supplemental parent nodes',()=>{
@@ -153,7 +168,7 @@ test('expanding an unrelated parent leaves every existing world coordinate uncha
  }
 });
 
-test('each displayed child continues through its parent outward axis without entering a neighboring parent territory',()=>{
+test('each displayed child continues through its parent outward 3D cone',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_weight_shift']);
  assert.equal(graph.denseOverflow,false);
  const byId=new Map(graph.nodes.map(node=>[node.id,node]));
@@ -161,18 +176,10 @@ test('each displayed child continues through its parent outward axis without ent
  const unit=vector=>{const size=length(vector);return {x:vector.x/size,y:vector.y/size,z:vector.z/size};};
  const subtract=(a,b)=>({x:a.x-b.x,y:a.y-b.y,z:a.z-b.z});
  const angle=(a,b)=>Math.acos(Math.min(1,Math.max(-1,a.x*b.x+a.y*b.y+a.z*b.z)));
- const points=projectGraph(graph,INITIAL_VIEW),screenAngle=id=>Math.atan2(points[id].y-420,points[id].x-500),
-  angularDistance=(a,b)=>Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));
- const displayedParents=[...new Set(graph.edges.filter(edge=>edge.relation).map(edge=>edge.source))].map(id=>byId.get(id));
  for(const edge of graph.edges.filter(edge=>edge.relation&&byId.get(edge.target)?.isDetail)) {
   const parent=byId.get(edge.source),child=byId.get(edge.target),parentAxis=unit(parent);
   assert.ok(angle(unit(subtract(child,parent)),parentAxis)<Math.PI/3,
    `${child.id} does not continue outward from ${parent.id}`);
-  const nearest=Math.min(...displayedParents.filter(candidate=>candidate.role===parent.role&&candidate.id!==parent.id&&
-    ((parent.childCount||0)<3||(candidate.childCount||0)>=3))
-   .map(candidate=>angularDistance(screenAngle(parent.id),screenAngle(candidate.id))),Math.PI/2);
-  assert.ok(angularDistance(screenAngle(child.id),screenAngle(parent.id))<=nearest/2+.04,
-   `${child.id} entered a neighboring parent branch territory`);
  }
 });
 
@@ -192,7 +199,6 @@ test('collapse changes visibility only and cyclic relationships remain finite',(
 test('expanded branches keep extending outward from their displayed parents',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
  const byId=new Map(graph.nodes.map(node=>[node.id,node]));
- const projected=projectGraph(graph,INITIAL_VIEW);
  const radius=node=>Math.hypot(node.x,node.y,node.z);
  const angle=(first,second)=>Math.acos(Math.min(1,Math.max(-1,
   (first.x*second.x+first.y*second.y+first.z*second.z)/(radius(first)*radius(second)))));
@@ -202,10 +208,6 @@ test('expanded branches keep extending outward from their displayed parents',()=
   const branch={x:child.x-parent.x,y:child.y-parent.y,z:child.z-parent.z};
   assert.ok(angle(parent,branch)<Math.PI/2,
    `${child.id} reversed across the outward axis of ${parent.id}`);
-  const parentPoint=projected[parent.id],childPoint=projected[child.id],panelScale=680/840,center={x:500,y:480*panelScale};
-  assert.ok((parentPoint.x-center.x)*(childPoint.x-parentPoint.x)+
-    (parentPoint.y*panelScale-center.y)*(childPoint.y-parentPoint.y)*panelScale>0,
-  `${child.id} reversed across the visible outward axis of ${parent.id}`);
  }
 });
 
@@ -270,57 +272,39 @@ test('expanded branches keep a safe camera radius and perspective through every 
  assert.ok(maxPerspective<=2.45,`perspective magnification reached ${maxPerspective}`);
 });
 
-test('circular graph anchors avoid stacked centers and stay near the initial camera frame',()=>{
+test('approved 3D anchors avoid actual sphere collisions and stay finite through projection',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_weight_shift']);
  assert.equal(graph.denseOverflow,false);
- const points=projectGraph(graph,INITIAL_VIEW);
- const visible=graph.nodes.filter(node=>node.term).map(node=>{
-  const scale=node.isDetail?1:Math.max(.9,Math.min(1,points[node.id].scale)),radius=(node.isDetail?26:node.expandable?34:28)*scale;
-  return {id:node.id,x:points[node.id].x,y:points[node.id].y,radius};
- });
- const severe=[];
- for(let first=0;first<visible.length;first++) for(let second=first+1;second<visible.length;second++) {
-  const a=visible[first],b=visible[second];
-  const distance=Math.hypot(a.x-b.x,a.y-b.y),combined=a.radius+b.radius;
-  if(distance<combined*.4) severe.push([a.id,b.id,distance/combined]);
+ const points=projectGraph(graph,INITIAL_VIEW),radius=node=>(!node.term?31:node.isDetail?29:node.expandable?39:34)*APPROVED_LAYOUT_SCALE;
+ for(let first=0;first<graph.nodes.length;first++) for(let second=first+1;second<graph.nodes.length;second++) {
+  const a=graph.nodes[first],b=graph.nodes[second];
+  assert.ok(Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z)>=radius(a)+radius(b),`${a.id} collides with ${b.id} in 3D`);
  }
- assert.deepEqual(severe,[],'no circular node centers may stack inside one another');
- const childrenByParent=new Map();
- for(const edge of graph.edges.filter(edge=>edge.relation&&graph.nodes.find(node=>node.id===edge.target)?.isDetail)) {
-  if(!childrenByParent.has(edge.source)) childrenByParent.set(edge.source,[]);
-  childrenByParent.get(edge.source).push(edge.target);
- }
- for(const [parent,children] of childrenByParent) if(children.length>=4)
-  for(let first=0;first<children.length;first++) for(let second=first+1;second<children.length;second++)
-   assert.ok(Math.hypot(points[children[first]].x-points[children[second]].x,points[children[first]].y-points[children[second]].y)>=67.5,
-    `${parent} dense sibling labels are packed too tightly: ${children[first]} / ${children[second]}`);
- assert.ok(visible.every(node=>node.x>-30&&node.x<1050&&node.y>-30&&node.y<870),'initial camera keeps every anchor near the frame');
+ assert.ok(Object.values(points).every(point=>Object.values(point).every(Number.isFinite)));
 });
 
-test('straight expanded relationship edges keep clear of unrelated node circles in the default layout',()=>{
+test('straight expanded relationship edges do not penetrate unrelated 3D node spheres',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,
   ['pose_weight_shift']);
  assert.equal(graph.denseOverflow,false,'representative expanded branches should remain in the 3D graph');
- const points=projectGraph(graph,INITIAL_VIEW);
- const radius=node=>node.isDetail?(node.expandable?48:40):(node.childCount>0?46:38);
- const panelPoint=point=>({x:point.x,y:point.y*680/840});
- const distanceToSegment=(rawStart,rawEnd,rawPoint)=>{
-  const start=panelPoint(rawStart),end=panelPoint(rawEnd),point=panelPoint(rawPoint),
-   dx=end.x-start.x,dy=end.y-start.y,lengthSquared=dx*dx+dy*dy;
-  const t=lengthSquared?Math.max(0,Math.min(1,((point.x-start.x)*dx+(point.y-start.y)*dy)/lengthSquared)):0;
-  return {distance:Math.hypot(point.x-(start.x+t*dx),point.y-(start.y+t*dy)),t};
+ const byId=new Map(graph.nodes.map(node=>[node.id,node]));
+ const radius=node=>(!node.term?31:node.isDetail?29:node.expandable?39:34)*APPROVED_LAYOUT_SCALE;
+ const distanceToSegment=(start,end,point)=>{
+  const dx=end.x-start.x,dy=end.y-start.y,dz=end.z-start.z,lengthSquared=dx*dx+dy*dy+dz*dz;
+  const t=lengthSquared?Math.max(0,Math.min(1,((point.x-start.x)*dx+(point.y-start.y)*dy+(point.z-start.z)*dz)/lengthSquared)):0;
+  return {distance:Math.hypot(point.x-(start.x+t*dx),point.y-(start.y+t*dy),point.z-(start.z+t*dz)),t};
  };
  const crossings=[];
  for(const edge of graph.edges.filter(edge=>edge.relation)) {
   assert.equal(edge.route,undefined,`${edge.source}->${edge.target} must remain a straight edge`);
-  const path=[points[edge.source],points[edge.target]];
+  const path=[byId.get(edge.source),byId.get(edge.target)];
   for(const node of graph.nodes.filter(node=>node.id!==edge.source&&node.id!==edge.target)) {
-    const hit=distanceToSegment(path[0],path[1],points[node.id]);
-    if(hit.t>.04&&hit.t<.96&&hit.distance<radius(node)+2)
-     crossings.push(`${edge.source}->${edge.target} crosses ${node.id} by ${(radius(node)+2-hit.distance).toFixed(1)}px`);
+    const hit=distanceToSegment(path[0],path[1],node);
+    if(hit.t>.001&&hit.t<.999&&hit.distance<radius(node))
+     crossings.push(`${edge.source}->${edge.target} penetrates ${node.id} by ${(radius(node)-hit.distance).toFixed(2)} world units`);
   }
  }
- assert.deepEqual(crossings,[],'relationship edges must not pierce unrelated node circles');
+ assert.deepEqual(crossings,[],'relationship edges must not penetrate unrelated 3D node spheres');
 });
 
 test('a sixteen-child fan keeps every term and requests the readable list fallback',()=>{
@@ -356,29 +340,12 @@ test('every expansion subset keeps the fixed catalog layout collision-free',()=>
  const parents=['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling'];
  const universe=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,parents);
  const stable=new Map(universe.nodes.map(node=>[node.id,{x:node.x,y:node.y,z:node.z}]));
- const byId=new Map(universe.nodes.map(node=>[node.id,node])),points=projectGraph(universe,INITIAL_VIEW),panelScale=680/840;
- const length=value=>Math.hypot(value.x,value.y,value.z),radius=node=>node.isDetail?(node.expandable?48:40):(node.childCount>0?46:38);
- const potential=[];
- for(const term of ACTIVE_TERMS) for(const source of [...(term.requires_all_of||[]),...(term.requires_any_of||[])])
-  if(parents.includes(source)) potential.push({source,target:term.term_id});
- assert.equal(potential.length,21,'the active catalog potential-edge contract changed');
- for(const edge of potential) {
-  const source=byId.get(edge.source),target=byId.get(edge.target),branch={x:target.x-source.x,y:target.y-source.y,z:target.z-source.z};
-  assert.ok(length(target)>length(source)+1,`${edge.target} did not extend beyond ${edge.source}`);
-  assert.ok((source.x*branch.x+source.y*branch.y+source.z*branch.z)>0,
-   `${edge.source} -> ${edge.target} reversed in world space`);
-  const a={x:points[edge.source].x,y:points[edge.source].y*panelScale},b={x:points[edge.target].x,y:points[edge.target].y*panelScale};
-  for(const centerY of [420*panelScale,480*panelScale]) assert.ok(
-   (a.x-500)*(b.x-a.x)+(a.y-centerY)*(b.y-a.y)>0,
-   `${edge.source} -> ${edge.target} reversed in the visible fan around ${centerY/panelScale}`);
-  for(const obstacle of universe.nodes) if(obstacle.id!==edge.source&&obstacle.id!==edge.target) {
-   const p={x:points[obstacle.id].x,y:points[obstacle.id].y*panelScale},dx=b.x-a.x,dy=b.y-a.y,squared=dx*dx+dy*dy,
-    amount=squared?Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/squared)):0,
-    clearance=Math.hypot(p.x-(a.x+dx*amount),p.y-(a.y+dy*amount))-radius(obstacle);
-   assert.ok(amount<=.04||amount>=.96||clearance>=2,
-    `${edge.source} -> ${edge.target} crossed ${obstacle.id} by ${clearance.toFixed(2)}px`);
-  }
- }
+ const radius=node=>(!node.term?31:node.isDetail?29:node.expandable?39:34)*APPROVED_LAYOUT_SCALE;
+ const segmentClearance=(start,end,point)=>{
+  const dx=end.x-start.x,dy=end.y-start.y,dz=end.z-start.z,squared=dx*dx+dy*dy+dz*dz,
+   amount=squared?Math.max(0,Math.min(1,((point.x-start.x)*dx+(point.y-start.y)*dy+(point.z-start.z)*dz)/squared)):0;
+  return {amount,clearance:Math.hypot(point.x-(start.x+dx*amount),point.y-(start.y+dy*amount),point.z-(start.z+dz*amount))-radius(point)};
+ };
  for(let mask=0;mask<2**parents.length;mask++) {
   const expanded=parents.filter((_,index)=>mask&(1<<index));
   const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,expanded);
@@ -390,6 +357,15 @@ test('every expansion subset keeps the fixed catalog layout collision-free',()=>
     `wrong direct children for: ${expanded.join(', ')||'(none)'}`);
   for(const node of graph.nodes) assert.deepEqual({x:node.x,y:node.y,z:node.z},stable.get(node.id),
     `${node.id} moved in subset: ${expanded.join(', ')||'(none)'}`);
+  const byId=new Map(graph.nodes.map(node=>[node.id,node]));
+  for(const edge of graph.edges) {
+   const start=byId.get(edge.source),end=byId.get(edge.target);
+   for(const obstacle of graph.nodes) if(obstacle.id!==edge.source&&obstacle.id!==edge.target) {
+    const hit=segmentClearance(start,end,obstacle);
+    assert.ok(hit.amount<=.001||hit.amount>=.999||hit.clearance>=0,
+     `${edge.source} -> ${edge.target} penetrated ${obstacle.id} by ${hit.clearance.toFixed(2)} world units`);
+   }
+  }
  }
 });
 

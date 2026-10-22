@@ -1,9 +1,16 @@
 export const GRAPH_CATEGORY_COLORS = Object.freeze({
-  body:'#55C7E8',
-  pose:'#FF9A62',
-  composition:'#B69CFF',
-  perspective:'#65D6A6',
+  body:'#56C7D9',
+  pose:'#F4A261',
+  composition:'#B892FF',
+  perspective:'#6FD3A3',
   fallback:'#F2C75C',
+});
+
+export const GRAPH_DETAIL_COLORS = Object.freeze({
+  body:'#9CE4DA',
+  pose:'#FFC28F',
+  composition:'#D8C1FF',
+  perspective:'#A9E58B',
 });
 
 export function graphCategoryColor(role) {
@@ -17,5 +24,5 @@ function soften(color, amount=0.18) {
 
 export function graphNodeColor(role,isDetail=false) {
   const categoryColor=graphCategoryColor(role);
-  return isDetail?soften(categoryColor):categoryColor;
+  return isDetail?(GRAPH_DETAIL_COLORS[role]??soften(categoryColor)):categoryColor;
 }
