@@ -53,7 +53,12 @@ def test_codex_term_search_is_available_when_explicitly_configured(monkeypatch, 
     from backend.services.response_assembler import RoleSearchOutcome
     monkeypatch.setattr(term_search, 'get_settings', lambda: SimpleNamespace(
         llm_backend='codex-cli', searxng_base_url='http://127.0.0.1:8080'))
-    monkeypatch.setattr(app.state, 'catalog', snapshot_factory([card_factory('pose_standing')]), raising=False)
+    monkeypatch.setattr(app.state, 'catalog', snapshot_factory(
+        [card_factory('pose_standing')], feedback={'pose_standing': {
+            'plain_meaning_ko': '두 발 또는 한 발로 바닥을 지지하며 서 있는 기본 자세입니다.',
+            'selection_reason_template_ko': '서 있는 자세로 해석합니다.',
+            'reference_checkpoints_ko': ['지지하는 다리'],
+        }}), raising=False)
     monkeypatch.setattr(app.state, 'term_search_slots', asyncio.Semaphore(2), raising=False)
     async def search(role, fragments):
         return RoleSearchOutcome(role=role, code=ReasonCode.PIN_RESULTS_EMPTY)
