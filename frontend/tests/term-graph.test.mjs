@@ -32,6 +32,10 @@ test('projection rotates real depth and keeps extreme zoom finite', () => {
  assert.notEqual(front.depth,side.depth);
  for(const zoom of [-100,100]) for(const value of Object.values(projectNode(node,{yaw:0,pitch:0,zoom}))) assert.ok(Number.isFinite(value));
 });
+test('camera origin is centered in the graph viewport',()=>{
+ const point=projectNode({x:0,y:0,z:0},{yaw:0,pitch:0,zoom:1});
+ assert.deepEqual({x:point.x,y:point.y},{x:500,y:420});
+});
 test('multiple terms in the same category remain independent and toggle by ID', () => {
  let selected=toggleTerm([],HOME_TERMS[0].term_id);
  selected=toggleTerm(selected,HOME_TERMS[1].term_id);

@@ -1127,7 +1127,7 @@ export function projectNode(node, view) {
   const depth = node.y*Math.sin(view.pitch)+z*Math.cos(view.pitch);
   const perspective = 1100/(1100-depth);
   const zoom=clamp(view.zoom,.65,1.6);
-  return {x:500+x*perspective*zoom,y:480+y*perspective*zoom,depth,scale:clamp(perspective,.65,1.6),
+  return {x:500+x*perspective*zoom,y:420+y*perspective*zoom,depth,scale:clamp(perspective,.65,1.6),
     opacity:clamp(.84+depth/1800,.72,1)};
 }
 
