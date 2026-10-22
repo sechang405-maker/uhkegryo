@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from backend.main import app
@@ -194,6 +195,15 @@ def test_ac02_inactive_card_is_not_searchable(search_setup):
     app.state.catalog.active_cards.pop("pose_standing")
     response = TestClient(app).post("/api/term-search", json={"term_id": "pose_standing"})
     assert response.status_code == 404
+    assert search_setup.queries == search_setup.widgets == []
+
+
+def test_missing_user_description_never_falls_back_to_internal_prompt(search_setup):
+    app.state.catalog.feedback.pop("pose_standing")
+    with pytest.raises(HTTPException) as raised:
+        term_search.require_user_description(app.state.catalog, "pose_standing")
+    assert raised.value.status_code == 503
+    assert "팀 작성 초안" not in raised.value.detail
     assert search_setup.queries == search_setup.widgets == []
 
 

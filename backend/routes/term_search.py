@@ -18,6 +18,15 @@ router = APIRouter(tags=["term-search"])
 SEARCH_TIMEOUT_SECONDS = 25
 
 
+def require_user_description(snapshot, term_id: str) -> tuple[dict, str]:
+    """Return reviewed UI copy without ever exposing the internal answer draft."""
+    feedback = snapshot.feedback.get(term_id)
+    plain_meaning = feedback.get("plain_meaning_ko") if feedback else None
+    if not isinstance(plain_meaning, str) or not plain_meaning.strip():
+        raise HTTPException(503, "이 용어의 설명을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.")
+    return feedback, plain_meaning
+
+
 class TermSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -49,6 +58,7 @@ async def search_term(payload: TermSearchRequest, request: Request, response: Re
         raise HTTPException(404, "사용 가능한 용어를 찾을 수 없습니다.")
     if snapshot.is_direct_search_disabled(payload.term_id):
         raise HTTPException(409, "이 용어는 직접 검색할 수 없습니다.")
+    feedback, plain_meaning = require_user_description(snapshot, payload.term_id)
     slots = request.app.state.term_search_slots
     if slots.locked():
         raise HTTPException(429, "검색 중입니다. 잠시 후 다시 시도해 주세요.",
@@ -69,11 +79,10 @@ async def search_term(payload: TermSearchRequest, request: Request, response: Re
         outcome = RoleSearchOutcome(role=role, code=ReasonCode.PIN_SEARCH_UNAVAILABLE)
     finally:
         slots.release()
-    feedback = snapshot.feedback.get(payload.term_id, {})
     response.headers["Cache-Control"] = "no-store"
     return TermResult(
         role=role, term_id=payload.term_id, label_ko=card["label_ko"], label_en=card["label_en"],
-        plain_meaning_ko=feedback.get("plain_meaning_ko", card["source_answer_draft"]),
+        plain_meaning_ko=plain_meaning,
         selection_reason=feedback.get("selection_reason_template_ko"),
         reference_checkpoints=feedback.get("reference_checkpoints_ko", card["look_for"]),
         search_url=build_search_url(card["query_fragments"], suffix=payload.suffix),

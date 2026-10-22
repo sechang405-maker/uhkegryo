@@ -23,7 +23,11 @@
 .term-graph-view-toggle { display:flex; justify-content:flex-end; }
 .term-graph-responsive-notice { margin:10px 0 0; padding:10px 12px; border:1px solid var(--accent); border-radius:10px;
   background:var(--accent-surface); color:var(--text); font-size:13px; line-height:1.5; }
-.term-graph-help { color:var(--text-secondary); font-size:12px; line-height:1.65; margin:0; }
+.term-graph-help { color:var(--text-secondary); font-size:12px; line-height:1.55; margin:0; padding:0; list-style:none; }
+.term-graph-help li { display:grid; grid-template-columns:58px minmax(0,1fr); gap:8px; }
+.term-graph-help li + li { margin-top:5px; }
+.term-graph-help strong { color:var(--text); font-size:11px; }
+.term-graph-help span { min-width:0; }
 .term-graph button { cursor:pointer; }
 .term-graph button:disabled { opacity:.45; cursor:default; }
 .term-graph-view-toggle > button,.term-graph-controls button,.term-graph-actions button,.term-graph-selection-actions > :is(button,a) { flex-shrink:0; border-radius:8px; min-height:40px; padding:8px 12px; font-size:12px; }

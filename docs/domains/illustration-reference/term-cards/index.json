@@ -377,7 +377,7 @@
       "review_status": "reviewed"
     },
     "body_human_proportion": {
-      "plain_meaning_ko": "'인체 비례' 레퍼런스를 찾을 때 '머리·몸통·팔다리의 길이와 폭이 전신에서 이루는 관계', '의상 외곽선이 아니라 인물 기본 골격의 비례' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "머리·몸통·팔다리의 길이와 폭이 전신에서 이루는 크기 관계입니다.",
       "selection_reason_template_ko": "입력에서 '전신 비례 또는 머리 대비 신체 길이라는 명시' 단서가 확인될 때 인체 비례로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'human proportion' + 'figure reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -392,7 +392,7 @@
       "review_status": "reviewed"
     },
     "pose_legs_crossed_at_knee": {
-      "plain_meaning_ko": "'무릎 위 다리 꼬기' 레퍼런스를 찾을 때 '한쪽 다리가 다른 다리의 무릎 위로 올라감', '골반의 기울기와 앉은 지지점' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "앉은 상태에서 한쪽 다리를 다른 쪽 무릎 위로 올려 교차하는 자세입니다.",
       "selection_reason_template_ko": "입력에서 '의자에 앉아 다리를 꼰다는 묘사' 단서가 확인될 때 무릎 위 다리 꼬기로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'leg crossing pose reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -407,7 +407,7 @@
       "review_status": "reviewed"
     },
     "pose_ankles_crossed": {
-      "plain_meaning_ko": "'발목 교차' 레퍼런스를 찾을 때 '두 다리는 나란히 두고 발목만 교차함', '무릎 위 교차와 구분됨' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "두 다리는 나란히 두고 발목 부분만 서로 엇갈리게 겹치는 자세입니다.",
       "selection_reason_template_ko": "입력에서 '발목만 꼬는다는 묘사' 단서가 확인될 때 발목 교차로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'crossed ankles reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -422,7 +422,7 @@
       "review_status": "reviewed"
     },
     "pose_cross_legged_floor": {
-      "plain_meaning_ko": "'바닥 양반다리' 레퍼런스를 찾을 때 '바닥에 앉음', '정강이 또는 발목이 몸 앞에서 교차함' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "바닥에 앉아 두 정강이나 발목을 몸 앞에서 교차하는 자세입니다.",
       "selection_reason_template_ko": "입력에서 '바닥에 양반다리로 앉는다는 묘사' 단서가 확인될 때 바닥 양반다리로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'cross legged floor sitting' + 'pose reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -437,7 +437,7 @@
       "review_status": "reviewed"
     },
     "pose_support_chair": {
-      "plain_meaning_ko": "'의자 지지' 레퍼런스를 찾을 때 '엉덩이 또는 등·팔이 의자에 지지됨', '좌석과 신체 접점이 보임' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "엉덩이·등·팔 가운데 일부를 의자에 대어 몸의 무게를 받치는 자세입니다.",
       "selection_reason_template_ko": "입력에서 '의자에 앉거나 기대는다는 묘사' 단서가 확인될 때 의자 지지로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'sitting on chair' + 'pose reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -452,7 +452,7 @@
       "review_status": "reviewed"
     },
     "pose_support_floor": {
-      "plain_meaning_ko": "'바닥 지지' 레퍼런스를 찾을 때 '엉덩이·다리·손 또는 등이 바닥에 지지됨', '가구가 아닌 바닥이 주된 지지면임' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "엉덩이·다리·손 또는 등을 바닥에 대어 몸의 무게를 받치는 자세입니다.",
       "selection_reason_template_ko": "입력에서 '바닥에 앉거나 눕는다는 묘사' 단서가 확인될 때 바닥 지지로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'sitting on floor' + 'pose reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -467,7 +467,7 @@
       "review_status": "reviewed"
     },
     "pose_support_wall": {
-      "plain_meaning_ko": "'벽 기대기' 레퍼런스를 찾을 때 '등·어깨·손 중 일부가 벽에 닿음', '몸의 무게 일부가 벽으로 분산됨' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "등·어깨·손 가운데 일부를 벽에 대어 몸의 무게를 나누는 자세입니다.",
       "selection_reason_template_ko": "입력에서 '벽에 기대어 선다는 묘사' 단서가 확인될 때 벽 기대기로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'leaning against wall' + 'pose reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -482,7 +482,7 @@
       "review_status": "reviewed"
     },
     "pose_hand_pointing": {
-      "plain_meaning_ko": "'손가락으로 가리키기' 레퍼런스를 찾을 때 '검지가 특정 방향을 향함', '손목과 팔 방향이 가리키는 대상과 연결됨' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "검지를 펴서 특정 대상이나 방향을 가리키고 팔과 손목이 그 방향으로 이어지는 자세입니다.",
       "selection_reason_template_ko": "입력에서 '손가락으로 가리킨다는 묘사' 단서가 확인될 때 손가락으로 가리키기로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'pointing hand gesture' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -497,7 +497,7 @@
       "review_status": "reviewed"
     },
     "pose_hand_open_palm": {
-      "plain_meaning_ko": "'편 손바닥' 레퍼런스를 찾을 때 '손가락이 펴짐', '손바닥 방향이 관찰자 또는 대상 쪽을 향함' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "손가락을 펴고 손바닥 면을 관찰자나 대상 쪽으로 향하게 한 손 자세입니다.",
       "selection_reason_template_ko": "입력에서 '손바닥을 펴 보인다는 묘사' 단서가 확인될 때 편 손바닥로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'open palm hand gesture' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -512,7 +512,7 @@
       "review_status": "reviewed"
     },
     "pose_hand_fist": {
-      "plain_meaning_ko": "'주먹 쥐기' 레퍼런스를 찾을 때 '손가락이 손바닥 안쪽으로 접힘', '엄지가 손가락 바깥 또는 위쪽을 지지함' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "손가락을 손바닥 안쪽으로 접고 엄지로 바깥쪽을 감싸 쥔 손 자세입니다.",
       "selection_reason_template_ko": "입력에서 '주먹을 쥔다는 묘사' 단서가 확인될 때 주먹 쥐기로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'clenched fist hand pose' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -527,7 +527,7 @@
       "review_status": "reviewed"
     },
     "pose_action_two_hand_aiming": {
-      "plain_meaning_ko": "'양손 조준' 레퍼런스를 찾을 때 '양손이 하나의 방향을 향해 모임', '상체와 시선이 조준 방향에 정렬됨' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "양손을 한 방향으로 모으고 상체와 시선을 목표 방향에 맞추는 자세입니다.",
       "selection_reason_template_ko": "입력에서 '양손으로 든 소품을 목표에 겨눈다는 묘사' 단서가 확인될 때 양손 조준로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'rifle aiming' + 'reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -1102,7 +1102,7 @@
       "review_status": "reviewed"
     },
     "perspective_one_point": {
-      "plain_meaning_ko": "'1점 투시' 레퍼런스를 찾을 때 '깊이 방향의 평행선이 한 소실점으로 모임', '정면을 향한 복도·방·도로처럼 수직선이 평행하게 유지되는 공간' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "깊이 방향의 평행선이 하나의 소실점으로 모이도록 공간을 표현하는 원근 방식입니다.",
       "selection_reason_template_ko": "입력에서 '1점 투시 또는 하나의 소실점이라는 명시' 단서가 확인될 때 1점 투시로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'one point perspective' + 'character background reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -1117,7 +1117,7 @@
       "review_status": "reviewed"
     },
     "perspective_two_point": {
-      "plain_meaning_ko": "'2점 투시' 레퍼런스를 찾을 때 '좌우 깊이 방향 선이 서로 다른 두 소실점으로 모임', '모서리가 화면을 향하고 수직선은 평행하게 유지되는 공간' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "좌우 깊이 방향의 선이 서로 다른 두 소실점으로 모이도록 공간을 표현하는 원근 방식입니다.",
       "selection_reason_template_ko": "입력에서 '2점 투시 또는 두 소실점이라는 명시' 단서가 확인될 때 2점 투시로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'two point perspective' + 'character reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [
@@ -1132,7 +1132,7 @@
       "review_status": "reviewed"
     },
     "layout_composition": {
-      "plain_meaning_ko": "'구도' 레퍼런스를 찾을 때 '인물·배경·빈 공간이 화면 안에서 이루는 배치', '시선이 향하는 주된 요소와 보조 요소의 관계' 단서를 우선 확인한다.",
+      "plain_meaning_ko": "인물·배경·빈 공간과 주된 요소를 화면 안에 배치해 시선의 흐름을 만드는 방법입니다.",
       "selection_reason_template_ko": "입력에서 '구도 또는 화면 배치라는 명시' 단서가 확인될 때 구도로 해석합니다.",
       "pinterest_search_notice_ko": "Pinterest에서는 'character illustration' + 'composition reference' 검색 조각으로 찾습니다.",
       "reference_checkpoints_ko": [

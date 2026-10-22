@@ -12,6 +12,7 @@ import {
   pauseGraphMotion,
   reconcileGraphMotion,
 } from '../lib/term-graph-motion.mjs';
+import { GRAPH_HELP_ITEMS } from '../lib/term-graph-help.mjs';
 
 const GRAPH_MOTION_DURATION=180;
 
@@ -294,7 +295,9 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
       </div>
       <details className="term-graph-help-disclosure">
         <summary>조작 도움말</summary>
-        <p id="term-graph-help" className="term-graph-help">노드 클릭으로 선택·해제 · 드래그로 회전 · 버튼/두 손가락으로 확대 · 공간에 초점을 두고 방향키로 회전 · Tab으로 용어 이동</p>
+        <ul id="term-graph-help" className="term-graph-help">
+          {GRAPH_HELP_ITEMS.map(item=><li key={item.label}><strong>{item.label}</strong><span>{item.description}</span></li>)}
+        </ul>
       </details>
     </>}
     <div className="term-graph-lower-overlay">
