@@ -4,6 +4,7 @@ import {
   buildGraphDepthLayers,
   perspectiveDepthAt,
 } from '../lib/term-graph-edges.mjs';
+import { projectNode } from '../lib/term-graph.mjs';
 
 const point=(x,y,depth,opacity=1)=>({x,y,depth,opacity});
 const node=(id,depth)=>({id,term:{term_id:id},motionOrigin:false,depth});
@@ -81,34 +82,72 @@ test('motion origin helpers do not create visible depth planes',()=>{
   assert.equal(result.layers.flatMap(layer=>layer.segments).length,1);
 });
 
-test('a routed edge keeps every leg in the shared depth composition and trims only real endpoints',()=>{
-  const nodes=[node('source',-200),node('middle',0),node('target',200)];
-  const points={source:point(100,200,-200),middle:point(500,500,0),target:point(900,200,200)};
-  const edge={source:'source',target:'target',relation:'all'};
-  const result=buildGraphDepthLayers(nodes,[edge],points,{endpointTrim:40,
-    edgeRoutes:{'source:target:all':[point(500,100,0)]}});
-  const segments=result.layers.flatMap(layer=>layer.segments);
-  assert.ok(segments.some(segment=>segment.x2===500&&segment.y2===100),'first routed leg was not rendered');
-  assert.ok(segments.some(segment=>segment.x1===500&&segment.y1===100),'second routed leg was not rendered');
-  assert.equal(segments.filter(segment=>segment.endpoint==='source').length,1);
-  assert.equal(segments.filter(segment=>segment.endpoint==='target').length,1);
-  assert.ok(segments.filter(segment=>segment.x1===500||segment.x2===500)
-    .some(segment=>segment.endpointMasks.length===0),'route joint was mistaken for a node footprint');
-});
-
-test('a front edge is locally clipped at an unrelated node instead of being flattened behind every node',()=>{
+test('a front edge remains visible while crossing an unrelated rear term node',()=>{
   const nodes=[node('source',200),node('crossed',-200),node('target',200)];
   const points={source:point(100,200,200),crossed:point(500,200,-200),target:point(900,200,200)};
   for(const viewport of [{width:1000,height:840},{width:1474,height:680},{width:760,height:480}]) {
     const result=buildGraphDepthLayers(nodes,[{source:'source',target:'target',relation:'all'}],points,{endpointTrim:0,viewport});
-    const segments=result.layers.flatMap(layer=>layer.segments.map(segment=>({...segment,zIndex:layer.zIndex}))),
-      designRadius=40/(viewport.width/1000),left=500-designRadius,right=500+designRadius;
+    const segments=result.layers.flatMap(layer=>layer.segments.map(segment=>({...segment,zIndex:layer.zIndex})));
     assert.ok(segments.some(segment=>segment.zIndex>result.nodeZ.crossed),'the whole connector was incorrectly sent behind');
-    assert.ok(segments.every(segment=>segment.x2<=left+1e-6||segment.x1>=right-1e-6),
-      `a visible connector fragment remained inside the unrelated circle at ${viewport.width}x${viewport.height}`);
-    assert.ok(segments.some(segment=>Math.abs(segment.x2-left)<1e-6));
-    assert.ok(segments.some(segment=>Math.abs(segment.x1-right)<1e-6));
+    assert.ok(segments.some(segment=>segment.x1<500&&segment.x2>500),
+      `the front connector disappeared inside the rear circle at ${viewport.width}x${viewport.height}`);
   }
+});
+
+test('a rear edge stays below unrelated front term and category nodes',()=>{
+  const category={id:'category',role:'category',motionOrigin:false};
+  const nodes=[node('source',-200),node('term',200),category,node('target',-200)];
+  const points={source:point(100,200,-200),term:point(400,200,200),category:point(600,200,200),target:point(900,200,-200)};
+  const result=buildGraphDepthLayers(nodes,[{source:'source',target:'target',relation:'all'}],points,
+    {endpointTrim:0,viewport:{width:1000,height:840}});
+  const segments=result.layers.flatMap(layer=>layer.segments.map(segment=>({...segment,zIndex:layer.zIndex})));
+  assert.ok(segments.some(segment=>segment.x1<400&&segment.x2>400),'the straight edge was incorrectly clipped at the term');
+  assert.ok(segments.some(segment=>segment.x1<600&&segment.x2>600),'the straight edge was incorrectly clipped at the category');
+  assert.ok(segments.every(segment=>segment.zIndex<result.nodeZ.term&&segment.zIndex<result.nodeZ.category),
+    'the rear edge escaped above a front node');
+});
+
+test('an edge crossing a node depth inside its circle changes painter order at the crossing',()=>{
+  const cutT=(1/1100-1/1600)/(1/600-1/1600),crossingX=100+800*cutT;
+  const nodes=[node('source',-500),node('crossed',0),node('target',500)];
+  const points={source:point(100,200,-500),crossed:point(crossingX,200,0),target:point(900,200,500)};
+  const result=buildGraphDepthLayers(nodes,[{source:'source',target:'target',relation:'all'}],points,{endpointTrim:0});
+  const segments=result.layers.flatMap(layer=>layer.segments.map(segment=>({...segment,zIndex:layer.zIndex})));
+  const rear=segments.find(segment=>segment.x2<=crossingX+1e-6&&segment.x2>crossingX-40);
+  const front=segments.find(segment=>segment.x1>=crossingX-1e-6&&segment.x1<crossingX+40);
+  assert.ok(rear&&rear.zIndex<result.nodeZ.crossed,'the rear half did not stay below the node');
+  assert.ok(front&&front.zIndex>result.nodeZ.crossed,'the front half did not rise above the node');
+});
+
+test('straight edge painter order follows yaw, pitch, and zoom without changing world points',()=>{
+  const source={id:'source',term:{term_id:'source'},motionOrigin:false,x:-300,y:0,z:120};
+  const target={id:'target',term:{term_id:'target'},motionOrigin:false,x:300,y:0,z:120};
+  const crossed={id:'crossed',role:'pose',motionOrigin:false,x:0,y:0,z:0};
+  const nodes=[source,crossed,target],edge={source:'source',target:'target',relation:'all'},
+    world=nodes.map(({x,y,z})=>({x,y,z}));
+  for(const view of [
+    {yaw:0,pitch:0,zoom:.65},
+    {yaw:0,pitch:0,zoom:1.25},
+    {yaw:Math.PI,pitch:0,zoom:.9},
+  ]) {
+    const points=Object.fromEntries(nodes.map(item=>[item.id,projectNode(item,view)])),
+      result=buildGraphDepthLayers(nodes,[edge],points,{endpointTrim:0}),
+      segments=result.layers.flatMap(layer=>layer.segments.map(segment=>({...segment,zIndex:layer.zIndex}))),
+      edgeIsFront=points.source.depth>points.crossed.depth;
+    assert.ok(segments.every(segment=>edgeIsFront?
+      segment.zIndex>result.nodeZ.crossed:segment.zIndex<result.nodeZ.crossed));
+  }
+  const verticalSource={...source,x:-300,y:120,z:0},verticalTarget={...target,x:300,y:120,z:0};
+  for(const pitch of [-.6,.6]) {
+    const verticalNodes=[verticalSource,crossed,verticalTarget],view={yaw:0,pitch,zoom:.9},
+      points=Object.fromEntries(verticalNodes.map(item=>[item.id,projectNode(item,view)])),
+      result=buildGraphDepthLayers(verticalNodes,[edge],points,{endpointTrim:0}),
+      segments=result.layers.flatMap(layer=>layer.segments.map(segment=>({...segment,zIndex:layer.zIndex}))),
+      edgeIsFront=points.source.depth>points.crossed.depth;
+    assert.ok(segments.every(segment=>edgeIsFront?
+      segment.zIndex>result.nodeZ.crossed:segment.zIndex<result.nodeZ.crossed));
+  }
+  assert.deepEqual(nodes.map(({x,y,z})=>({x,y,z})),world);
 });
 
 test('near-equal depth clustering never leaves a visible node without a layer',()=>{

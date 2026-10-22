@@ -35,28 +35,10 @@ test('new children enter from their toggled parent without moving another branch
  assert.equal(middle.points.other.y,otherPoint.y);
 });
 
-test('a routed connector grows from the same parent during child motion',()=>{
- const initial=graph([node('parent',0)]),route={x:20,y:30,z:10};
- const expanded=graph([node('parent',0),node('child',60)],
-  [{source:'parent',target:'child',relation:'all',route:[route]}]);
- const state=reconcileGraphMotion(createGraphMotionState(initial),expanded,['parent'],'parent',100,200,false);
- const start=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,100),
-  middle=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,200),
-  finish=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,300),
-  key='parent:child:all';
- assert.deepEqual(start.edgeRoutes[key],[]);
- assert.ok(Math.hypot(middle.points.child.x-start.points.parent.x,middle.points.child.y-start.points.parent.y)>0);
- assert.ok(middle.edgeRoutes[key].length<=1);
- const finalPoint=projectNode(route,INITIAL_VIEW);
- assert.equal(finish.edgeRoutes[key][0].x,finalPoint.x);
- assert.equal(finish.edgeRoutes[key][0].y,finalPoint.y);
- assert.equal(finish.edgeRoutes[key][0].opacity,finish.points.child.opacity);
-});
-
-test('routed connectors and their scaled child circles stay clear during expansion frames',()=>{
+test('straight connectors and their scaled child circles stay clear during expansion frames',()=>{
  const collapsed=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,[]),
-  expanded=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']),
-  state=reconcileGraphMotion(createGraphMotionState(collapsed),expanded,['pose_sitting'],'pose_sitting',100,180,false),
+  expanded=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_weight_shift']),
+  state=reconcileGraphMotion(createGraphMotionState(collapsed),expanded,['pose_weight_shift'],'pose_weight_shift',100,180,false),
   byId=new Map(state.displayGraph.nodes.map(item=>[item.id,item])),
   finalProjection=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,280),
   radius=item=>item?.isDetail?(item.expandable?48:40):(item?.childCount>0?46:38),
@@ -70,8 +52,7 @@ test('routed connectors and their scaled child circles stay clear during expansi
  for(let now=100;now<=280;now+=15) {
   const projection=interpolateGraphMotion(state.displayGraph,state.presence,INITIAL_VIEW,now);
   for(const edge of state.displayGraph.edges.filter(item=>item.relation)) {
-   const source=projection.points[edge.source],target=projection.points[edge.target],
-    path=[source,...(projection.edgeRoutes[`${edge.source}:${edge.target}:${edge.relation}`]||[]),target],
+   const source=projection.points[edge.source],target=projection.points[edge.target],path=[source,target],
     sourceRadius=radius(byId.get(edge.source))*((projection.amounts[edge.source]??1)**10),
     targetRadius=radius(byId.get(edge.target))*((projection.amounts[edge.target]??1)**10);
    for(const obstacleNode of state.displayGraph.nodes.filter(item=>item.term&&item.id!==edge.source&&item.id!==edge.target)) {

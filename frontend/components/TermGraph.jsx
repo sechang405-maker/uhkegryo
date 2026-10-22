@@ -52,9 +52,8 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     [graph,motionState.presence,view,motionNow]);
   const points=projection.points;
   const colorByNodeId=useMemo(()=>new Map(graph.nodes.map(node=>[node.id,graphNodeColor(node.role,Boolean(node.isDetail))])),[graph.nodes]);
-  const depthComposition=useMemo(()=>buildGraphDepthLayers(graph.nodes,graph.edges,points,
-    {viewport:sceneSize,edgeRoutes:projection.edgeRoutes}),
-    [graph.nodes,graph.edges,points,projection.edgeRoutes,sceneSize]);
+  const depthComposition=useMemo(()=>buildGraphDepthLayers(graph.nodes,graph.edges,points,{viewport:sceneSize}),
+    [graph.nodes,graph.edges,points,sceneSize]);
   useEffect(()=>{
     setMotionState(current=>createGraphMotionState(
       buildExpandedTermGraph(terms,catalogTerms,current.expandedIds),current.expandedIds));
@@ -273,14 +272,12 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
           const motionAmount=projection.amounts[node.id]??1;
           const exiting=motion?.target===0;
           const interactive=!motion;
-          // A relationship route and its child move from the same parent. Scale
-          // the rendered child footprint by that same presence amount so an
-          // entering/exiting circle cannot temporarily cover its own routed
-          // connector or a neighbouring route before reaching its fixed size.
+          // A straight relationship edge and its child move from the same
+          // parent. Scale the rendered child footprint by the same presence
+          // amount so entering siblings do not cover each other's connectors.
           // Keep emerging siblings as a tiny seed while their safe paths fan
           // out from the same parent, then settle to full size near the fixed
-          // destination. This avoids a readable circle being crossed by a
-          // sibling connector during the short expansion transition.
+          // destination, without changing any fixed world coordinate.
           const presenceScale=motion?Math.max(.001,motionAmount**10):1;
           const baseNodeScale=node.term?1:p.scale;
           const nodeScale=baseNodeScale*presenceScale;

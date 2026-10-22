@@ -114,152 +114,41 @@ const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
 // what keeps 14px labels and the integrated control readable after projection.
 const nodeCircleRadius=node=>node.isDetail?(node.expandable?56:48):(node.childCount>0?52:44);
 const renderedCircleRadius=node=>node.isDetail?(node.expandable?48:40):(node.childCount>0?46:38);
+const GRAPH_PANEL_Y_SCALE=680/840;
+const screenCircleDistance=(first,second)=>Math.hypot(first.x-second.x,(first.y-second.y)*GRAPH_PANEL_Y_SCALE);
 
-// The SVG viewBox is intentionally stretched to the real graph panel while
-// node circles stay a fixed CSS-pixel size. Route in representative desktop
-// panel pixels, not raw viewBox units, so vertical compression cannot turn a
-// safe design-space line into a line through a rendered circle.
-const ROUTE_PANEL_SCALE={x:1,y:680/840};
-const routeDistance=(a,b)=>Math.hypot((a.x-b.x)*ROUTE_PANEL_SCALE.x,(a.y-b.y)*ROUTE_PANEL_SCALE.y);
-
-function screenSegmentClearance(start,end,obstacle,obstacleRadius) {
-  const dx=(end.x-start.x)*ROUTE_PANEL_SCALE.x,dy=(end.y-start.y)*ROUTE_PANEL_SCALE.y,
-    ox=(obstacle.x-start.x)*ROUTE_PANEL_SCALE.x,oy=(obstacle.y-start.y)*ROUTE_PANEL_SCALE.y,
-    lengthSquared=dx*dx+dy*dy;
-  const t=lengthSquared?clamp((ox*dx+oy*dy)/lengthSquared,0,1):0;
-  return Math.hypot(ox-t*dx,oy-t*dy)-obstacleRadius;
+function straightEdgeDistance(start,end,obstacle) {
+  const sx=start.x,sy=start.y*GRAPH_PANEL_Y_SCALE,ex=end.x,ey=end.y*GRAPH_PANEL_Y_SCALE,
+    ox=obstacle.x,oy=obstacle.y*GRAPH_PANEL_Y_SCALE,dx=ex-sx,dy=ey-sy,lengthSquared=dx*dx+dy*dy,
+    amount=lengthSquared?clamp(((ox-sx)*dx+(oy-sy)*dy)/lengthSquared,0,1):0;
+  return Math.hypot(ox-(sx+dx*amount),oy-(sy+dy*amount));
 }
 
-function routeScreenPath(start,end,obstacles) {
-  const clears=(from,to)=>obstacles.every(obstacle=>
-    screenSegmentClearance(from,to,obstacle.point,obstacle.radius)>=0);
-  if(clears(start,end)) return [];
-  const step=16,minX=14,maxX=986,minY=82,maxY=766,
-    columns=Math.floor((maxX-minX)/step)+1,rows=Math.floor((maxY-minY)/step)+1,
-    key=(column,row)=>`${column}:${row}`,
-    point=(column,row)=>({x:minX+column*step,y:minY+row*step});
-  const blocked=(column,row)=>{
-    const candidate=point(column,row);
-    return obstacles.some(obstacle=>routeDistance(candidate,obstacle.point)<obstacle.radius);
-  };
-  const heap=[];
-  const push=item=>{
-    heap.push(item);
-    for(let index=heap.length-1;index>0;) {
-      const parent=Math.floor((index-1)/2);
-      if(heap[parent].score<=heap[index].score) break;
-      [heap[parent],heap[index]]=[heap[index],heap[parent]];index=parent;
-    }
-  };
-  const pop=()=>{
-    const first=heap[0],last=heap.pop();
-    if(heap.length&&last) {
-      heap[0]=last;
-      for(let index=0;;) {
-        const left=index*2+1,right=left+1;
-        let smallest=index;
-        if(left<heap.length&&heap[left].score<heap[smallest].score) smallest=left;
-        if(right<heap.length&&heap[right].score<heap[smallest].score) smallest=right;
-        if(smallest===index) break;
-        [heap[index],heap[smallest]]=[heap[smallest],heap[index]];index=smallest;
-      }
-    }
-    return first;
-  };
-  const cost=new Map(),previous=new Map(),visited=new Set();
-  for(let column=0;column<columns;column++) for(let row=0;row<rows;row++) {
-    if(blocked(column,row)) continue;
-    const candidate=point(column,row),distance=routeDistance(candidate,start);
-    if(distance>168||!clears(start,candidate)) continue;
-    const id=key(column,row);
-    cost.set(id,distance);previous.set(id,null);
-    push({column,row,id,score:distance+routeDistance(candidate,end)});
-  }
-  const neighbors=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-  let goal=null;
-  while(heap.length) {
-    const current=pop();
-    if(!current||visited.has(current.id)) continue;
-    visited.add(current.id);
-    const currentPoint=point(current.column,current.row);
-    if(clears(currentPoint,end)) {goal=current;break;}
-    for(const [dx,dy] of neighbors) {
-      const column=current.column+dx,row=current.row+dy;
-      if(column<0||column>=columns||row<0||row>=rows||blocked(column,row)) continue;
-      const nextPoint=point(column,row);
-      if(!clears(currentPoint,nextPoint)) continue;
-      const id=key(column,row),nextCost=cost.get(current.id)+routeDistance(nextPoint,currentPoint);
-      if(nextCost>=(cost.get(id)??Infinity)) continue;
-      cost.set(id,nextCost);previous.set(id,current.id);
-      push({column,row,id,score:nextCost+routeDistance(nextPoint,end)});
-    }
-  }
-  if(!goal) return null;
-  const reversed=[];
-  for(let id=goal.id;id;) {
-    const [column,row]=id.split(':').map(Number);reversed.push(point(column,row));id=previous.get(id);
-  }
-  const raw=[start,...reversed.reverse(),end],simplified=[start];
-  for(let from=0;from<raw.length-1;) {
-    let next=raw.length-1;
-    while(next>from+1&&!clears(raw[from],raw[next])) next-=1;
-    simplified.push(raw[next]);from=next;
-  }
-  return simplified.slice(1,-1);
+function straightEdgeClearance(start,end,obstacle) {
+  const sx=start.x,sy=start.y*GRAPH_PANEL_Y_SCALE,ex=end.x,ey=end.y*GRAPH_PANEL_Y_SCALE,
+    ox=obstacle.x,oy=obstacle.y*GRAPH_PANEL_Y_SCALE,dx=ex-sx,dy=ey-sy,lengthSquared=dx*dx+dy*dy,
+    amount=lengthSquared?clamp(((ox-sx)*dx+(oy-sy)*dy)/lengthSquared,0,1):0;
+  return {distance:Math.hypot(ox-(sx+dx*amount),oy-(sy+dy*amount)),amount};
 }
 
-function routeRelationshipEdges(nodes,edges) {
-  const byId=new Map(nodes.map(node=>[node.id,node])),points=projectGraph({nodes},INITIAL_VIEW),
-    parentByChild=new Map(edges.filter(edge=>edge.relation).map(edge=>[edge.target,edge.source]));
-  let overflow=false;
-  for(const edge of edges.filter(edge=>edge.relation)) {
-    const source=points[edge.source],target=points[edge.target];
-    if(!source||!target) continue;
-    const obstacles=nodes.filter(node=>node.id!==edge.source&&node.id!==edge.target&&
-      (!node.isDetail||parentByChild.get(node.id)===edge.source))
-      .map(node=>({point:points[node.id],radius:renderedCircleRadius(node)+2}))
-      // When two rendered endpoint circles already touch, no connector can
-      // enter its owner without also entering the neighbour. Leave that small
-      // endpoint footprint to the existing depth masks; route genuine mid-edge
-      // crossings around every other circle.
-      .filter(obstacle=>routeDistance(obstacle.point,source)>=
-          obstacle.radius+renderedCircleRadius(byId.get(edge.source))&&
-        routeDistance(obstacle.point,target)>=
-          obstacle.radius+renderedCircleRadius(byId.get(edge.target)));
-    const screenRoute=routeScreenPath(source,target,obstacles);
-    if(screenRoute===null) {overflow=true;continue;}
-    if(!screenRoute.length) continue;
-    const path=[source,...screenRoute,target],segmentLengths=[];
-    let total=0;
-    for(let index=0;index<path.length-1;index++) {
-      const length=Math.hypot(path[index+1].x-path[index].x,path[index+1].y-path[index].y);
-      segmentLengths.push(length);total+=length;
-    }
-    let travelled=0;
-    edge.route=screenRoute.map((screen,index)=>{
-      travelled+=segmentLengths[index];
-      const amount=total?travelled/total:0,
-        depth=clamp(source.depth+(target.depth-source.depth)*amount,-180,180);
-      return worldFromInitialProjection(screen.x,screen.y,depth);
-    });
+function straightLayoutIsUnsafe(nodes,edges) {
+  const projected=projectGraph({nodes},INITIAL_VIEW);
+  for(let first=0;first<nodes.length;first++) for(let second=first+1;second<nodes.length;second++) {
+    const a=nodes[first],b=nodes[second],pa=projected[a.id],pb=projected[b.id];
+    if(!pa||!pb||(!a.isDetail&&!b.isDetail)) continue;
+    if(screenCircleDistance(pa,pb)<renderedCircleRadius(a)+renderedCircleRadius(b)+8) return true;
   }
-  // Routing stays stable when another branch appears. Validate that stable
-  // route against every currently visible circle; if branch territories ever
-  // become too dense to preserve, use the existing readable-list fallback
-  // instead of moving old nodes or silently drawing through the new branch.
   for(const edge of edges.filter(edge=>edge.relation)) {
-    const source=points[edge.source],target=points[edge.target];
+    const source=projected[edge.source],target=projected[edge.target];
     if(!source||!target) continue;
-    const path=[source,...(edge.route||[]).map(point=>projectNode(point,INITIAL_VIEW)),target],
-      sourceRadius=renderedCircleRadius(byId.get(edge.source)),targetRadius=renderedCircleRadius(byId.get(edge.target));
-    for(const node of nodes.filter(node=>node.id!==edge.source&&node.id!==edge.target)) {
-      const obstacle=points[node.id],radius=renderedCircleRadius(node)+2;
-      if(routeDistance(obstacle,source)<radius+sourceRadius||
-        routeDistance(obstacle,target)<radius+targetRadius) continue;
-      if(path.slice(0,-1).some((point,index)=>screenSegmentClearance(point,path[index+1],obstacle,radius)<0)) overflow=true;
+    for(const obstacleNode of nodes.filter(node=>node.id!==edge.source&&node.id!==edge.target)) {
+      const obstacle=projected[obstacleNode.id];
+      if(!obstacle) continue;
+      const hit=straightEdgeClearance(source,target,obstacle);
+      if(hit.amount>.01&&hit.amount<.99&&hit.distance<renderedCircleRadius(obstacleNode)+2) return true;
     }
   }
-  return {overflow};
+  return false;
 }
 
 function separateBaseCircleOverlaps(nodes) {
@@ -505,15 +394,18 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
         vectorLength(candidate)<=vectorLength(primary)+1||angleBetween(candidate,category)>=Math.PI/3) return;
       const clearance=Math.min(...obstacles.map(obstacle=>{
         const projected=projectNode(obstacle,INITIAL_VIEW);
-        return Math.hypot(point.x-projected.x,point.y-projected.y)-renderedCircleRadius(node)-renderedCircleRadius(obstacle)-8;
-      }));
+        return screenCircleDistance(point,projected)-renderedCircleRadius(node)-renderedCircleRadius(obstacle)-8;
+      })),edgeIntrusion=obstacles.reduce((total,obstacle)=>{
+        const projected=projectNode(obstacle,INITIAL_VIEW),hit=straightEdgeClearance(parentPoint,point,projected);
+        return total+(hit.amount>.01&&hit.amount<.99?Math.max(0,renderedCircleRadius(obstacle)+2-hit.distance):0);
+      },0);
       // Projection clearance is screen-space identical for the five depth
       // candidates. Quantize it and give the middle depth an explicit stable
       // preference so tiny engine-specific floating-point differences cannot
       // select a different 3D world anchor during hydration.
-      const cellPenalty=denseFan?(Math.abs(offset-baseOffset)*180+Math.abs(candidateRadius-targetScreenRadius)*.28):0,
+      const cellPenalty=Math.abs(offset-baseOffset)*180+Math.abs(candidateRadius-targetScreenRadius)*.28,
         stablePenalty=cellPenalty+Math.abs(depthSample-2)*1e-4,roundedClearance=Math.round(clearance*1e6)/1e6;
-      if(roundedClearance>=0) {
+      if(roundedClearance>=0&&edgeIntrusion===0) {
         if(stablePenalty<bestSeparatedPenalty) {bestPoint=candidate;bestSeparatedPenalty=stablePenalty;bestClearance=roundedClearance;}
       } else if(!denseFan&&bestSeparatedPenalty===Infinity&&roundedClearance>bestClearance) {
         bestPoint=candidate;bestClearance=roundedClearance;
@@ -527,11 +419,13 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
           for(let depthSample=0;depthSample<5;depthSample++) consider(candidateRadius,offset,depthSample);
       }
     } else {
-      const radialOffsets=[-180,-120,-60,-24,0,24,48],samplesPerDepth=25*radialOffsets.length;
-      for(let sample=0;sample<samplesPerDepth*5;sample++) {
-        const angleSample=sample%25,radialSample=Math.floor(sample/25)%radialOffsets.length,depthSample=Math.floor(sample/samplesPerDepth),
-          candidateRadius=targetScreenRadius+radialOffsets[radialSample];
-        consider(candidateRadius,clamp(baseOffset+(angleSample-12)/12*(half/Math.max(3,slots)*.7),-half*.98,half*.98),depthSample);
+      // A sparse child still needs the complete outward cone. Restricting it
+      // to a narrow preferred slot made its only straight connector pass
+      // through a nearby base term even though open space existed nearby.
+      for(let angleSample=0;angleSample<=72;angleSample++) {
+        const offset=-1.0+2*angleSample/72;
+        for(let candidateRadius=parentScreenRadius+96;candidateRadius<=628;candidateRadius+=18)
+          for(let depthSample=0;depthSample<5;depthSample++) consider(candidateRadius,offset,depthSample);
       }
     }
     if(!bestPoint) {placing.delete(id);return false;}
@@ -546,9 +440,13 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
       children=canonical.map(id=>visualParent.get(id)===parentId&&byId.get(id)?byId.get(id):
         ({id,role:parent.role,isDetail:true,expandable:(canonicalChildrenByParent.get(id)||[]).length>0}));
     if(canonical.length<4||children.length<2) return false;
+    // A dense fan cannot keep fixed-size labels and straight connectors clear
+    // inside its parent's outward sector once it exceeds this capacity. Use the
+    // existing complete list rather than bending edges or stacking children.
+    if(canonical.length>8) return false;
     const parentPoint=projectNode(parent,INITIAL_VIEW),parentRadius=Math.hypot(parentPoint.x-GRAPH_CENTER.x,parentPoint.y-GRAPH_CENTER.y),
       parentAngle=Math.atan2(parentPoint.y-GRAPH_CENTER.y,parentPoint.x-GRAPH_CENTER.x),
-      half=canonical.length>12?1.25:Math.min(.86,screenTerritoryHalfAngle(parent)+.04),
+      half=canonical.length>=5?1.16:Math.min(.94,screenTerritoryHalfAngle(parent)+.12),
       frameBias=Math.sin(parentAngle)<0?half*.28:-half*.28,
       immutable=nodes.filter(node=>!node.isDetail&&node.id!==parentId),
       immutablePoints=immutable.map(node=>({node,point:projectNode(node,INITIAL_VIEW)}));
@@ -577,12 +475,16 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
           }
           if(!chosen) continue;
           const clearance=Math.min(...immutablePoints.map(({node,point})=>
-            Math.hypot(screen.x-point.x,screen.y-point.y)-renderedCircleRadius(child)-renderedCircleRadius(node)-8));
+            screenCircleDistance(screen,point)-renderedCircleRadius(child)-renderedCircleRadius(node)-8)),
+            edgeIntrusion=immutablePoints.reduce((total,{node,point})=>
+              total+Math.max(0,renderedCircleRadius(node)+2-straightEdgeDistance(parentPoint,screen,point)),0);
           const candidateDepth=projectNode(chosen.world,INITIAL_VIEW).depth,
             coveredCenterCount=immutablePoints.filter(({node,point})=>point.depth>candidateDepth+.5&&
-            Math.hypot(screen.x-point.x,screen.y-point.y)<renderedCircleRadius(node)+4).length;
+            screenCircleDistance(screen,point)<renderedCircleRadius(node)+4).length;
+          if(clearance<0||edgeIntrusion>0||coveredCenterCount>0) continue;
           const preference=Math.abs(offset-preferredOffset)*170+Math.abs(candidateRadius-preferredRadius)*.3+
-            chosen.depthCost*.015-Math.min(clearance,80)*.04+Math.max(0,-clearance)*5+coveredCenterCount*10000;
+            chosen.depthCost*.015-Math.min(clearance,80)*.04+Math.max(0,-clearance)*5+
+            edgeIntrusion*1000+coveredCenterCount*10000;
           screenCandidates.push({world:chosen.world,x:screen.x,y:screen.y,offset,candidateRadius,preference});
         }
       }
@@ -606,6 +508,9 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     }
     const order=[...children].sort((a,b)=>candidateMap.get(a.id).length-candidateMap.get(b.id).length||
       canonical.indexOf(a.id)-canonical.indexOf(b.id)||a.id.localeCompare(b.id));
+    const siblingEdgeIntrusion=(child,candidate,saved)=>
+      Math.max(0,renderedCircleRadius(saved.child)+2-straightEdgeDistance(parentPoint,candidate,saved.candidate))+
+      Math.max(0,renderedCircleRadius(child)+2-straightEdgeDistance(parentPoint,saved.candidate,candidate));
     const applyAssignment=assigned=>{
       for(const {child,candidate} of assigned) {
         const visible=visualParent.get(child.id)===parentId?byId.get(child.id):null;
@@ -623,7 +528,7 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
         const choices=candidateMap.get(child.id)||[];
         if(!choices.length) return false;
         const ranked=choices.map(candidate=>{
-          const margin=assigned.length?Math.min(...assigned.map(saved=>Math.hypot(saved.candidate.x-candidate.x,saved.candidate.y-candidate.y)-
+          const margin=assigned.length?Math.min(...assigned.map(saved=>screenCircleDistance(saved.candidate,candidate)-
             renderedCircleRadius(child)-renderedCircleRadius(saved.child))):Infinity;
           return {candidate,margin};
         }).sort((a,b)=>b.margin-a.margin||a.candidate.preference-b.candidate.preference||a.candidate.x-b.candidate.x||a.candidate.y-b.candidate.y);
@@ -632,15 +537,16 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
       for(let pass=0;pass<12;pass++) for(let index=0;index<assigned.length;index++) {
         const item=assigned[index],others=assigned.filter((_,otherIndex)=>otherIndex!==index);
         const ranked=(candidateMap.get(item.child.id)||[]).map(candidate=>{
-          const margin=others.length?Math.min(...others.map(saved=>Math.hypot(saved.candidate.x-candidate.x,saved.candidate.y-candidate.y)-
+          const margin=others.length?Math.min(...others.map(saved=>screenCircleDistance(saved.candidate,candidate)-
             renderedCircleRadius(item.child)-renderedCircleRadius(saved.child))):Infinity;
           return {candidate,margin};
         }).sort((a,b)=>b.margin-a.margin||a.candidate.preference-b.candidate.preference||a.candidate.x-b.candidate.x||a.candidate.y-b.candidate.y);
         item.candidate=ranked[0].candidate;
       }
       const safe=assigned.every((item,index)=>assigned.slice(index+1).every(other=>
-        Math.hypot(item.candidate.x-other.candidate.x,item.candidate.y-other.candidate.y)>=
-          renderedCircleRadius(item.child)+renderedCircleRadius(other.child)-12));
+        screenCircleDistance(item.candidate,other.candidate)>=
+          renderedCircleRadius(item.child)+renderedCircleRadius(other.child)+8&&
+        siblingEdgeIntrusion(item.child,item.candidate,other)===0));
       return safe&&applyAssignment(assigned);
     };
     const beamWidth=children.length>6?512:256;
@@ -648,9 +554,11 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     for(const child of order) {
       const next=[];
       for(const state of beam) for(const candidate of candidateMap.get(child.id)) {
-        const blocked=state.assigned.some(saved=>Math.hypot(saved.candidate.x-candidate.x,saved.candidate.y-candidate.y)<
-          renderedCircleRadius(child)+renderedCircleRadius(saved.child)-12);
+        const blocked=state.assigned.some(saved=>screenCircleDistance(saved.candidate,candidate)<
+          renderedCircleRadius(child)+renderedCircleRadius(saved.child)+8);
         if(blocked) continue;
+        const edgeIntrusion=state.assigned.reduce((total,saved)=>total+siblingEdgeIntrusion(child,candidate,saved),0);
+        if(edgeIntrusion>0) continue;
         next.push({cost:state.cost+candidate.preference,assigned:[...state.assigned,{child,candidate}]});
       }
       if(!next.length) return placeSafeFallback();
@@ -699,6 +607,7 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     }
     if(bestPoint) {node.x=bestPoint.x;node.y=bestPoint.y;node.z=bestPoint.z;placed.add(node.id);}
   }
+  if(straightLayoutIsUnsafe(nodes,edges)) denseOverflow=true;
   return {denseOverflow};
 }
 
@@ -889,7 +798,7 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
     for(const node of nodes.filter(node=>node.isDetail&&vectorLength(node)>648)) {
       const direction=unit(node);node.x=direction.x*648;node.y=direction.y*648;node.z=direction.z*648;
     }
-    denseOverflow=routeRelationshipEdges(nodes,edges).overflow||denseOverflow;
+    if(straightLayoutIsUnsafe(nodes,edges)) denseOverflow=true;
   }
   return {nodes,edges,relationships,denseOverflow};
 }

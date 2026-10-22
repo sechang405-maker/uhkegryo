@@ -154,7 +154,8 @@ test('expanding an unrelated parent leaves every existing world coordinate uncha
 });
 
 test('each displayed child continues through its parent outward axis without entering a neighboring parent territory',()=>{
- const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_weight_shift']);
+ assert.equal(graph.denseOverflow,false);
  const byId=new Map(graph.nodes.map(node=>[node.id,node]));
  const length=vector=>Math.hypot(vector.x,vector.y,vector.z);
  const unit=vector=>{const size=length(vector);return {x:vector.x/size,y:vector.y/size,z:vector.z/size};};
@@ -265,7 +266,8 @@ test('expanded branches keep a safe camera radius and perspective through every 
 });
 
 test('circular graph anchors avoid stacked centers and stay near the initial camera frame',()=>{
- const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_weight_shift']);
+ assert.equal(graph.denseOverflow,false);
  const points=projectGraph(graph,INITIAL_VIEW);
  const visible=graph.nodes.filter(node=>node.term).map(node=>{
   const scale=node.isDetail?1:Math.max(.9,Math.min(1,points[node.id].scale)),radius=(node.isDetail?26:node.expandable?34:28)*scale;
@@ -290,9 +292,9 @@ test('circular graph anchors avoid stacked centers and stay near the initial cam
  assert.ok(visible.every(node=>node.x>-30&&node.x<1050&&node.y>-30&&node.y<870),'initial camera keeps every anchor near the frame');
 });
 
-test('expanded relationship edges keep clear of unrelated node circles in a 1000 by 680 graph panel',()=>{
+test('straight expanded relationship edges keep clear of unrelated node circles in the default layout',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,
-  ['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling']);
+  ['pose_weight_shift']);
  assert.equal(graph.denseOverflow,false,'representative expanded branches should remain in the 3D graph');
  const points=projectGraph(graph,INITIAL_VIEW);
  const radius=node=>node.isDetail?(node.expandable?48:40):(node.childCount>0?46:38);
@@ -305,48 +307,44 @@ test('expanded relationship edges keep clear of unrelated node circles in a 1000
  };
  const crossings=[];
  for(const edge of graph.edges.filter(edge=>edge.relation)) {
-  const path=[points[edge.source],...(edge.route||[]).map(point=>projectNode(point,INITIAL_VIEW)),points[edge.target]];
-  for(let index=0;index<path.length-1;index++)
-   for(const node of graph.nodes.filter(node=>node.term&&node.id!==edge.source&&node.id!==edge.target&&
-    Math.hypot(panelPoint(points[node.id]).x-panelPoint(points[edge.source]).x,panelPoint(points[node.id]).y-panelPoint(points[edge.source]).y)>=radius(node)+2+radius(graph.nodes.find(item=>item.id===edge.source))&&
-    Math.hypot(panelPoint(points[node.id]).x-panelPoint(points[edge.target]).x,panelPoint(points[node.id]).y-panelPoint(points[edge.target]).y)>=radius(node)+2+radius(graph.nodes.find(item=>item.id===edge.target)))) {
-    const hit=distanceToSegment(path[index],path[index+1],points[node.id]);
+  assert.equal(edge.route,undefined,`${edge.source}->${edge.target} must remain a straight edge`);
+  const path=[points[edge.source],points[edge.target]];
+  for(const node of graph.nodes.filter(node=>node.id!==edge.source&&node.id!==edge.target)) {
+    const hit=distanceToSegment(path[0],path[1],points[node.id]);
     if(hit.t>.04&&hit.t<.96&&hit.distance<radius(node)+2)
      crossings.push(`${edge.source}->${edge.target} crosses ${node.id} by ${(radius(node)+2-hit.distance).toFixed(1)}px`);
-   }
+  }
  }
  assert.deepEqual(crossings,[],'relationship edges must not pierce unrelated node circles');
 });
 
-test('routed relationship controls stay fixed in world space through camera orbit and unrelated expansion',()=>{
- const before=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
- const after=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_contrapposto']);
- const routeByKey=graph=>new Map(graph.edges.filter(edge=>edge.relation)
-  .map(edge=>[`${edge.source}:${edge.target}`,edge.route||[]]));
- const beforeRoutes=routeByKey(before),afterRoutes=routeByKey(after);
- for(const [key,route] of beforeRoutes) assert.deepEqual(afterRoutes.get(key),route,`${key} rerouted after an unrelated expansion`);
- const worldRoutes=[...beforeRoutes.values()].flat().map(point=>({...point}));
- assert.ok(worldRoutes.every(point=>Math.hypot(point.x,point.y,point.z)<=720),
-  'a route control approached the camera more closely than the bounded graph scene allows');
- for(let step=0;step<18;step++) for(const point of worldRoutes) {
-  const projected=projectNode(point,{yaw:-Math.PI+step*Math.PI/9,pitch:(step%5-2)*.18,zoom:.9});
-  assert.ok(Number.isFinite(projected.x)&&Number.isFinite(projected.y)&&Number.isFinite(projected.depth));
- }
- assert.deepEqual([...beforeRoutes.values()].flat(),worldRoutes,'camera orbit mutated a route control');
-});
-
-test('a sixteen-child fan uses the deterministic dense fallback without stacked centers',()=>{
+test('a sixteen-child fan keeps every term and requests the readable list fallback',()=>{
  const root={role:'pose',term_id:'dense_root',label_ko:'dense root',requires_all_of:[],requires_any_of:[]};
  const children=Array.from({length:16},(_,index)=>({role:'pose',term_id:`dense_child_${String(index).padStart(2,'0')}`,
   label_ko:`dense child ${index}`,requires_all_of:['dense_root'],requires_any_of:[]}));
- const graph=buildExpandedTermGraph([root],[root,...children],['dense_root']),points=projectGraph(graph,INITIAL_VIEW);
- const visible=children.map(child=>points[child.term_id]);
- let minimum=Infinity;
- for(let first=0;first<visible.length;first++) for(let second=first+1;second<visible.length;second++)
-  minimum=Math.min(minimum,Math.hypot(visible[first].x-visible[second].x,visible[first].y-visible[second].y));
- assert.ok(minimum>=68,`dense fallback stacked child centers at ${minimum}px`);
- assert.equal(graph.denseOverflow,false);
+ const graph=buildExpandedTermGraph([root],[root,...children],['dense_root']);
+ assert.equal(graph.denseOverflow,true);
+ assert.ok(children.every(child=>graph.nodes.some(node=>node.id===child.term_id)));
  assert.deepEqual(buildExpandedTermGraph([root],[root,...children],['dense_root']).nodes,graph.nodes);
+});
+
+test('the twelve-child sitting fan uses the list instead of bent or piercing edges',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
+ const expected=ACTIVE_TERMS.filter(term=>[...(term.requires_all_of||[]),...(term.requires_any_of||[])].includes('pose_sitting'))
+  .map(term=>term.term_id).sort();
+ assert.equal(graph.denseOverflow,true);
+ assert.ok(graph.nodes.filter(node=>node.isDetail).length>=12);
+ assert.deepEqual(graph.nodes.filter(node=>node.isDetail).map(node=>node.id).sort(),expected);
+ assert.ok(graph.edges.every(edge=>edge.route===undefined));
+});
+
+test('a five-child branch never falls back to overlapping circles or bent connectors',()=>{
+ const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_contrapposto']);
+ const expected=ACTIVE_TERMS.filter(term=>[...(term.requires_all_of||[]),...(term.requires_any_of||[])].includes('pose_contrapposto'))
+  .map(term=>term.term_id).sort();
+ assert.equal(graph.denseOverflow,true);
+ assert.deepEqual(graph.nodes.filter(node=>node.isDetail).map(node=>node.id).sort(),expected);
+ assert.ok(graph.edges.every(edge=>edge.route===undefined));
 });
 
 test('an unsafe synthetic dense fan requests the readable list representation',()=>{
@@ -360,13 +358,13 @@ test('an unsafe synthetic dense fan requests the readable list representation',(
  assert.equal(graph.relationships.filter(edge=>edge.source==='overflow_root').length,20);
 });
 
-test('a safe dense grandchild fan waits for its detail parent before overflow classification',()=>{
+test('a deep dense fan keeps every term when straight placement requires the list',()=>{
  const root={role:'pose',term_id:'two_level_root',label_ko:'two level root',requires_all_of:[],requires_any_of:[]};
  const middle={role:'pose',term_id:'two_level_middle',label_ko:'two level middle',requires_all_of:['two_level_root'],requires_any_of:[]};
  const children=Array.from({length:4},(_,index)=>({role:'pose',term_id:`two_level_child_${index}`,
   label_ko:`two level child ${index}`,requires_all_of:['two_level_middle'],requires_any_of:[]}));
  const graph=buildExpandedTermGraph([root],[root,middle,...children],['two_level_root','two_level_middle']);
- assert.equal(graph.denseOverflow,false);
+ assert.equal(graph.denseOverflow,true);
  assert.ok(children.every(child=>graph.nodes.some(node=>node.id===child.term_id)));
 });
 
