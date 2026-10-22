@@ -6,7 +6,7 @@
 
 > 전문 용어가 낯선 초보자가 텍스트로 묘사한 캐주얼 캐릭터의 **체형/소체, 포즈, 구도**를 기초 드로잉 용어와 역할별 Pinterest 탐색 계획으로 바꾸는 Agent입니다.
 
-> **현재 상태: PostgreSQL job 저장, LLM → resolver → MCP 검색 → 응답 조립 worker, 결과·대화 UI 구현됨**
+> **현재 상태: PostgreSQL job 저장, LLM → resolver → MCP 검색 → 응답 조립 worker, 세션 기억, 3D 용어 그래프와 결과·대화 UI 구현됨**
 > `POST /api/agent`는 세션 쿠키와 queued job을 만들고, `GET /api/jobs/{job_id}`는 동일 세션의 job을 조회합니다. worker는 claim한 job을 LLM 해석·resolver 검증·Pinterest 검색·응답 조립까지 처리하고, 재시도와 lease 복구를 수행합니다. frontend는 입력·제출·polling, 완료 답변·용어·Pin 미리보기·대화 이력을 표시합니다. 실제 운영 브라우저 E2E는 별도 검증 대상입니다. Job trace와 generation 관측 코드는 구현됐습니다. PR #108에서 공용·로컬 합성 trace 수신을 검증했으며, 실제 LLM 요청 관측·원격 Prompt 운영·Dataset 연결은 미검증입니다. 별도 MCP 서비스의 `get_active_term_card` FastMCP 도구는 Cloud Run IAM으로 배포됐으며, 로컬·운영 MCP client 호출을 검증했습니다. 아래의 목표 구조와 계획 항목은 완료 기능으로 해석하면 안 됩니다.
 
 ## 한눈에 보기
@@ -18,6 +18,39 @@
 | 해결 방식 | 일상어를 구조화한 뒤, 용어 설명과 역할별 외부 탐색 링크를 함께 제공한다. |
 | 팀 | UH케그려 (4조) |
 | 현재 실행 가능 범위 | Docker Compose 기반 FastAPI `GET /health`, PostgreSQL 세션·Job API와 LLM worker, 카탈로그 시작 검증, MCP 도구 |
+
+## 현재 개인 저장소 UI
+
+### 3D 용어 그래프
+
+- React와 SVG로 렌더링하는 고정 월드 좌표 기반 3D 방사형 그래프입니다. 화면 좌표를 따로 밀어내는 2D 배치가 아니라, 모든 노드와 직선 엣지가 하나의 카메라에서 함께 회전합니다.
+- 카테고리 허브에서 기본 용어가 불규칙한 3D 방향과 거리로 뻗고, `+`를 누르면 해당 부모의 **직접 자식만** 같은 그래프 안에서 펼쳐집니다. 표시 그래프에서는 자식마다 대표 부모를 하나만 사용합니다.
+- 드래그로 yaw/pitch를 회전하고, 마우스 휠로 안전 범위 안에서 확대·축소합니다. 노드 선택·펼침·hover는 고정 월드 좌표를 다시 계산하지 않습니다.
+- 체형은 청록, 포즈는 주황, 구도는 보라, 투시는 초록 계열입니다. 자식은 같은 계열의 조금 밝은 색을 사용하며, 목록과 검색 결과 화면의 배지·테두리도 같은 카테고리 색을 공유합니다.
+- 데스크톱은 3D 보기가 기본입니다. 모바일은 읽기 쉬운 목록으로 시작하지만 `3D 보기`로 전환할 수 있고, 사용자가 선택한 목록 보기도 유지됩니다. 실제로 과도하게 큰 합성 fan만 용어 누락을 막기 위해 목록으로 표시합니다.
+
+현재 활성 카탈로그는 82개 용어입니다. 기본 그래프는 그중 36개를 보여 주며, 검수된 직접 자식 17개와 카테고리 허브 4개를 합친 57개가 현재 3D 그래프의 고정 배치 대상입니다. 나머지 활성 용어를 임의로 그래프에 추가하지 않습니다.
+
+#### 그래프 조작
+
+| 동작 | 결과 |
+| --- | --- |
+| 빈 배경 드래그 | 전체 그래프 회전 |
+| 마우스 휠 | 확대·축소 |
+| 원 클릭 | 실제 검색 조건 선택·해제 |
+| 원 안 `+` / `−` | 직접 자식 펼치기·접기(조건 자동 선택 안 함) |
+| `목록 보기` / `3D 보기` | 같은 선택·펼침 상태를 유지한 채 표현만 전환 |
+
+깊이 차이 때문에 회전 중 화면에서 노드나 엣지가 겹쳐 보이는 것은 정상적인 3D 투영입니다. 검증 대상은 월드 공간의 노드 충돌과 직선 엣지가 무관한 노드의 3D 영역을 관통하는지 여부이며, 모든 카메라 각도에서 화면상 겹침이 전혀 없다고 보장하지 않습니다.
+
+### 검색·대화·복구
+
+- 그래프의 포커스와 실제 선택 조건을 분리합니다. `현재 용어만 검색`과 `선택 조건 전체 검색`은 서로 다른 범위를 명시하고, 부모를 펼치는 동작이 검색 조건을 자동으로 추가하지 않습니다.
+- 일반·스케치·도형화 검색 모드를 카드별로 다시 실행할 수 있으며, 결과 화면은 역할별 배지와 카드 테두리를 카테고리 색으로 구분합니다. 이미지 자체에는 색 필터를 적용하지 않습니다.
+- 저장된 이전 답변은 그 답변에 속한 레퍼런스를 다시 열 수 있습니다. 새 LLM 요청이나 검색을 만들지 않고 저장된 결과를 재사용합니다.
+- 검색 job 상태 조회가 일시적으로 끊기면 제한된 자동 재시도 뒤 `상태 다시 확인`으로 같은 job을 이어 봅니다. 재확인은 새 검색 POST나 턴 사용량을 만들지 않습니다.
+- 모바일에서는 검색 완료를 알리고 사용자가 명시적으로 결과 패널을 열 수 있습니다. 늦게 도착한 결과가 사용자가 이동한 패널이나 다른 대화를 강제로 덮지 않습니다.
+- 용어 설명은 사용자용 한국어 정의를 사용하며, 내부 LLM 단서 질문을 설명 대체값으로 노출하지 않습니다. 접이식 조작 안내에서 선택·펼치기·검색·회전을 구분합니다.
 
 ## 팀원
 
@@ -117,7 +150,7 @@ SearXNG 검색 규칙은 [SearXNG Pinterest 검색 Spec](docs/specs/searxng-pint
 | DB 영속화·실제 worker | 구현됨. PostgreSQL job claim, LLM adapter·resolver·Pinterest provider·response assembler pipeline, retry·lease recovery | 실제 환경 실행 증거 |
 | LLM 해석·resolver 연동 | 구현됨. worker가 활성 TERM_CARD를 LLM에 전달하고 resolver·검색 결과를 조립해 저장 | 실제 모델 품질 평가 |
 | Pinterest 검색 실행 | worker 연결 구현됨. SearXNG Pinterest 엔진 검색·widget enrichment 코드와 단위 테스트 존재 | 실제 SearXNG 인스턴스 연결·검색 결과 검증 |
-| Next.js UI | 입력·제출·polling 구현됨 | 결과·질문·Pin 링크·대화 UI 구현, 운영 화면 검증 필요 |
+| Next.js UI | 입력·제출·polling, 3D 용어 그래프, 목록·결과 카테고리 색상, 모바일 결과 안내, 저장 레퍼런스 재열기와 상태 재확인 구현됨 | 실제 외부 검색·다양한 기기에서 지속 검증 |
 | `/docs` | FastAPI 기본 문서에서 확인 가능 | 요청·응답 모델 및 오류 응답 확인 |
 | `/mcp` | `backend.mcp.main:app`에 마운트된 Streamable HTTP endpoint를 Cloud Run IAM으로 배포함. 무인증 `403`, 인증된 도구 목록·`found`·`not_found` 호출을 검증함. [호출 증거](docs/mcp-client-evidence.md) | Streamable HTTP endpoint와 도구 호출 증거 |
 | TERM_CARD JSON 카탈로그 | 구현됨. API·MCP 시작 시 검증 후 역할별 활성 카드를 메모리에 로드 | 요청 중 재읽기·DB 적재 없이 활성 카드를 조회 |
@@ -202,6 +235,29 @@ npm run dev -- --port 3001
 ```
 
 브라우저에서 `http://localhost:3001`을 열어 1~500자 입력의 유효성 검사, `POST /api/agent` 제출, job polling 상태 표시까지 확인합니다. 현재 UI는 답변·질문·용어·Pin 미리보기·대화 이력을 표시합니다. demo가 아닌 실제 API 모드에서 새 요청으로 확인합니다.
+
+### 준비된 개인 로컬 프로필
+
+[`docs/local-codex.md`](./docs/local-codex.md)의 개인 로컬 프로필을 이미 준비한 환경에서는 기존 DB·검색 컨테이너와 볼륨을 재사용해 API 8000과 production frontend 3100을 시작할 수 있습니다. 이 경로는 `.env.local-codex`, `.env.local-profile`, frontend production build가 이미 준비되어 있어야 하며 새 DB를 만들거나 migration을 자동 실행하지 않습니다.
+
+```powershell
+cd frontend
+npm ci
+npm test
+npm run build
+cd ..
+./scripts/start-local.ps1
+```
+
+준비가 끝나면 다음 세 주소가 응답해야 합니다.
+
+| 주소 | 기대 결과 |
+| --- | --- |
+| `http://127.0.0.1:3100/` | Next.js UI |
+| `http://127.0.0.1:3100/service-health` | `{"status":"ok"}` |
+| `http://127.0.0.1:8000/health` | `{"status":"ok"}` |
+
+`start-local.ps1`은 이미 3100에서 듣고 있는 프런트를 재사용합니다. 새 production build 뒤 화면이 이전 버전이라면 먼저 `Get-NetTCPConnection -LocalPort 3100 -State Listen`으로 리스너를 확인하고, 그 PID가 이 저장소의 `next start -p 3100`인지 명령줄과 작업 경로를 검증한 뒤 해당 프런트만 재시작합니다. 포트 번호만 보고 무관한 Node 프로세스를 일괄 종료하지 않습니다. 서버 HTML이 참조하는 `/_next/static/chunks/*.js`가 현재 `.next` 빌드의 청크인지 확인하면 브라우저 캐시와 실행본 불일치를 구분할 수 있습니다.
 
 종료는 다음 명령으로 합니다.
 
