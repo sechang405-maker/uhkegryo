@@ -130,7 +130,8 @@ a { color: var(--accent); }
 .board-header { position:relative; display: flex; align-items: center; justify-content: center; height: 72px; padding: 0 24px; border-bottom: 3px solid var(--accent); background: transparent; }
 .reference-board:has(> .term-graph) > .board-header { border-bottom: 0; background: transparent; }
 .brand-identity { display: flex; align-items: center; gap: 12px; }
-.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-weight: 800; }
+.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; background: transparent; color: var(--accent); }
+.brand-mark-art { display:block; width:100%; height:100%; overflow:visible; }
 .brand-name { font-size: 17px; font-weight: 800; letter-spacing: -.03em; }
 .history-sidebar { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100vh; background: var(--surface); color: var(--text); }
 .brand-home-button { flex-shrink: 0; height: 72px; padding: 0 16px; border: 0; border-bottom: 3px solid var(--accent); background: var(--surface); color: inherit; cursor: pointer; }
