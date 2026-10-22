@@ -104,8 +104,10 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     if(list) setMotionState(current=>createGraphMotionState(current.logicalGraph,current.expandedIds));
   },[list]);
   useEffect(()=>{
-    if(!listRequested&&!logicalGraph.denseOverflow&&viewportAssessment.unsafe) setResponsiveFallback(true);
-  },[listRequested,logicalGraph.denseOverflow,viewportAssessment.unsafe]);
+    // Responsive fallback is an initial presentation choice. Expanding a node
+    // must never replace the graph the user is actively exploring.
+    if(!listRequested&&!logicalGraph.denseOverflow&&expandedIds.length===0&&viewportAssessment.unsafe) setResponsiveFallback(true);
+  },[listRequested,logicalGraph.denseOverflow,expandedIds.length,viewportAssessment.unsafe]);
   useEffect(()=>{
     if(responsiveModeChecked.current) return;
     responsiveModeChecked.current=true;

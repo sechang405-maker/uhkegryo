@@ -49,7 +49,7 @@ export function buildTermGraph(terms, childCounts=new Map()) {
       let screen;
       if(priorityCount>0&&visualIndex<priorityCount) {
         const priorityOffsets=[.14,-.36,.62,-.62,.4,-.12,0],offset=priorityOffsets[visualIndex]??0,
-          radial=185+Math.floor(visualIndex/3)*60+(stableAngle(term.term_id)/(2*Math.PI)-.5)*6;
+          radial=230+Math.floor(visualIndex/3)*60+(stableAngle(term.term_id)/(2*Math.PI)-.5)*6;
         screen={x:GRAPH_CENTER.x+radial*Math.cos(angle+offset),y:GRAPH_CENTER.y+radial*Math.sin(angle+offset)};
       } else {
         const restIndex=priorityCount>0?visualIndex-priorityCount:visualIndex,perRing=priorityCount>0?3:4,
@@ -116,6 +116,11 @@ const nodeCircleRadius=node=>node.isDetail?(node.expandable?56:48):(node.childCo
 const renderedCircleRadius=node=>node.isDetail?(node.expandable?48:40):(node.childCount>0?46:38);
 const GRAPH_PANEL_Y_SCALE=680/840;
 const screenCircleDistance=(first,second)=>Math.hypot(first.x-second.x,(first.y-second.y)*GRAPH_PANEL_Y_SCALE);
+const stabilizedLayoutCache=new WeakMap();
+const screenDelta=(first,second)=>{
+  const dx=second.x-first.x,dy=(second.y-first.y)*GRAPH_PANEL_Y_SCALE;
+  return {dx,dy,distance:Math.hypot(dx,dy)||1};
+};
 
 function straightEdgeDistance(start,end,obstacle) {
   const sx=start.x,sy=start.y*GRAPH_PANEL_Y_SCALE,ex=end.x,ey=end.y*GRAPH_PANEL_Y_SCALE,
@@ -135,8 +140,8 @@ function straightLayoutIsUnsafe(nodes,edges) {
   const projected=projectGraph({nodes},INITIAL_VIEW);
   for(let first=0;first<nodes.length;first++) for(let second=first+1;second<nodes.length;second++) {
     const a=nodes[first],b=nodes[second],pa=projected[a.id],pb=projected[b.id];
-    if(!pa||!pb||(!a.isDetail&&!b.isDetail)) continue;
-    if(screenCircleDistance(pa,pb)<renderedCircleRadius(a)+renderedCircleRadius(b)+8) return true;
+    if(!pa||!pb) continue;
+    if(screenCircleDistance(pa,pb)<renderedCircleRadius(a)+renderedCircleRadius(b)+.5) return true;
   }
   for(const edge of edges.filter(edge=>edge.relation)) {
     const source=projected[edge.source],target=projected[edge.target];
@@ -154,46 +159,47 @@ function straightLayoutIsUnsafe(nodes,edges) {
 function separateBaseCircleOverlaps(nodes) {
   const terms=nodes.filter(node=>node.term),projected=projectGraph({nodes},INITIAL_VIEW),
     positions=new Map(terms.map(node=>[node.id,{x:projected[node.id].x,y:projected[node.id].y,depth:projected[node.id].depth}])),
-    categoryByRole=new Map(nodes.filter(node=>!node.term).map(node=>[node.role,node]));
+    categoryByRole=new Map(nodes.filter(node=>!node.term).map(node=>[node.role,node])),
+    denseRoots=new Set(terms.filter(node=>node.childCount>=4).map(node=>node.id));
   for(let iteration=0;iteration<180;iteration++) {
     let moved=false;
     for(let first=0;first<terms.length;first++) for(let second=first+1;second<terms.length;second++) {
-      const a=terms[first],b=terms[second],pa=positions.get(a.id),pb=positions.get(b.id),dx=pb.x-pa.x,dy=pb.y-pa.y,
-        distance=Math.hypot(dx,dy)||1,
+      const a=terms[first],b=terms[second],pa=positions.get(a.id),pb=positions.get(b.id),{dx,dy,distance}=screenDelta(pa,pb),
         territoryA=nodeCircleRadius(a)+Math.min(48,Math.sqrt(a.childCount||0)*18),
         territoryB=nodeCircleRadius(b)+Math.min(48,Math.sqrt(b.childCount||0)*18),
         needed=territoryA+territoryB+12-distance;
       if(needed<=0) continue;
       moved=true;
-      const ux=dx/distance,uy=dy/distance,sign=distance===1&&dx===0&&dy===0?(stableAngle(`${a.id}:${b.id}`)<Math.PI?1:-1):1;
-      pa.x-=ux*needed*.5*sign;pa.y-=uy*needed*.5*sign;pb.x+=ux*needed*.5*sign;pb.y+=uy*needed*.5*sign;
+      const ux=dx/distance,uy=dy/distance,sign=distance===1&&dx===0&&dy===0?(stableAngle(`${a.id}:${b.id}`)<Math.PI?1:-1):1,
+        aFixed=denseRoots.has(a.id),bFixed=denseRoots.has(b.id);
+      if(aFixed&&!bFixed) {pb.x+=ux*needed*sign;pb.y+=uy*needed*sign/GRAPH_PANEL_Y_SCALE;}
+      else if(bFixed&&!aFixed) {pa.x-=ux*needed*sign;pa.y-=uy*needed*sign/GRAPH_PANEL_Y_SCALE;}
+      else if(!aFixed&&!bFixed) {
+        pa.x-=ux*needed*.5*sign;pa.y-=uy*needed*.5*sign/GRAPH_PANEL_Y_SCALE;
+        pb.x+=ux*needed*.5*sign;pb.y+=uy*needed*.5*sign/GRAPH_PANEL_Y_SCALE;
+      }
     }
     for(const node of terms) {
       const point=positions.get(node.id),radius=nodeCircleRadius(node);
-      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+92,720-radius);
+      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+64,800-radius);
     }
     if(!moved) break;
   }
-  const denseRoots=new Set(terms.filter(node=>node.childCount>=4).map(node=>node.id));
-  for(const node of terms.filter(node=>denseRoots.has(node.id))) {
-    const point=positions.get(node.id),dx=point.x-GRAPH_CENTER.x,dy=point.y-GRAPH_CENTER.y,distance=Math.hypot(dx,dy)||1,
-      shift=Math.min(110,Math.max(0,distance-90));
-    point.x-=dx/distance*shift;point.y-=dy/distance*shift;
-  }
-  // Keep dense branch roots closer to the center so their readable children
-  // have a real outward fan inside the fixed viewport. Other base nodes yield
-  // to these roots; the roots themselves remain stable across later expands.
+  // Dense branch roots retain their category-lane radius. Pulling them toward
+  // the center placed the parent on top of its category hub, so every outward
+  // straight connector began inside an unrelated circle.
   for(let iteration=0;iteration<80;iteration++) for(let first=0;first<terms.length;first++) for(let second=first+1;second<terms.length;second++) {
-    const a=terms[first],b=terms[second],pa=positions.get(a.id),pb=positions.get(b.id),dx=pb.x-pa.x,dy=pb.y-pa.y,
-      distance=Math.hypot(dx,dy)||1,needed=nodeCircleRadius(a)+nodeCircleRadius(b)+12-distance;
+    const a=terms[first],b=terms[second],pa=positions.get(a.id),pb=positions.get(b.id),{dx,dy,distance}=screenDelta(pa,pb),
+      needed=nodeCircleRadius(a)+nodeCircleRadius(b)+12-distance;
     if(needed<=0) continue;
     const ux=dx/distance,uy=dy/distance,aFixed=denseRoots.has(a.id),bFixed=denseRoots.has(b.id);
-    if(aFixed&&!bFixed) {pb.x+=ux*needed;pb.y+=uy*needed;}
-    else if(bFixed&&!aFixed) {pa.x-=ux*needed;pa.y-=uy*needed;}
-    else {pa.x-=ux*needed*.5;pa.y-=uy*needed*.5;pb.x+=ux*needed*.5;pb.y+=uy*needed*.5;}
+    if(aFixed&&!bFixed) {pb.x+=ux*needed;pb.y+=uy*needed/GRAPH_PANEL_Y_SCALE;}
+    else if(bFixed&&!aFixed) {pa.x-=ux*needed;pa.y-=uy*needed/GRAPH_PANEL_Y_SCALE;}
+    else {pa.x-=ux*needed*.5;pa.y-=uy*needed*.5/GRAPH_PANEL_Y_SCALE;
+      pb.x+=ux*needed*.5;pb.y+=uy*needed*.5/GRAPH_PANEL_Y_SCALE;}
     for(const node of [a,b]) {
       const point=positions.get(node.id),radius=nodeCircleRadius(node);
-      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+92,720-radius);
+      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+64,800-radius);
     }
   }
   // Solve branch landing zones and base-circle separation together. A former
@@ -216,23 +222,24 @@ function separateBaseCircleOverlaps(nodes) {
       } else zones.push({x:origin.x+dx/length*145,y:origin.y+dy/length*145,radius:58});
       for(const zone of zones) for(const node of terms) {
         if(node.id===parent.id) continue;
-        const point=positions.get(node.id),vx=point.x-zone.x,vy=point.y-zone.y,distance=Math.hypot(vx,vy)||1,
+        const point=positions.get(node.id),vx=point.x-zone.x,vy=(point.y-zone.y)*GRAPH_PANEL_Y_SCALE,distance=Math.hypot(vx,vy)||1,
           needed=nodeCircleRadius(node)+zone.radius-distance;
-        if(needed>0) {point.x+=vx/distance*needed;point.y+=vy/distance*needed;}
+        if(needed>0) {point.x+=vx/distance*needed;point.y+=vy/distance*needed/GRAPH_PANEL_Y_SCALE;}
       }
     }
     for(let first=0;first<terms.length;first++) for(let second=first+1;second<terms.length;second++) {
-      const a=terms[first],b=terms[second],pa=positions.get(a.id),pb=positions.get(b.id),dx=pb.x-pa.x,dy=pb.y-pa.y,
-        distance=Math.hypot(dx,dy)||1,needed=nodeCircleRadius(a)+nodeCircleRadius(b)+12-distance;
+      const a=terms[first],b=terms[second],pa=positions.get(a.id),pb=positions.get(b.id),{dx,dy,distance}=screenDelta(pa,pb),
+        needed=nodeCircleRadius(a)+nodeCircleRadius(b)+12-distance;
       if(needed<=0) continue;
       const ux=dx/distance,uy=dy/distance,aFixed=denseRoots.has(a.id),bFixed=denseRoots.has(b.id);
-      if(aFixed&&!bFixed) {pb.x+=ux*needed;pb.y+=uy*needed;}
-      else if(bFixed&&!aFixed) {pa.x-=ux*needed;pa.y-=uy*needed;}
-      else {pa.x-=ux*needed*.5;pa.y-=uy*needed*.5;pb.x+=ux*needed*.5;pb.y+=uy*needed*.5;}
+      if(aFixed&&!bFixed) {pb.x+=ux*needed;pb.y+=uy*needed/GRAPH_PANEL_Y_SCALE;}
+      else if(bFixed&&!aFixed) {pa.x-=ux*needed;pa.y-=uy*needed/GRAPH_PANEL_Y_SCALE;}
+      else {pa.x-=ux*needed*.5;pa.y-=uy*needed*.5/GRAPH_PANEL_Y_SCALE;
+        pb.x+=ux*needed*.5;pb.y+=uy*needed*.5/GRAPH_PANEL_Y_SCALE;}
     }
     for(const node of terms) {
       const point=positions.get(node.id),radius=nodeCircleRadius(node);
-      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+92,720-radius);
+      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+64,800-radius);
     }
   }
   for(const node of terms) {
@@ -254,9 +261,13 @@ function separateBaseCircleOverlaps(nodes) {
       }
       safeDepth=safe;world=worldFromInitialProjection(point.x,point.y,safeDepth);
     }
-    const category=categoryByRole.get(node.role),length=vectorLength(world),direction=category?
-      clampDirectionToCone(world,category,Math.PI/3-.02):unit(world);
-    node.x=direction.x*length;node.y=direction.y*length;node.z=direction.z*length;
+    if(denseRoots.has(node.id)) {
+      node.x=world.x;node.y=world.y;node.z=world.z;
+    } else {
+      const category=categoryByRole.get(node.role),length=vectorLength(world),direction=category?
+        clampDirectionToCone(world,category,Math.PI/3-.02):unit(world);
+      node.x=direction.x*length;node.y=direction.y*length;node.z=direction.z*length;
+    }
   }
   // Cone clamping can move two boundary nodes back toward one another after
   // the screen-space solve. Re-project and resolve those residual base/base
@@ -265,17 +276,23 @@ function separateBaseCircleOverlaps(nodes) {
     const points=new Map(terms.map(node=>[node.id,projectNode(node,INITIAL_VIEW)]));
     let moved=false;
     for(let first=0;first<terms.length;first++) for(let second=first+1;second<terms.length;second++) {
-      const a=terms[first],b=terms[second],pa=points.get(a.id),pb=points.get(b.id),dx=pb.x-pa.x,dy=pb.y-pa.y,
-        distance=Math.hypot(dx,dy)||1,needed=nodeCircleRadius(a)+nodeCircleRadius(b)+10-distance;
+      const a=terms[first],b=terms[second],pa=points.get(a.id),pb=points.get(b.id),{dx,dy,distance}=screenDelta(pa,pb),
+        needed=nodeCircleRadius(a)+nodeCircleRadius(b)+10-distance;
       if(needed<=0) continue;
       moved=true;
-      const ux=dx/distance,uy=dy/distance;
-      pa.x-=ux*needed*.5;pa.y-=uy*needed*.5;pb.x+=ux*needed*.5;pb.y+=uy*needed*.5;
+      const ux=dx/distance,uy=dy/distance,aFixed=denseRoots.has(a.id),bFixed=denseRoots.has(b.id);
+      if(aFixed&&!bFixed) {pb.x+=ux*needed;pb.y+=uy*needed/GRAPH_PANEL_Y_SCALE;}
+      else if(bFixed&&!aFixed) {pa.x-=ux*needed;pa.y-=uy*needed/GRAPH_PANEL_Y_SCALE;}
+      else if(!aFixed&&!bFixed) {
+        pa.x-=ux*needed*.5;pa.y-=uy*needed*.5/GRAPH_PANEL_Y_SCALE;
+        pb.x+=ux*needed*.5;pb.y+=uy*needed*.5/GRAPH_PANEL_Y_SCALE;
+      }
     }
     if(!moved) break;
     for(const node of terms) {
+      if(denseRoots.has(node.id)) continue;
       const point=points.get(node.id),radius=nodeCircleRadius(node);
-      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+92,720-radius);
+      point.x=clamp(point.x,radius+14,1000-radius-14);point.y=clamp(point.y,radius+64,800-radius);
       const rawWorld=worldFromInitialProjection(point.x,point.y,point.depth),category=categoryByRole.get(node.role),length=vectorLength(rawWorld),
         direction=category?clampDirectionToCone(rawWorld,category,Math.PI/3-.02):unit(rawWorld);
       node.x=direction.x*length;node.y=direction.y*length;node.z=direction.z*length;
@@ -440,13 +457,9 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
       children=canonical.map(id=>visualParent.get(id)===parentId&&byId.get(id)?byId.get(id):
         ({id,role:parent.role,isDetail:true,expandable:(canonicalChildrenByParent.get(id)||[]).length>0}));
     if(canonical.length<4||children.length<2) return false;
-    // A dense fan cannot keep fixed-size labels and straight connectors clear
-    // inside its parent's outward sector once it exceeds this capacity. Use the
-    // existing complete list rather than bending edges or stacking children.
-    if(canonical.length>8) return false;
     const parentPoint=projectNode(parent,INITIAL_VIEW),parentRadius=Math.hypot(parentPoint.x-GRAPH_CENTER.x,parentPoint.y-GRAPH_CENTER.y),
       parentAngle=Math.atan2(parentPoint.y-GRAPH_CENTER.y,parentPoint.x-GRAPH_CENTER.x),
-      half=canonical.length>=5?1.16:Math.min(.94,screenTerritoryHalfAngle(parent)+.12),
+      half=canonical.length>=9?1.52:canonical.length>=5?1.16:Math.min(.94,screenTerritoryHalfAngle(parent)+.12),
       frameBias=Math.sin(parentAngle)<0?half*.28:-half*.28,
       immutable=nodes.filter(node=>!node.isDetail&&node.id!==parentId),
       immutablePoints=immutable.map(node=>({node,point:projectNode(node,INITIAL_VIEW)}));
@@ -464,7 +477,8 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
         const offset=-half+2*half*angleSample/72,angle=parentAngle+offset;
         for(let candidateRadius=parentRadius+96;candidateRadius<=628;candidateRadius+=18) {
           const screen={x:GRAPH_CENTER.x+candidateRadius*Math.cos(angle),y:GRAPH_CENTER.y+candidateRadius*Math.sin(angle)};
-          if(screen.x<58||screen.x>942||screen.y<108||screen.y>690) continue;
+          if(screen.x<48||screen.x>952||screen.y<60||screen.y>780) continue;
+          if(screenCircleDistance(screen,parentPoint)<renderedCircleRadius(child)+renderedCircleRadius(parent)+8) continue;
           let chosen=null;
           for(const depth of [-240,-180,-120,-60,0,60,120,180,240]) {
             const candidate=worldFromInitialProjection(screen.x,screen.y,depth),branch=add(candidate,scale(parent,-1)),category=categories.get(child.role)||candidate;
@@ -481,7 +495,9 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
           const candidateDepth=projectNode(chosen.world,INITIAL_VIEW).depth,
             coveredCenterCount=immutablePoints.filter(({node,point})=>point.depth>candidateDepth+.5&&
             screenCircleDistance(screen,point)<renderedCircleRadius(node)+4).length;
-          if(clearance<0||edgeIntrusion>0||coveredCenterCount>0) continue;
+          if(clearance<0) continue;
+          if(edgeIntrusion>0) continue;
+          if(coveredCenterCount>0) continue;
           const preference=Math.abs(offset-preferredOffset)*170+Math.abs(candidateRadius-preferredRadius)*.3+
             chosen.depthCost*.015-Math.min(clearance,80)*.04+Math.max(0,-clearance)*5+
             edgeIntrusion*1000+coveredCenterCount*10000;
@@ -503,7 +519,9 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
         if(diverse.includes(candidate)||diverse.some(saved=>Math.hypot(saved.x-candidate.x,saved.y-candidate.y)<18)) continue;
         diverse.push(candidate);
       }
-      if(!diverse.length) return false;
+      if(!diverse.length) {
+        return false;
+      }
       candidateMap.set(child.id,diverse);
     }
     const order=[...children].sort((a,b)=>candidateMap.get(a.id).length-candidateMap.get(b.id).length||
@@ -519,6 +537,35 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
       }
       return true;
     };
+    // Solve a dense fan as one shape before considering local best-first
+    // placements. Keeping every child on a shared outer arc gives each
+    // straight parent edge its own angular lane; it also avoids the beam
+    // solver filling the inner slots first and discovering too late that the
+    // remaining labels have no unobstructed route.
+    const placeArcTemplate=()=>{
+      if(children.length>12) return false;
+      const canonicalChildren=[...children].sort((a,b)=>canonical.indexOf(a.id)-canonical.indexOf(b.id)||a.id.localeCompare(b.id));
+      for(const phase of [0,-.06,.06,-.12,.12]) for(const targetRadius of [610,592,574,556]) {
+        const assigned=[];
+        let valid=true;
+        for(let index=0;index<canonicalChildren.length;index++) {
+          const child=canonicalChildren[index],fraction=canonicalChildren.length===1?0:index/(canonicalChildren.length-1),
+            targetOffset=-half*.9+2*half*.9*fraction+phase;
+          const candidates=[...(candidateMap.get(child.id)||[])].sort((a,b)=>
+            (Math.abs(a.offset-targetOffset)*520+Math.abs(a.candidateRadius-targetRadius))-
+            (Math.abs(b.offset-targetOffset)*520+Math.abs(b.candidateRadius-targetRadius))||
+            a.preference-b.preference||a.x-b.x||a.y-b.y);
+          const candidate=candidates.find(option=>assigned.every(saved=>
+            screenCircleDistance(saved.candidate,option)>=renderedCircleRadius(child)+renderedCircleRadius(saved.child)+8&&
+            siblingEdgeIntrusion(child,option,saved)===0));
+          if(!candidate) {valid=false;break;}
+          assigned.push({child,candidate});
+        }
+        if(valid&&assigned.length===canonicalChildren.length) return applyAssignment(assigned);
+      }
+      return false;
+    };
+    if(placeArcTemplate()) return true;
     // A bounded beam can legitimately exhaust on a large synthetic fan. Do
     // not silently fall through to independent placement: reserve the entire
     // canonical fan with a deterministic farthest-first assignment instead.
@@ -549,7 +596,7 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
         siblingEdgeIntrusion(item.child,item.candidate,other)===0));
       return safe&&applyAssignment(assigned);
     };
-    const beamWidth=children.length>6?512:256;
+    const beamWidth=children.length>8?4096:children.length>6?1024:512;
     let beam=[{cost:0,assigned:[]}];
     for(const child of order) {
       const next=[];
@@ -561,7 +608,9 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
         if(edgeIntrusion>0) continue;
         next.push({cost:state.cost+candidate.preference,assigned:[...state.assigned,{child,candidate}]});
       }
-      if(!next.length) return placeSafeFallback();
+      if(!next.length) {
+        return placeSafeFallback();
+      }
       next.sort((a,b)=>a.cost-b.cost||a.assigned.map(item=>`${item.child.id}:${item.candidate.x.toFixed(2)}:${item.candidate.y.toFixed(2)}`).join('|')
         .localeCompare(b.assigned.map(item=>`${item.child.id}:${item.candidate.x.toFixed(2)}:${item.candidate.y.toFixed(2)}`).join('|')));
       beam=next.slice(0,beamWidth);
@@ -578,7 +627,10 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     .sort(([a],[b])=>lineageDepth(a)-lineageDepth(b)||a.localeCompare(b));
   for(const [parentId,visibleIds] of denseGroups) {
     if(!placed.has(parentId)) placePrimary(parentId);
-    if(!placed.has(parentId)||!placeDenseSiblingGroup(parentId,visibleIds)) denseOverflow=true;
+    const groupPlaced=placed.has(parentId)&&placeDenseSiblingGroup(parentId,visibleIds);
+    if(!groupPlaced) {
+      denseOverflow=true;
+    }
   }
 
   for(let pass=0;pass<nodes.length;pass++) {
@@ -607,7 +659,9 @@ function arrangeOutwardWorldLayout(nodes,edges,canonicalChildrenByParent=new Map
     }
     if(bestPoint) {node.x=bestPoint.x;node.y=bestPoint.y;node.z=bestPoint.z;placed.add(node.id);}
   }
-  if(straightLayoutIsUnsafe(nodes,edges)) denseOverflow=true;
+  if(straightLayoutIsUnsafe(nodes,edges)) {
+    denseOverflow=true;
+  }
   return {denseOverflow};
 }
 
@@ -696,7 +750,7 @@ function separateInitialViewOverlaps(nodes,edges) {
   }
 }
 
-export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) {
+function buildExpandedTermGraphVisible(baseTerms, catalogTerms, expandedIds=[]) {
   const {termsById,childrenByParent}=relationshipIndex(catalogTerms);
   const childCounts=new Map([...childrenByParent].map(([id,children])=>[id,children.length]));
   const base=buildTermGraph(baseTerms,childCounts);
@@ -801,6 +855,252 @@ export function buildExpandedTermGraph(baseTerms, catalogTerms, expandedIds=[]) 
     if(straightLayoutIsUnsafe(nodes,edges)) denseOverflow=true;
   }
   return {nodes,edges,relationships,denseOverflow};
+}
+
+function stabilizeCatalogLayout(graph,childrenByParent) {
+  const nodes=graph.nodes.map(node=>({...node})),byId=new Map(nodes.map(node=>[node.id,node])),
+    points=new Map(nodes.map(node=>[node.id,{...projectNode(node,INITIAL_VIEW)}])),anchors=new Map(),
+    relationEdges=graph.edges.filter(edge=>edge.relation&&byId.has(edge.source)&&byId.has(edge.target)),
+    potentialEdges=[...childrenByParent].flatMap(([source,targets])=>targets
+      .filter(target=>byId.has(source)&&byId.has(target)).map(target=>({source,target,relation:'catalog'}))),
+    relationTargetsBySource=new Map(),
+    denseEntry=[...childrenByParent].filter(([parentId,children])=>byId.has(parentId)&&children.filter(id=>byId.has(id)).length>=9)
+      .sort(([,a],[,b])=>b.length-a.length)[0],fixed=new Set();
+  for(const edge of relationEdges) {
+    if(!relationTargetsBySource.has(edge.source)) relationTargetsBySource.set(edge.source,[]);
+    relationTargetsBySource.get(edge.source).push(edge.target);
+  }
+  if(denseEntry) {
+    const [parentId,allChildren]=denseEntry,children=allChildren.filter(id=>byId.has(id)).sort(),parent=byId.get(parentId),
+      category=byId.get(`category:${parent.role}`),parentPoint={x:440,y:420,depth:-40},panelCenterY=420*GRAPH_PANEL_Y_SCALE;
+    if(category) {points.set(category.id,{x:340,y:420,depth:80});fixed.add(category.id);}
+    points.set(parentId,parentPoint);fixed.add(parentId);
+    children.forEach((id,index)=>{
+      const innerCount=Math.min(4,children.length),outerCount=Math.max(0,children.length-innerCount),inner=index<innerCount,
+        slot=inner?index:index-innerCount,count=inner?innerCount:outerCount,
+        angle=inner?-.81+1.62*(count===1?.5:slot/(count-1)):-1.42+2.84*(count===1?.5:slot/(count-1)),
+        fanRadius=inner?190:300,point={x:GRAPH_CENTER.x+fanRadius*Math.cos(angle),
+          y:(panelCenterY+fanRadius*Math.sin(angle))/GRAPH_PANEL_Y_SCALE,
+          depth:-150+300*(children.length===1?.5:index/(children.length-1))};
+      points.set(id,point);anchors.set(id,{...point});
+    });
+  }
+  // Shared detail terms must stay usable from either of their possible parents.
+  // Reserve those small parent components before the global relaxation so the
+  // remaining nodes yield to both straight corridors instead of moving when a
+  // different parent is expanded later.
+  const reservedComponents=new Map([
+    ['pose_contrapposto',{x:740,y:308.824,depth:120}],
+    ['pose_weight_shift',{x:840,y:333.529,depth:60}],
+    ['pose_contrapposto_weight_shift',{x:920,y:160.588,depth:180}],
+  ]);
+  for(const [id,point] of reservedComponents) if(byId.has(id)) {
+    points.set(id,{...point});
+    fixed.add(id);
+  }
+  const radius=node=>renderedCircleRadius(node);
+  const move=(node,dx,dy,amount=1)=>{
+    if(fixed.has(node.id)) return false;
+    const point=points.get(node.id);point.x+=dx*amount;point.y+=dy*amount/GRAPH_PANEL_Y_SCALE;return true;
+  };
+  for(let iteration=0;iteration<900;iteration++) {
+    let changed=false;
+    for(let first=0;first<nodes.length;first++) for(let second=first+1;second<nodes.length;second++) {
+      const a=nodes[first],b=nodes[second],pa=points.get(a.id),pb=points.get(b.id),{dx,dy,distance}=screenDelta(pa,pb),
+        needed=radius(a)+radius(b)+2-distance;
+      if(needed<=0) continue;
+      const ux=dx/distance,uy=dy/distance,aFixed=fixed.has(a.id),bFixed=fixed.has(b.id);
+      if(aFixed&&!bFixed) changed=move(b,ux,uy,needed)||changed;
+      else if(bFixed&&!aFixed) changed=move(a,-ux,-uy,needed)||changed;
+      else if(!aFixed&&!bFixed) {
+        changed=move(a,-ux,-uy,needed*.5)||changed;changed=move(b,ux,uy,needed*.5)||changed;
+      }
+    }
+    for(const [sourceId,targetIds] of relationTargetsBySource) {
+      const source=points.get(sourceId),sx=source.x,sy=source.y*GRAPH_PANEL_Y_SCALE;
+      for(let first=0;first<targetIds.length;first++) for(let second=first+1;second<targetIds.length;second++) {
+        const a=byId.get(targetIds[first]),b=byId.get(targetIds[second]),pa=points.get(a.id),pb=points.get(b.id),
+          hitA=straightEdgeClearance(source,pa,pb),hitB=straightEdgeClearance(source,pb,pa),
+          needed=Math.max(radius(b)+6-hitA.distance,radius(a)+6-hitB.distance);
+        if(needed<=0) continue;
+        const ax=pa.x-sx,ay=pa.y*GRAPH_PANEL_Y_SCALE-sy,bx=pb.x-sx,by=pb.y*GRAPH_PANEL_Y_SCALE-sy,
+          crossSign=ax*by-ay*bx>=0?1:-1,alen=Math.hypot(ax,ay)||1,blen=Math.hypot(bx,by)||1;
+        changed=move(a,ay/alen*crossSign,-ax/alen*crossSign,needed*.55)||changed;
+        changed=move(b,-by/blen*crossSign,bx/blen*crossSign,needed*.55)||changed;
+      }
+    }
+    for(const edge of potentialEdges) {
+      const source=points.get(edge.source),target=points.get(edge.target);
+      for(const obstacle of nodes) {
+        if(obstacle.id===edge.source||obstacle.id===edge.target||fixed.has(obstacle.id)) continue;
+        const point=points.get(obstacle.id),hit=straightEdgeClearance(source,target,point),needed=radius(obstacle)+4-hit.distance;
+        if(hit.amount<=.04||hit.amount>=.96||needed<=0) continue;
+        const sx=source.x,sy=source.y*GRAPH_PANEL_Y_SCALE,tx=target.x,ty=target.y*GRAPH_PANEL_Y_SCALE,
+          ex=tx-sx,ey=ty-sy,length=Math.hypot(ex,ey)||1,nx=-ey/length,ny=ex/length,
+          side=(point.x-(sx+ex*hit.amount))*nx+(point.y*GRAPH_PANEL_Y_SCALE-(sy+ey*hit.amount))*ny;
+        changed=move(obstacle,nx*(side>=0?1:-1),ny*(side>=0?1:-1),needed)||changed;
+      }
+    }
+    for(const node of nodes) {
+      if(fixed.has(node.id)) continue;
+      const point=points.get(node.id),r=radius(node),beforeX=point.x,beforeY=point.y;
+      point.x=clamp(point.x,r+10,990-r);point.y=clamp(point.y,(r+18)/GRAPH_PANEL_Y_SCALE,(662-r)/GRAPH_PANEL_Y_SCALE);
+      if(point.x!==beforeX||point.y!==beforeY) changed=true;
+    }
+    for(const [sourceId,targetIds] of relationTargetsBySource) {
+      const source=points.get(sourceId),sx=source.x,sy=source.y*GRAPH_PANEL_Y_SCALE;
+      for(let first=0;first<targetIds.length;first++) for(let second=first+1;second<targetIds.length;second++) {
+        const a=byId.get(targetIds[first]),b=byId.get(targetIds[second]),pa=points.get(a.id),pb=points.get(b.id),
+          hitA=straightEdgeClearance(source,pa,pb),hitB=straightEdgeClearance(source,pb,pa);
+        if((hitA.amount<=.04||hitA.amount>=.96||hitA.distance>=radius(b)+8)&&
+          (hitB.amount<=.04||hitB.amount>=.96||hitB.distance>=radius(a)+8)) continue;
+        const ax=pa.x-sx,ay=pa.y*GRAPH_PANEL_Y_SCALE-sy,bx=pb.x-sx,by=pb.y*GRAPH_PANEL_Y_SCALE-sy,
+          crossSign=ax*by-ay*bx>=0?1:-1,alen=Math.hypot(ax,ay)||1,blen=Math.hypot(bx,by)||1,
+          needed=Math.max(radius(b)+8-hitA.distance,radius(a)+8-hitB.distance,2);
+        changed=move(a,ay/alen*crossSign,-ax/alen*crossSign,needed*.8)||changed;
+        changed=move(b,-by/blen*crossSign,bx/blen*crossSign,needed*.8)||changed;
+      }
+    }
+    if(!changed) break;
+  }
+  // A movable node can otherwise oscillate between two reserved component
+  // anchors. Resolve those rare wedges with one deterministic nearest-slot
+  // search after relaxation; this is still part of the one-time catalog
+  // layout and never runs in response to an expand/collapse interaction.
+  for(let repairPass=0;repairPass<3;repairPass++) for(const node of nodes.filter(candidate=>!fixed.has(candidate.id))) {
+    const current=points.get(node.id),isClear=candidate=>{
+      if(candidate.x<radius(node)+10||candidate.x>990-radius(node)||
+        candidate.y*GRAPH_PANEL_Y_SCALE<radius(node)+18||candidate.y*GRAPH_PANEL_Y_SCALE>662-radius(node)) return false;
+      if(vectorLength(worldFromInitialProjection(candidate.x,candidate.y,candidate.depth))>648) return false;
+      for(const obstacle of nodes) if(obstacle.id!==node.id&&
+        screenCircleDistance(candidate,points.get(obstacle.id))<radius(node)+radius(obstacle)+2) return false;
+      for(const edge of potentialEdges) if(edge.source!==node.id&&edge.target!==node.id) {
+        const hit=straightEdgeClearance(points.get(edge.source),points.get(edge.target),candidate);
+        if(hit.amount>.04&&hit.amount<.96&&hit.distance<radius(node)+2) return false;
+      }
+      return true;
+    };
+    if(isClear(current)) continue;
+    const choices=[];
+    for(let x=radius(node)+10;x<=990-radius(node);x+=8)
+      for(let panelY=radius(node)+18;panelY<=662-radius(node);panelY+=8) {
+        const candidate={x,y:panelY/GRAPH_PANEL_Y_SCALE,depth:current.depth};
+        if(isClear(candidate)) choices.push({candidate,score:screenCircleDistance(current,candidate)});
+      }
+    choices.sort((a,b)=>a.score-b.score||a.candidate.x-b.candidate.x||a.candidate.y-b.candidate.y);
+    if(choices.length) points.set(node.id,choices[0].candidate);
+  }
+  const candidateIsSafe=(child,source,candidate)=>{
+    if(candidate.x<radius(child)+10||candidate.x>990-radius(child)||
+      candidate.y*GRAPH_PANEL_Y_SCALE<radius(child)+18||candidate.y*GRAPH_PANEL_Y_SCALE>662-radius(child)) return false;
+    const incoming=potentialEdges.filter(edge=>edge.target===child.id);
+    for(const edge of incoming) {
+      const sourcePoint=points.get(edge.source),outwardX=sourcePoint.x-GRAPH_CENTER.x,
+        outwardY=(sourcePoint.y-GRAPH_CENTER.y)*GRAPH_PANEL_Y_SCALE,branchX=candidate.x-sourcePoint.x,
+        branchY=(candidate.y-sourcePoint.y)*GRAPH_PANEL_Y_SCALE;
+      if(outwardX*branchX+outwardY*branchY<=0) return false;
+    }
+    for(const obstacle of nodes) {
+      if(obstacle.id===child.id) continue;
+      const point=points.get(obstacle.id);
+      if(screenCircleDistance(candidate,point)<radius(child)+radius(obstacle)+1) return false;
+      for(const edge of incoming) if(obstacle.id!==edge.source) {
+        const hit=straightEdgeClearance(points.get(edge.source),candidate,point);
+        if(hit.amount>.04&&hit.amount<.96&&hit.distance<radius(obstacle)+2) return false;
+      }
+    }
+    for(const edge of potentialEdges) {
+      if(edge.target===child.id||edge.source===child.id) continue;
+      const hit=straightEdgeClearance(points.get(edge.source),points.get(edge.target),candidate);
+      if(hit.amount>.04&&hit.amount<.96&&hit.distance<radius(child)+2) return false;
+    }
+    return true;
+  };
+  for(let pass=0;pass<3;pass++) for(const edge of potentialEdges) {
+    const child=byId.get(edge.target),source=byId.get(edge.source),current=points.get(child.id);
+    if(fixed.has(child.id)) continue;
+    if(candidateIsSafe(child,source,current)) continue;
+    const sourcePoint=points.get(source.id),axis=Math.atan2((sourcePoint.y-GRAPH_CENTER.y)*GRAPH_PANEL_Y_SCALE,
+      sourcePoint.x-GRAPH_CENTER.x),choices=[];
+    for(let angleIndex=0;angleIndex<=72;angleIndex++) {
+      const angle=axis-1.42+2.84*angleIndex/72;
+      for(let distance=110;distance<=430;distance+=16) {
+        const candidate={x:sourcePoint.x+Math.cos(angle)*distance,
+          y:(sourcePoint.y*GRAPH_PANEL_Y_SCALE+Math.sin(angle)*distance)/GRAPH_PANEL_Y_SCALE,depth:current.depth};
+        if(candidateIsSafe(child,source,candidate)) choices.push({candidate,score:screenCircleDistance(current,candidate)});
+      }
+    }
+    if(!choices.length) for(let x=radius(child)+10;x<=990-radius(child);x+=8)
+      for(let panelY=radius(child)+18;panelY<=662-radius(child);panelY+=8) {
+        const candidate={x,y:panelY/GRAPH_PANEL_Y_SCALE,depth:current.depth};
+        if(candidateIsSafe(child,source,candidate)) choices.push({candidate,score:screenCircleDistance(current,candidate)});
+      }
+    choices.sort((a,b)=>a.score-b.score||a.candidate.x-b.candidate.x||a.candidate.y-b.candidate.y);
+    if(choices.length) points.set(child.id,choices[0].candidate);
+  }
+  for(let pass=0;pass<potentialEdges.length;pass++) {
+    let repaired=false;
+    for(const edge of potentialEdges) {
+      const sourcePoint=points.get(edge.source),targetPoint=points.get(edge.target);
+      for(const obstacle of nodes) {
+        if(obstacle.id===edge.source||obstacle.id===edge.target) continue;
+        const incoming=potentialEdges.find(candidate=>candidate.target===obstacle.id);
+        if(!incoming||fixed.has(obstacle.id)) continue;
+        const hit=straightEdgeClearance(sourcePoint,targetPoint,points.get(obstacle.id));
+        if(hit.amount<=.04||hit.amount>=.96||hit.distance>=radius(obstacle)+2) continue;
+        const obstacleSource=byId.get(incoming.source),current=points.get(obstacle.id),parentPoint=points.get(obstacleSource.id),
+          axis=Math.atan2((parentPoint.y-GRAPH_CENTER.y)*GRAPH_PANEL_Y_SCALE,parentPoint.x-GRAPH_CENTER.x),choices=[];
+        for(let angleIndex=0;angleIndex<=120;angleIndex++) {
+          const angle=axis-1.56+3.12*angleIndex/120;
+          for(let distance=110;distance<=460;distance+=10) {
+            const candidate={x:parentPoint.x+Math.cos(angle)*distance,
+              y:(parentPoint.y*GRAPH_PANEL_Y_SCALE+Math.sin(angle)*distance)/GRAPH_PANEL_Y_SCALE,depth:current.depth};
+            if(candidateIsSafe(obstacle,obstacleSource,candidate))
+              choices.push({candidate,score:screenCircleDistance(current,candidate)});
+          }
+        }
+        if(!choices.length) for(let x=radius(obstacle)+10;x<=990-radius(obstacle);x+=8)
+          for(let panelY=radius(obstacle)+18;panelY<=662-radius(obstacle);panelY+=8) {
+            const candidate={x,y:panelY/GRAPH_PANEL_Y_SCALE,depth:current.depth};
+            if(candidateIsSafe(obstacle,obstacleSource,candidate))
+              choices.push({candidate,score:screenCircleDistance(current,candidate)});
+          }
+        choices.sort((a,b)=>a.score-b.score||a.candidate.x-b.candidate.x||a.candidate.y-b.candidate.y);
+        if(choices.length) {points.set(obstacle.id,choices[0].candidate);repaired=true;break;}
+      }
+      if(repaired) break;
+    }
+    if(!repaired) break;
+  }
+  for(const node of nodes) {
+    const point=points.get(node.id),depth=clamp(point.depth??0,-180,180),world=worldFromInitialProjection(point.x,point.y,depth);
+    node.x=world.x;node.y=world.y;node.z=world.z;
+  }
+  const result={...graph,nodes};
+  result.denseOverflow=straightLayoutIsUnsafe(nodes,graph.edges);
+  return result;
+}
+
+export function buildExpandedTermGraph(baseTerms,catalogTerms,expandedIds=[]) {
+  const {childrenByParent}=relationshipIndex(catalogTerms),baseIds=new Set(baseTerms.map(term=>term.term_id)),
+    expandable=[...childrenByParent].filter(([id])=>baseIds.has(id)).map(([id])=>id).sort(),
+    largest=Math.max(0,...expandable.map(id=>(childrenByParent.get(id)||[]).length));
+  if(largest<9||largest>12) return buildExpandedTermGraphVisible(baseTerms,catalogTerms,expandedIds);
+  let baseCache=stabilizedLayoutCache.get(catalogTerms);
+  if(!baseCache) {baseCache=new WeakMap();stabilizedLayoutCache.set(catalogTerms,baseCache);}
+  let universe=baseCache.get(baseTerms);
+  if(!universe) {
+    universe=stabilizeCatalogLayout(buildExpandedTermGraphVisible(baseTerms,catalogTerms,expandable),childrenByParent);
+    baseCache.set(baseTerms,universe);
+  }
+  const
+    requested=buildExpandedTermGraphVisible(baseTerms,catalogTerms,expandedIds),universeById=new Map(universe.nodes.map(node=>[node.id,node]));
+  for(const node of requested.nodes) {
+    const stable=universeById.get(node.id);
+    if(stable) {node.x=stable.x;node.y=stable.y;node.z=stable.z;}
+  }
+  requested.denseOverflow=straightLayoutIsUnsafe(requested.nodes,requested.edges);
+  return requested;
 }
 
 export function projectNode(node, view) {

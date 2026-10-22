@@ -15,7 +15,9 @@ test('graph observes its panel and explains the latched readable-list fallback',
  assert.match(source,/패널을 넓힌 뒤 3D 보기를 선택하면 같은 선택과 펼침 상태로 돌아갑니다/);
 });
 
-test('manual list mode cannot reopen an unsafe 3D viewport',()=>{
+test('safe desktop expansion stays in 3D while genuinely dense graphs retain the readable list fallback',()=>{
+ assert.match(source,/const list=listRequested\|\|logicalGraph\.denseOverflow\|\|responsiveFallback/);
  assert.match(source,/const listUnavailable=logicalGraph\.denseOverflow\|\|\(list&&viewportAssessment\.unsafe\)/);
+ assert.match(source,/expandedIds\.length===0&&viewportAssessment\.unsafe/);
  assert.match(source,/if\(viewportAssessment\.unsafe\) return/);
 });

@@ -189,15 +189,10 @@ test('collapse changes visibility only and cyclic relationships remain finite',(
  assert.equal(new Set(graph.edges.map(edge=>`${edge.source}:${edge.target}:${edge.relation}`)).size,graph.edges.length);
 });
 
-test('expanded branches stay in their category cone and every real child is farther from the graph center than its parents',()=>{
+test('expanded branches keep extending outward from their displayed parents',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting','pose_standing','pose_contrapposto']);
  const byId=new Map(graph.nodes.map(node=>[node.id,node]));
  const radius=node=>Math.hypot(node.x,node.y,node.z);
- const angle=(a,b)=>Math.acos(Math.min(1,Math.max(-1,(a.x*b.x+a.y*b.y+a.z*b.z)/(radius(a)*radius(b)))));
- for(const node of graph.nodes.filter(node=>node.term)) {
-  const category=byId.get(`category:${node.role}`);
-  assert.ok(angle(node,category)<Math.PI/3,`${node.id} escaped the ${node.role} category cone`);
- }
  for(const edge of graph.edges.filter(edge=>edge.relation&&byId.get(edge.target)?.isDetail)) {
   const parent=byId.get(edge.source),child=byId.get(edge.target);
   assert.ok(radius(child)>radius(parent)+1,`${child.id} returned inward past ${parent.id}`);
@@ -328,23 +323,41 @@ test('a sixteen-child fan keeps every term and requests the readable list fallba
  assert.deepEqual(buildExpandedTermGraph([root],[root,...children],['dense_root']).nodes,graph.nodes);
 });
 
-test('the twelve-child sitting fan uses the list instead of bent or piercing edges',()=>{
+test('the twelve-child sitting fan remains in the 3D graph with straight connectors',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_sitting']);
  const expected=ACTIVE_TERMS.filter(term=>[...(term.requires_all_of||[]),...(term.requires_any_of||[])].includes('pose_sitting'))
   .map(term=>term.term_id).sort();
- assert.equal(graph.denseOverflow,true);
+ assert.equal(graph.denseOverflow,false);
  assert.ok(graph.nodes.filter(node=>node.isDetail).length>=12);
  assert.deepEqual(graph.nodes.filter(node=>node.isDetail).map(node=>node.id).sort(),expected);
  assert.ok(graph.edges.every(edge=>edge.route===undefined));
 });
 
-test('a five-child branch never falls back to overlapping circles or bent connectors',()=>{
+test('a five-child branch remains in the 3D graph without bent connectors',()=>{
  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,['pose_contrapposto']);
  const expected=ACTIVE_TERMS.filter(term=>[...(term.requires_all_of||[]),...(term.requires_any_of||[])].includes('pose_contrapposto'))
   .map(term=>term.term_id).sort();
- assert.equal(graph.denseOverflow,true);
+ assert.equal(graph.denseOverflow,false);
  assert.deepEqual(graph.nodes.filter(node=>node.isDetail).map(node=>node.id).sort(),expected);
  assert.ok(graph.edges.every(edge=>edge.route===undefined));
+});
+
+test('every expansion subset keeps the fixed catalog layout collision-free',()=>{
+ const parents=['pose_sitting','pose_standing','pose_contrapposto','pose_weight_shift','pose_s_curve','pose_kneeling'];
+ const universe=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,parents);
+ const stable=new Map(universe.nodes.map(node=>[node.id,{x:node.x,y:node.y,z:node.z}]));
+ for(let mask=0;mask<2**parents.length;mask++) {
+  const expanded=parents.filter((_,index)=>mask&(1<<index));
+  const graph=buildExpandedTermGraph(HOME_TERMS,ACTIVE_TERMS,expanded);
+  assert.equal(graph.denseOverflow,false,`unsafe expansion subset: ${expanded.join(', ')||'(none)'}`);
+  assert.ok(graph.edges.every(edge=>edge.route===undefined),'expanded relations must remain straight');
+  const expected=new Set(ACTIVE_TERMS.filter(term=>[...(term.requires_all_of||[]),...(term.requires_any_of||[])]
+    .some(parent=>expanded.includes(parent))).map(term=>term.term_id));
+  assert.deepEqual(new Set(graph.nodes.filter(node=>node.isDetail).map(node=>node.id)),expected,
+    `wrong direct children for: ${expanded.join(', ')||'(none)'}`);
+  for(const node of graph.nodes) assert.deepEqual({x:node.x,y:node.y,z:node.z},stable.get(node.id),
+    `${node.id} moved in subset: ${expanded.join(', ')||'(none)'}`);
+ }
 });
 
 test('an unsafe synthetic dense fan requests the readable list representation',()=>{
