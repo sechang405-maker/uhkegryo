@@ -6,12 +6,24 @@ export function upsertTurn(turns, turn) {
   return index < 0 ? [...turns, turn] : turns.map((entry, position) => position === index
     ? { ...entry, ...turn, job: entry.job?.created_at && !turn.job?.created_at
       ? { ...turn.job, created_at: entry.job.created_at } : turn.job, polling_stopped: !TERMINAL.has(turn.job?.job_status)
-      && Boolean(entry.polling_stopped || turn.polling_stopped) } : entry);
+      && Boolean(entry.polling_stopped || turn.polling_stopped),
+      ...(TERMINAL.has(turn.job?.job_status) ? { polling_error: undefined } : {}) } : entry);
 }
 
-export function stopTurnPolling(turns, turnId) {
+export function stopTurnPolling(turns, turnId, message) {
   return turns.map((turn) => turn.id === turnId && isTurnPending(turn)
-    ? { ...turn, polling_stopped: true } : turn);
+    ? { ...turn, polling_stopped: true, ...(message ? { polling_error: message } : {}) } : turn);
+}
+
+export function resumeTurnPolling(turns, turnId) {
+  const index = turns.findIndex((turn) => turn.id === turnId && turn.polling_stopped
+    && !TERMINAL.has(turn.job?.job_status));
+  if (index < 0) return turns;
+  return turns.map((turn, position) => {
+    if (position !== index) return turn;
+    const { polling_error: _error, ...rest } = turn;
+    return { ...rest, polling_stopped: false };
+  });
 }
 
 export function answerForJob(job) {

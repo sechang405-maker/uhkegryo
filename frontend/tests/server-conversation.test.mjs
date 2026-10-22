@@ -139,6 +139,7 @@ test("복원된 여러 진행 turn이 각각 종결·중단되고 cleanup은 늦
     onError: (id) => { errors.push(id); turns = stopTurnPolling(turns, id); },
   });
   await tasks[0](); await tasks[1](); const pending = tasks[2]();
+  await tasks[3](); await tasks[4]();
   pollers.stop(); release(response(job("c"))); await pending;
   assert.deepEqual(updates, ["a"]); assert.deepEqual(errors, ["b"]);
   assert.equal(turns.length, 3); assert.equal(turns[1].polling_stopped, true);

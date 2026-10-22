@@ -145,7 +145,7 @@ export function resumeConversation(turns, options) {
         if (job.job_id !== turn.id) return options.onError(turn.id, RESTORE_ERROR);
         options.onUpdate({ ...turn, job });
       },
-      onError: (message) => options.onError(turn.id, message),
+      onError: (message, details) => options.onError(turn.id, message, details),
     });
     poller.start(turn.job?.poll_after_ms);
     return poller;

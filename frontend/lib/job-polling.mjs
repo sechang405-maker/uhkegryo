@@ -9,7 +9,19 @@ export const STATUS_LABELS = {
 };
 
 const TERMINAL = new Set(["completed", "failed"]);
-const POLL_ERROR = "처리 상태를 불러오지 못했습니다. 잠시 후 새 요청으로 다시 시도해 주세요.";
+const POLL_ERROR = "처리 상태를 불러오지 못했습니다. 연결을 확인한 뒤 상태 다시 확인을 눌러 주세요.";
+
+const AUTO_RETRY_LIMIT = 2;
+
+function requestError(retryable) {
+  const error = new Error("job request failed");
+  error.retryable = retryable;
+  return error;
+}
+
+function retryDelay(attempt) {
+  return Math.min(500 * (2 ** (attempt - 1)), 2000);
+}
 
 export function pollDelay(value) {
   return Number.isFinite(value) && value > 0 ? value : 1000;
@@ -22,6 +34,7 @@ export function createJobPoller(jobId, options = {}) {
   const controller = new AbortController();
   let stopped = false;
   let timer;
+  let failedAttempts = 0;
 
   async function tick() {
     if (stopped) return;
@@ -30,15 +43,25 @@ export function createJobPoller(jobId, options = {}) {
         credentials: "include",
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error("job request failed");
-      const job = await response.json();
-      if (!Object.hasOwn(STATUS_LABELS, job?.job_status)) throw new Error("invalid job status");
+      if (!response.ok) throw requestError([408, 429].includes(response.status) || response.status >= 500);
+      let job;
+      try { job = await response.json(); }
+      catch { throw requestError(false); }
+      if (!Object.hasOwn(STATUS_LABELS, job?.job_status)) throw requestError(false);
       if (stopped) return;
+      failedAttempts = 0;
       options.onUpdate(job);
       if (TERMINAL.has(job.job_status)) return;
       timer = schedule(tick, pollDelay(job.poll_after_ms));
-    } catch {
-      if (!stopped) options.onError(POLL_ERROR);
+    } catch (error) {
+      if (stopped || controller.signal.aborted) return;
+      const retryable = error?.retryable !== false;
+      if (retryable && failedAttempts < (options.maxRetries ?? AUTO_RETRY_LIMIT)) {
+        failedAttempts += 1;
+        timer = schedule(tick, retryDelay(failedAttempts));
+        return;
+      }
+      options.onError(POLL_ERROR, { retryable, attempts: failedAttempts + 1 });
     }
   }
 

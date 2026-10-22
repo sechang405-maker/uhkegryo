@@ -7,7 +7,7 @@ const job = (text, status = "success") => ({ job_status: "completed", result: { 
 
 test("first turn stays stopped after a 503 poll and a second completed request", async () => {
   let turns = chat.upsertTurn([], { id: "a", request: "체형", job: { job_status: "queued" }, demo: false });
-  let tick;
+  const ticks = [];
   let calls = 0;
   const poller = createJobPoller("a", {
     fetchImpl: async (url) => {
@@ -15,15 +15,15 @@ test("first turn stays stopped after a 503 poll and a second completed request",
       calls++;
       return new Response(null, { status: 503 });
     },
-    schedule: (callback) => { tick = callback; return 1; }, cancel: () => {},
+    schedule: (callback) => { ticks.push(callback); return ticks.length; }, cancel: () => {},
     onUpdate: (updatedJob) => { turns = chat.upsertTurn(turns, { id: "a", job: updatedJob }); },
     onError: () => { turns = chat.stopTurnPolling(turns, "a"); },
   });
   poller.start(1);
-  await tick();
+  while (ticks.length) await ticks.shift()();
   poller.stop();
   turns = chat.upsertTurn(turns, { id: "b", request: "포즈", job: job("둘째 답변"), demo: false });
-  assert.equal(calls, 1);
+  assert.equal(calls, 3);
   assert.equal(turns[0].polling_stopped, true);
   assert.equal(chat.isTurnPending(turns[0]), false);
   assert.equal(turns[0].job.job_status, "queued");
@@ -49,6 +49,23 @@ test("stopping polling targets only that unfinished turn, never a completed answ
   assert.deepEqual(chat.stopTurnPolling(turns, "missing"), turns);
   assert.deepEqual(chat.stopTurnPolling(turns, "b"), turns);
   assert.equal(turns[0].polling_stopped, undefined);
+});
+
+test("manual status recheck resumes only the stopped job and clears its transport error", () => {
+  const turns = [
+    { id: "a", job: { job_status: "searching" } },
+    { id: "b", job: { job_status: "queued" } },
+  ];
+  const stopped = chat.stopTurnPolling(turns, "a", "상태 연결 실패");
+  assert.equal(stopped[0].polling_error, "상태 연결 실패");
+  assert.equal(chat.isTurnPending(stopped[0]), false);
+
+  const resumed = chat.resumeTurnPolling(stopped, "a");
+  assert.equal(resumed[0].polling_stopped, false);
+  assert.equal(resumed[0].polling_error, undefined);
+  assert.equal(chat.isTurnPending(resumed[0]), true);
+  assert.equal(resumed[1], turns[1]);
+  assert.equal(chat.resumeTurnPolling(stopped, "missing"), stopped);
 });
 
 test("polling updates one turn without dropping previous answers", () => {

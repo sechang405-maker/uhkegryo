@@ -16,7 +16,7 @@ import { searchFixedTerm, searchTermMode, applySketchResult, applyPreviewRecover
 import { createGalleryRows, renderedResultTerms, reopenableReferenceTurnIds, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
 import { usableGalleryPins } from "../lib/gallery-pins.mjs";
 import { createRecoveryBudget, claimRecovery, finishRecovery } from "../lib/recovery-budget.mjs";
-import { stopTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from "../lib/conversation.mjs";
+import { stopTurnPolling, resumeTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from "../lib/conversation.mjs";
 import ConversationPanel from "../components/ConversationPanel";
 import TermGuide from "../components/TermGuide.mjs";
 import TermGraph from "../components/TermGraph";
@@ -382,7 +382,7 @@ export default function HomePage() {
     }, onError: (id, message) => {
       if (sessionIdRef.current !== activeSessionId) return;
       setPollError(message);
-      setTurns((entries) => stopTurnPolling(entries, id));
+      setTurns((entries) => stopTurnPolling(entries, id, message));
       const mobileDecision = resolveMobileResult(mobileOrigin, {
         requestId: id,
         sessionId: sessionIdRef.current,
@@ -574,6 +574,12 @@ export default function HomePage() {
     event.preventDefault();
     if (composingRef.current) return;
     await submit(requestText);
+  }
+
+  function retryTurnStatus(turnId) {
+    if (!conversationReady || conversationBusy) return;
+    setPollError("");
+    setTurns((entries) => resumeTurnPolling(entries, turnId));
   }
 
   function openTurn(turn) {
@@ -1220,7 +1226,8 @@ export default function HomePage() {
           {!uiDemoEnabled && historyPage.hasMore && <button type="button" disabled={olderLoading} onClick={loadOlder}>이전 대화 불러오기</button>}
           {olderError && <p role="alert">{olderError}</p>}
           <ConversationPanel key={sessionId || "no-session"} turns={turns}
-            reopenableTurnIds={reopenableTurnIds} onOpenReferences={openTurn} />
+            reopenableTurnIds={reopenableTurnIds} onOpenReferences={openTurn}
+            onRetryStatus={retryTurnStatus} retryStatusBusy={conversationBusy} />
           <TermGuide term={termGuide} />
           {uiDemoEnabled && <div className="demo-scenarios" aria-label="대표 샘플 입력">
             <p>대표 예시를 선택한 뒤 전송해 보세요.</p>
@@ -1233,7 +1240,6 @@ export default function HomePage() {
             <strong>{mobileResultNotice.message}</strong>
             <button type="button" onClick={openMobileResult}>{mobileResultNotice.actionLabel}</button>
           </div>}
-          {pollError && <p className="form-error" role="alert">{pollError}</p>}
         </div>
 
         <form className="composer" onSubmit={handleSubmit} noValidate>

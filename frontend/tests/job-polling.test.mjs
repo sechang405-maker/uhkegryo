@@ -70,3 +70,75 @@ test("AC-02/03: 정리된 조회는 화면을 갱신하지 않고 오류는 재�
   failed.stop();
   assert.equal(pollDelay(null), 1000);
 });
+
+test("temporary status read failures retry twice and then recover the same job", async () => {
+  const timers = [];
+  const errors = [];
+  const updates = [];
+  let calls = 0;
+  const active = createJobPoller("accepted-job", {
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls < 3) throw new TypeError("connection lost");
+      return { ok: true, status: 200, json: async () => ({ job_id: "accepted-job", job_status: "completed" }) };
+    },
+    schedule: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, cancel: () => {},
+    onUpdate: (job) => updates.push(job.job_status), onError: (...args) => errors.push(args),
+  });
+  active.start(25);
+  let timer = timers.shift();
+  assert.equal(timer.ms, 25);
+  await timer.fn();
+  assert.equal(errors.length, 0);
+  assert.equal(timers.length, 1);
+  timer = timers.shift(); await timer.fn();
+  assert.equal(errors.length, 0);
+  assert.equal(timers.length, 1);
+  timer = timers.shift(); await timer.fn();
+  assert.deepEqual(updates, ["completed"]);
+  assert.equal(errors.length, 0);
+  assert.equal(calls, 3);
+  assert.equal(timers.length, 0);
+});
+
+test("temporary status read failures stop after a bounded retry budget", async () => {
+  const timers = [];
+  const errors = [];
+  let calls = 0;
+  const poller = createJobPoller("accepted-job", {
+    fetchImpl: async () => { calls += 1; throw new TypeError("offline"); },
+    schedule: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, cancel: () => {},
+    onUpdate: () => assert.fail("unexpected update"), onError: (...args) => errors.push(args),
+  });
+  poller.start(1);
+  while (timers.length) await timers.shift().fn();
+  assert.equal(calls, 3);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0][1].retryable, true);
+});
+
+test("non-retryable HTTP errors stop immediately while a failed job is a terminal update", async () => {
+  const timers = [];
+  const errors = [];
+  const updates = [];
+  const responseQueue = [
+    { ok: false, status: 404, json: async () => ({}) },
+    { ok: true, status: 200, json: async () => ({ job_id: "job-failed", job_status: "failed", failure: { user_message: "검색 실패" } }) },
+  ];
+  const first = createJobPoller("missing", {
+    fetchImpl: async () => responseQueue.shift(), schedule: (fn) => { timers.push(fn); return timers.length; }, cancel: () => {},
+    onUpdate: (job) => updates.push(job), onError: (...args) => errors.push(args),
+  });
+  first.start(); await timers.shift()();
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0][1].retryable, false);
+  assert.equal(timers.length, 0);
+
+  const second = createJobPoller("job-failed", {
+    fetchImpl: async () => responseQueue.shift(), schedule: (fn) => { timers.push(fn); return timers.length; }, cancel: () => {},
+    onUpdate: (job) => updates.push(job), onError: (...args) => errors.push(args),
+  });
+  second.start(); await timers.shift()();
+  assert.equal(updates.at(-1).job_status, "failed");
+  assert.equal(errors.length, 1);
+});
