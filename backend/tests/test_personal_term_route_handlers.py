@@ -39,6 +39,12 @@ class FakeRepository:
     async def confirm_term(self, token, term_id):
         assert token == "owner-a" and term_id == self.item.term_id
         self.item = self.item.model_copy(update={"status": "active", "layout_slot": 0}); return self.item
+    async def soft_delete(self, token, term_id):
+        assert token == "owner-a" and term_id == self.item.term_id
+        self.item = self.item.model_copy(update={"status": "deleted"}); return self.item
+    async def restore_term(self, token, term_id):
+        assert token == "owner-a" and term_id == self.item.term_id
+        self.item = self.item.model_copy(update={"status": "active"}); return self.item
 
 
 class FakeGenerator:
@@ -97,3 +103,18 @@ def test_missing_or_other_owner_cookie_is_not_disclosed(services):
     with pytest.raises(HTTPException) as raised:
         asyncio.run(routes.list_personal_terms(request("owner-b"), Response()))
     assert raised.value.status_code == 401
+
+
+def test_delete_list_deleted_and_restore_are_owner_scoped(services):
+    repository, _ = services
+    term_id = repository.item.term_id
+    deleted = asyncio.run(routes.delete_personal_term(
+        term_id, request(action="personal-term-delete"), Response()
+    ))
+    assert deleted.status == "deleted"
+    listed = asyncio.run(routes.list_personal_terms(request(), Response(), include_deleted=True))
+    assert listed["items"][0].status == "deleted"
+    restored = asyncio.run(routes.restore_personal_term(
+        term_id, request(action="personal-term-restore"), Response()
+    ))
+    assert restored.status == "active"

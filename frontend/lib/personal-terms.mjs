@@ -9,7 +9,9 @@ async function read(response) {
 export function createPersonalTermClient(fetcher = fetch) {
   const request = (url, options = {}) => fetcher(url, { credentials: "include", ...options }).then(read);
   return {
-    list: () => request("/api/personal-terms"),
+    list: ({ includeDeleted = false } = {}) => request(
+      includeDeleted ? "/api/personal-terms?include_deleted=true" : "/api/personal-terms"
+    ),
     generate: (sourceInput, idempotencyKey, retryFailed = false) => request("/api/personal-terms/proposals", {
       method: "POST",
       headers: { "Content-Type": "application/json", [ACTION_HEADER]: "personal-term-generate", "Idempotency-Key": idempotencyKey },
@@ -23,6 +25,22 @@ export function createPersonalTermClient(fetcher = fetch) {
     confirm: (termId) => request(`/api/personal-terms/${encodeURIComponent(termId)}/confirm`, {
       method: "POST", headers: { [ACTION_HEADER]: "personal-term-confirm" },
     }),
+    remove: (termId) => request(`/api/personal-terms/${encodeURIComponent(termId)}`, {
+      method: "DELETE", headers: { [ACTION_HEADER]: "personal-term-delete" },
+    }),
+    restore: (termId) => request(`/api/personal-terms/${encodeURIComponent(termId)}/restore`, {
+      method: "POST", headers: { [ACTION_HEADER]: "personal-term-restore" },
+    }),
+  };
+}
+
+export function reconcilePersonalTermState(items, selectedIds, focusedId, searchedTermId) {
+  const activeIds = new Set(items.filter((item) => item.status === "active").map((item) => item.term_id));
+  const unavailable = (id) => typeof id === "string" && id.startsWith("personal_") && !activeIds.has(id);
+  return {
+    selectedIds: selectedIds.filter((id) => !unavailable(id)),
+    focusedId: unavailable(focusedId) ? null : focusedId,
+    clearSearch: unavailable(searchedTermId),
   };
 }
 

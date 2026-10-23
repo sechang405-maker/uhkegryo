@@ -14,12 +14,19 @@ export default function PersonalTermCreator({ open, onClose, onItemsChange }) {
   const [draft, setDraft] = useState(null);
   const [warnings, setWarnings] = useState([]);
   const [items, setItems] = useState([]);
+  const [deletedItems, setDeletedItems] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [pendingTermId, setPendingTermId] = useState(null);
   const [error, setError] = useState("");
   const [requestId, setRequestId] = useState(null);
 
   async function refresh() {
-    try { const next=(await client.list()).items || [];setItems(next);onItemsChange?.(next); } catch (cause) { setError(cause.message); }
+    try {
+      const next = (await client.list({ includeDeleted: true })).items || [];
+      setItems(next.filter((item) => item.status !== "deleted"));
+      setDeletedItems(next.filter((item) => item.status === "deleted"));
+      onItemsChange?.(next);
+    } catch (cause) { setError(cause.message); }
   }
   useEffect(() => { if (open) refresh(); }, [open]);
   if (!open) return null;
@@ -35,6 +42,20 @@ export default function PersonalTermCreator({ open, onClose, onItemsChange }) {
       setWarnings(result.duplicate_warnings || []);
     } catch (cause) { setError(cause.message); }
     finally { setBusy(false); }
+  }
+
+  async function changeDeletion(item, restore = false) {
+    if (pendingTermId) return;
+    setPendingTermId(item.term_id); setError("");
+    try {
+      const changed = restore ? await client.restore(item.term_id) : await client.remove(item.term_id);
+      const existing = [...items, ...deletedItems].filter((entry) => entry.term_id !== changed.term_id);
+      const next = [changed, ...existing];
+      setItems(next.filter((entry) => entry.status !== "deleted"));
+      setDeletedItems(next.filter((entry) => entry.status === "deleted"));
+      onItemsChange?.(next);
+    } catch (cause) { setError(cause.message); }
+    finally { setPendingTermId(null); }
   }
 
   function field(name, value) { setDraft((current) => ({ ...current, [name]: value })); }
@@ -91,9 +112,21 @@ export default function PersonalTermCreator({ open, onClose, onItemsChange }) {
         {!items.length ? <p>아직 저장한 개인 용어가 없습니다.</p> : <ul>{items.map((item) => <li key={item.term_id}>
           <span style={{ "--category-color": graphCategoryColor(item.role) }}>{ROLE_LABELS[item.role]}</span>
           <div><strong>{item.label_ko}</strong><p>{item.plain_meaning_ko}</p></div>
-          <small>{item.status === "active" ? "저장됨" : "검토 중"}</small>
+          <div className="personal-term-item-actions"><small>{item.status === "active" ? "저장됨" : "검토 중"}</small>
+            <button type="button" disabled={pendingTermId === item.term_id}
+              onClick={() => changeDeletion(item)}>{pendingTermId === item.term_id ? "삭제 중…" : "삭제"}</button></div>
         </li>)}</ul>}
       </section>
+      {deletedItems.length > 0 && <section className="personal-term-list personal-term-trash" aria-labelledby="deleted-personal-terms">
+        <h3 id="deleted-personal-terms">삭제한 개인 용어</h3>
+        <p>삭제한 용어는 그래프와 새 검색에서 제외되며 언제든 복구할 수 있습니다.</p>
+        <ul>{deletedItems.map((item) => <li key={item.term_id}>
+          <span style={{ "--category-color": graphCategoryColor(item.role) }}>{ROLE_LABELS[item.role]}</span>
+          <div><strong>{item.label_ko}</strong><p>{item.plain_meaning_ko}</p></div>
+          <button type="button" disabled={pendingTermId === item.term_id}
+            onClick={() => changeDeletion(item, true)}>{pendingTermId === item.term_id ? "복구 중…" : "복구"}</button>
+        </li>)}</ul>
+      </section>}
     </section>
   </div>;
 }

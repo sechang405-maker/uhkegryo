@@ -89,10 +89,16 @@ async def generate_proposal(
 
 
 @router.get("")
-async def list_personal_terms(request: Request, response: Response):
+async def list_personal_terms(
+    request: Request, response: Response, include_deleted: bool = False,
+):
     sessions, repository, _ = await resolve_services(request)
     token = await _token(request, response, sessions)
-    return {"items": await _database_call(repository.list_terms(token))}
+    return {
+        "items": await _database_call(
+            repository.list_terms(token, include_deleted=include_deleted)
+        )
+    }
 
 
 @router.patch("/{term_id}", response_model=PersonalTermRecord)
@@ -108,6 +114,32 @@ async def update_personal_term(
         raise HTTPException(404, "개인 용어를 찾을 수 없습니다.") from None
     except PersonalTermStateConflict:
         raise HTTPException(409, "저장된 용어의 카테고리는 변경할 수 없습니다.") from None
+
+
+@router.delete("/{term_id}", response_model=PersonalTermRecord)
+async def delete_personal_term(term_id: str, request: Request, response: Response):
+    require_conversation_action(request, "personal-term-delete")
+    sessions, repository, _ = await resolve_services(request)
+    token = await _token(request, response, sessions)
+    try:
+        return await _database_call(repository.soft_delete(token, term_id))
+    except PersonalTermNotFound:
+        raise HTTPException(404, "개인 용어를 찾을 수 없습니다.") from None
+    except PersonalTermStateConflict:
+        raise HTTPException(409, "생성 중이거나 실패한 용어는 이 목록에서 삭제할 수 없습니다.") from None
+
+
+@router.post("/{term_id}/restore", response_model=PersonalTermRecord)
+async def restore_personal_term(term_id: str, request: Request, response: Response):
+    require_conversation_action(request, "personal-term-restore")
+    sessions, repository, _ = await resolve_services(request)
+    token = await _token(request, response, sessions)
+    try:
+        return await _database_call(repository.restore_term(token, term_id))
+    except PersonalTermNotFound:
+        raise HTTPException(404, "복구할 개인 용어를 찾을 수 없습니다.") from None
+    except PersonalTermStateConflict:
+        raise HTTPException(409, "복구할 수 있는 삭제 상태가 아닙니다.") from None
 
 
 @router.post("/{term_id}/confirm", response_model=PersonalTermRecord)

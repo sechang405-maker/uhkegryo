@@ -31,7 +31,7 @@ import SessionUsageNotice from '../components/SessionUsageNotice.mjs';
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
 import { createMobileResultOrigin, resolveMobileResult } from "../lib/mobile-result-flow.mjs";
 import PersonalTermCreator from "../components/PersonalTermCreator";
-import { createPersonalTermClient } from "../lib/personal-terms.mjs";
+import { createPersonalTermClient, reconcilePersonalTermState } from "../lib/personal-terms.mjs";
 import { personalGraphTerms } from "../lib/term-graph-personal-layout.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
@@ -234,6 +234,21 @@ export default function HomePage() {
     personalTermClient.list().then(result=>{if(active)setPersonalTerms(result.items||[]);}).catch(()=>{});
     return ()=>{active=false;};
   },[conversationReady,personalTermClient]);
+
+  function applyPersonalTerms(nextItems) {
+    const reconciled = reconcilePersonalTermState(
+      nextItems, graphTermIds, graphFocusId, termSearch?.term?.term_id,
+    );
+    setPersonalTerms(nextItems);
+    setGraphTermIds(reconciled.selectedIds);
+    if (reconciled.focusedId !== graphFocusId) setGraphFocusId(reconciled.focusedId || HOME_TERMS[0]?.term_id);
+    if (reconciled.clearSearch) {
+      termSearchControllerRef.current?.abort();
+      termSearchOriginRef.current = null;
+      setTermSearch(null);
+      if (boardView === "term-results") setBoardView("results");
+    }
+  }
 
   function showDemoSession(session) {
     sessionIdRef.current = session.session_id;
@@ -1300,7 +1315,7 @@ export default function HomePage() {
             {requestLength >= 450 && <span id="request-count" className="character-count" role="status">{requestLength} / 500</span>}
           </div>
         </form>
-        <PersonalTermCreator open={personalTermOpen} onClose={() => setPersonalTermOpen(false)} onItemsChange={setPersonalTerms} />
+        <PersonalTermCreator open={personalTermOpen} onClose={() => setPersonalTermOpen(false)} onItemsChange={applyPersonalTerms} />
       </aside>
       <dialog className="image-preview" ref={previewDialogRef} aria-labelledby="preview-title"
         onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.close(); }}

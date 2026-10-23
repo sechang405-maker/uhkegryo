@@ -359,11 +359,20 @@ class PersonalTermRepository:
                    status='deleted', deleted_at=COALESCE(p.deleted_at, now()), updated_at=now()
                FROM anonymous_owners o
                WHERE o.owner_id=p.owner_id AND o.session_token_hash=$1 AND p.term_id=$2
+                 AND p.status IN ('proposed','active','deleted')
                RETURNING p.*""",
             hash_session_token(token),
             term_id,
         )
         if row is None:
+            owned_status = await self._pool.fetchval(
+                """SELECT p.status FROM personal_terms p
+                   JOIN anonymous_owners o USING(owner_id)
+                   WHERE o.session_token_hash=$1 AND p.term_id=$2""",
+                hash_session_token(token), term_id,
+            )
+            if owned_status in {"generating", "failed"}:
+                raise PersonalTermStateConflict
             raise PersonalTermNotFound
         return _record(row)
 

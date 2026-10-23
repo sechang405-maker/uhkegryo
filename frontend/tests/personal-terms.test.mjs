@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPersonalTermClient, editablePersonalTerm } from "../lib/personal-terms.mjs";
+import { createPersonalTermClient, editablePersonalTerm, reconcilePersonalTermState } from "../lib/personal-terms.mjs";
 
 function response(body, ok = true, status = 200) {
   return { ok, status, json: async () => body };
@@ -40,5 +40,31 @@ test("editor exposes user descriptions but never invents internal prompt fields"
   });
   assert.equal(form.plain_meaning_ko, "발레 자세입니다.");
   assert.equal("internal_question" in form, false);
+});
+
+test("deleted terms can be listed, soft-deleted, and restored with action headers", async () => {
+  const calls = [];
+  const client = createPersonalTermClient(async (url, options) => {
+    calls.push([url, options]);
+    return response(url.includes("restore") ? { term_id: "personal_1", status: "active" } :
+      url === "/api/personal-terms?include_deleted=true" ? { items: [] } : { term_id: "personal_1", status: "deleted" });
+  });
+  await client.list({ includeDeleted: true });
+  await client.remove("personal_1");
+  await client.restore("personal_1");
+  assert.equal(calls[0][0], "/api/personal-terms?include_deleted=true");
+  assert.equal(calls[1][1].method, "DELETE");
+  assert.equal(calls[1][1].headers["x-conversation-action"], "personal-term-delete");
+  assert.equal(calls[2][1].headers["x-conversation-action"], "personal-term-restore");
+});
+
+test("deleting an active personal term removes only its live UI state", () => {
+  const state = reconcilePersonalTermState(
+    [{ term_id: "personal_keep", status: "active" }, { term_id: "personal_gone", status: "deleted" }],
+    ["pose_standing", "personal_gone", "personal_keep"], "personal_gone", "personal_gone",
+  );
+  assert.deepEqual(state.selectedIds, ["pose_standing", "personal_keep"]);
+  assert.equal(state.focusedId, null);
+  assert.equal(state.clearSearch, true);
 });
 

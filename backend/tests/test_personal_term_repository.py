@@ -103,6 +103,9 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
 
         deleted = await repository.soft_delete("owner-a", created.term_id)
         assert deleted.status == "deleted" and deleted.deleted_at is not None
+        repeated_delete = await repository.soft_delete("owner-a", created.term_id)
+        assert repeated_delete.status == "deleted"
+        assert repeated_delete.layout_slot == active.layout_slot
         with pytest.raises(PersonalTermNotFound):
             await repository.get_active_term("owner-a", created.term_id)
         assert await repository.list_terms("owner-a") == []
@@ -113,6 +116,25 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         assert restored.status == "active"
         assert restored.term_id == active.term_id
         assert restored.layout_slot == active.layout_slot
+        repeated_restore = await repository.restore_term("owner-a", created.term_id)
+        assert repeated_restore.status == "active"
+        assert repeated_restore.layout_slot == active.layout_slot
+
+        proposed, _ = await repository.create_proposal(
+            "owner-a", draft(label_ko="restore proposed"),
+            idempotency_key="proposal-to-restore", input_hash="proposal-to-restore",
+        )
+        assert (await repository.soft_delete("owner-a", proposed.term_id)).status == "deleted"
+        restored_proposed = await repository.restore_term("owner-a", proposed.term_id)
+        assert restored_proposed.status == "proposed"
+        assert restored_proposed.layout_slot is None
+
+        generating, _ = await repository.begin_generation(
+            "owner-a", "still generating", idempotency_key="generating-delete",
+            input_hash="generating-delete",
+        )
+        with pytest.raises(PersonalTermStateConflict):
+            await repository.soft_delete("owner-a", generating.term_id)
 
     asyncio.run(database_case(case))
 
