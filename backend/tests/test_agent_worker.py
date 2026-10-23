@@ -357,8 +357,9 @@ def test_personal_term_creation_request_never_returns_a_catalog_card(monkeypatch
     result = jobs.writes[-1][1]
     assert result.agent_status is AgentStatus.REFERENCE_GUIDANCE
     assert result.reference_plan is None
-    assert "아직 준비 중" in result.answer_text
-    assert "초안 검토" in result.answer_text
+    assert result.answer_text == ""
+    assert "아직 준비 중" in result.user_message
+    assert "초안 검토" in result.user_message
     assert len(adapter.calls) == 1
     assert recovery.failures == []
 
