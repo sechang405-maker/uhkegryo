@@ -8,7 +8,7 @@ const ROLE_LABELS = { body: "체형", pose: "포즈", composition: "구도", per
 const arrayText = (values) => Array.isArray(values) ? values.join("\n") : (values || "");
 const textArray = (value) => (Array.isArray(value) ? value : value.split("\n")).map((item) => item.trim()).filter(Boolean);
 
-export default function PersonalTermCreator({ open, onClose }) {
+export default function PersonalTermCreator({ open, onClose, onItemsChange }) {
   const client = useMemo(() => createPersonalTermClient(), []);
   const [sourceInput, setSourceInput] = useState("");
   const [draft, setDraft] = useState(null);
@@ -19,7 +19,7 @@ export default function PersonalTermCreator({ open, onClose }) {
   const [requestId, setRequestId] = useState(null);
 
   async function refresh() {
-    try { setItems((await client.list()).items || []); } catch (cause) { setError(cause.message); }
+    try { const next=(await client.list()).items || [];setItems(next);onItemsChange?.(next); } catch (cause) { setError(cause.message); }
   }
   useEffect(() => { if (open) refresh(); }, [open]);
   if (!open) return null;
@@ -51,7 +51,7 @@ export default function PersonalTermCreator({ open, onClose }) {
       await client.update(draft.term_id, payload);
       const saved = await client.confirm(draft.term_id);
       setDraft(null); setWarnings([]); setSourceInput(""); setRequestId(null);
-      setItems((current) => [saved, ...current.filter((item) => item.term_id !== saved.term_id)]);
+      setItems((current) => { const next=[saved,...current.filter((item)=>item.term_id!==saved.term_id)];onItemsChange?.(next);return next; });
     } catch (cause) { setError(cause.message); }
     finally { setBusy(false); }
   }
@@ -60,7 +60,7 @@ export default function PersonalTermCreator({ open, onClose }) {
     <section className="personal-term-dialog" role="dialog" aria-modal="true" aria-labelledby="personal-term-title">
       <header><div><span>나만의 AI 초안</span><h2 id="personal-term-title">새 용어 만들기</h2></div>
         <button type="button" aria-label="닫기" onClick={onClose}>×</button></header>
-      <p className="personal-term-scope">현재는 초안을 검토해 개인 용어로 저장하는 단계입니다. 그래프 표시와 검색 연결은 다음 단계에서 제공됩니다.</p>
+      <p className="personal-term-scope">저장한 개인 용어는 해당 카테고리의 3D 그래프에 표시됩니다. 개인 용어 검색 연결은 다음 단계에서 제공됩니다.</p>
       {!draft ? <form onSubmit={generate}>
         <label htmlFor="personal-term-input">원하는 자세나 그림 개념 설명</label>
         <textarea id="personal-term-input" value={sourceInput} maxLength={300} required

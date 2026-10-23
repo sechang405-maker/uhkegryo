@@ -13,11 +13,14 @@ import {
   reconcileGraphMotion,
 } from '../lib/term-graph-motion.mjs';
 import { GRAPH_HELP_ITEMS } from '../lib/term-graph-help.mjs';
+import { attachPersonalTermOverlay, personalGraphTerms } from '../lib/term-graph-personal-layout.mjs';
 
 const GRAPH_MOTION_DURATION=180;
 
-export default function TermGraph({terms, catalogTerms=terms, selectedIds, selectedSearchQuery, onToggle, onAdd, onSearch, focusedId, onFocus, list:listRequested, onListChange}) {
-  const [motionState,setMotionState]=useState(()=>createGraphMotionState(buildExpandedTermGraph(terms,catalogTerms,[])));
+export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], selectedIds, selectedSearchQuery, onToggle, onAdd, onSearch, focusedId, onFocus, list:listRequested, onListChange}) {
+  const personalCatalog=useMemo(()=>personalGraphTerms(personalTerms),[personalTerms]);
+  const graphFor=expanded=>attachPersonalTermOverlay(buildExpandedTermGraph(terms,catalogTerms,expanded),personalTerms);
+  const [motionState,setMotionState]=useState(()=>createGraphMotionState(graphFor([])));
   const [motionNow,setMotionNow]=useState(0);
   const [reducedMotion,setReducedMotion]=useState(false);
   const [pageVisible,setPageVisible]=useState(true);
@@ -43,7 +46,7 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
   const responsiveModeChecked=useRef(false);
   const onListChangeRef=useRef(onListChange);
   onListChangeRef.current=onListChange;
-  const focused=catalogTerms.find(term=>term.term_id===focusedId);
+  const focused=[...catalogTerms,...personalCatalog].find(term=>term.term_id===focusedId);
   const selected=catalogTerms.filter(term=>selectedIds.includes(term.term_id));
   // An over-capacity fan has no honest non-overlapping 3D placement. Keep all
   // terms available through the existing list instead of rendering overlaps.
@@ -55,8 +58,8 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     [graph.nodes,graph.edges,points,sceneSize]);
   useEffect(()=>{
     setMotionState(current=>createGraphMotionState(
-      buildExpandedTermGraph(terms,catalogTerms,current.expandedIds),current.expandedIds));
-  },[terms,catalogTerms]);
+      graphFor(current.expandedIds),current.expandedIds));
+  },[terms,catalogTerms,personalTerms]);
   useEffect(()=>{
     if(list) return;
     const media=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -178,12 +181,16 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     const remaining=pointers.current.values().next().value;
     gesture.current=remaining ? {...remaining,view:gesture.current?.latest||view,distance:null} : null;
   }
-  function pick(id) { if(!suppressClick.current) onToggle(id); }
+  function pick(node) {
+    if(suppressClick.current) return;
+    onFocus(node.id);
+    if(!node.isPersonal) onToggle(node.id);
+  }
   function expand(event,id) {
     event.preventDefault();event.stopPropagation();suppressClick.current=false;
     const current=motionStateRef.current;
     const nextExpandedIds=toggleExpanded(current.expandedIds,id);
-    const nextGraph=buildExpandedTermGraph(terms,catalogTerms,nextExpandedIds);
+    const nextGraph=graphFor(nextExpandedIds);
     const now=performance.now();
     setMotionNow(now);
     const nextState=reconcileGraphMotion(current,nextGraph,nextExpandedIds,id,now,GRAPH_MOTION_DURATION,list||reducedMotion);
@@ -214,8 +221,10 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     {list ? <div className="term-graph-list" aria-label="전체 예시 용어 목록">
       {logicalGraph.nodes.filter(n=>!n.term).map(category=><fieldset key={category.id} className="term-graph-list-category"
         data-category={category.role} style={{'--category-color':graphCategoryColor(category.role)}}><legend>{category.label}</legend>
-        {logicalGraph.nodes.filter(n=>n.term && n.role===category.role).map(node=><div key={node.id}>
-          <label><input type="checkbox" checked={selectedIds.includes(node.id)} onChange={()=>onToggle(node.id)}/>{node.label}</label>
+        {logicalGraph.nodes.filter(n=>n.term && n.role===category.role).map(node=><div key={node.id} data-personal={node.isPersonal||undefined}>
+          {node.isPersonal ? <button type="button" className="term-graph-list-personal" onClick={()=>onFocus(node.id)}>
+            <span className="personal-term-badge">내 용어</span>{node.label}</button>
+            : <label><input type="checkbox" checked={selectedIds.includes(node.id)} onChange={()=>onToggle(node.id)}/>{node.label}</label>}
           <span className="term-graph-list-actions">
             {node.expandable && <button type="button" aria-label={`${node.label}: 이 조건이 필요한 세부 용어 ${expandedIds.includes(node.id)?'접기':'펼치기'}`}
               aria-expanded={expandedIds.includes(node.id)} onClick={(event)=>expand(event,node.id)}>{expandedIds.includes(node.id)?'−':'+'}</button>}
@@ -279,14 +288,17 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
             '--expand-x':'20px','--expand-y':'20px'};
           return node.term ? <Fragment key={node.id}><button type="button" style={style} className="term-graph-node"
             data-focused={focusedId===node.id} data-selected={selectedIds.includes(node.id)} data-expandable={node.expandable}
+            data-personal={node.isPersonal||undefined}
             data-category={node.role}
             data-node-id={node.id} data-detail={Boolean(node.isDetail)} data-world-x={node.x.toFixed(3)} data-world-y={node.y.toFixed(3)}
             data-world-z={node.z.toFixed(3)} data-layout-x={p.x.toFixed(3)} data-layout-y={p.y.toFixed(3)}
             data-depth={p.depth.toFixed(3)} data-distant={p.depth < -40}
             data-motion={motion?(exiting?'exit':'enter'):'idle'} data-motion-amount={motionAmount.toFixed(3)}
             aria-hidden={exiting||undefined} disabled={!interactive}
-            aria-label={`${node.label} ${selectedIds.includes(node.id)?'선택 해제':'선택'}`} aria-pressed={selectedIds.includes(node.id)}
-            onFocus={()=>{suppressClick.current=false;onFocus(node.id);}} onClick={()=>pick(node.id)}>
+            aria-label={node.isPersonal?`${node.label} 내 용어 설명 보기`:`${node.label} ${selectedIds.includes(node.id)?'선택 해제':'선택'}`}
+            aria-pressed={node.isPersonal?undefined:selectedIds.includes(node.id)}
+            onFocus={()=>{suppressClick.current=false;onFocus(node.id);}} onClick={()=>pick(node)}>
+            {node.isPersonal&&<span className="personal-term-badge">내 용어</span>}
             <span className="term-graph-label">{node.label}</span>
           </button>{node.expandable && <button type="button" className="term-graph-expand" style={expandStyle}
             data-node-id={`${node.id}:expand`} aria-label={`${node.label}: 이 조건이 필요한 세부 용어 ${expandedIds.includes(node.id)?'접기':'펼치기'}`}
@@ -306,10 +318,12 @@ export default function TermGraph({terms, catalogTerms=terms, selectedIds, selec
     </>}
     <div className="term-graph-lower-overlay">
       {focused && <article className="term-graph-detail" aria-label="선택한 용어 설명">
-      <div aria-live="polite"><p className="term-graph-scope-label">현재 설명 중인 용어</p><h2>{focused.label_ko}</h2><p>{focused.plain_meaning_ko}</p></div>
+      <div aria-live="polite"><p className="term-graph-scope-label">{focused.is_personal?'현재 설명 중인 내 용어':'현재 설명 중인 용어'}</p><h2>{focused.label_ko}</h2><p>{focused.plain_meaning_ko}</p></div>
       <div className="term-graph-actions">
-        <button type="button" aria-pressed={selectedIds.includes(focused.term_id)} onClick={()=>onToggle(focused.term_id)}>{selectedIds.includes(focused.term_id)?'선택 해제':'용어 선택'}</button>
-        <button type="button" disabled={focused.search_disabled} title={focused.search_disabled?'이 용어는 직접 검색할 수 없어요.':undefined}
+        <button type="button" disabled={focused.is_personal} aria-pressed={focused.is_personal?undefined:selectedIds.includes(focused.term_id)}
+          title={focused.is_personal?'개인 용어 선택 검색은 다음 단계에서 제공됩니다.':undefined}
+          onClick={()=>onToggle(focused.term_id)}>{focused.is_personal?'내 용어 · 저장됨':selectedIds.includes(focused.term_id)?'선택 해제':'용어 선택'}</button>
+        <button type="button" disabled={focused.search_disabled} title={focused.is_personal?'개인 용어 검색은 다음 단계에서 제공됩니다.':focused.search_disabled?'이 용어는 직접 검색할 수 없어요.':undefined}
           onClick={()=>onSearch(focused)}>현재 용어만 검색</button>
       </div>
       </article>}

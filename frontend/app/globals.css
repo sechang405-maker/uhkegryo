@@ -65,6 +65,11 @@
 .term-graph-node[data-detail="true"] { --term-node-size:80px; padding:6px; border-color:var(--category-color,var(--border)); font-size:14px; line-height:1.14; }
 .term-graph-node[data-detail="true"][data-expandable="true"] { --term-node-size:96px; padding:8px; font-size:14px; }
 .term-graph-node[data-focused="true"] { border-color:var(--category-color,var(--accent)); background:color-mix(in srgb,var(--category-color,var(--accent)) 28%,var(--surface)); }
+.term-graph-node[data-personal="true"] { border-style:dashed; }
+.term-graph-node[data-personal="true"] .term-graph-label { padding-top:12px; }
+.personal-term-badge { color:color-mix(in srgb,var(--category-color,var(--accent)) 78%,#4b2735); font-size:9px; font-weight:800; letter-spacing:.04em; }
+.term-graph-node>.personal-term-badge { position:absolute; top:8px; left:50%; transform:translateX(-50%); white-space:nowrap; }
+.term-graph-list-personal { display:inline-flex; gap:6px; align-items:center; border-color:var(--category-color,var(--accent)); background:color-mix(in srgb,var(--category-color,var(--accent)) 16%,var(--surface)); color:var(--text); }
 .term-graph-expand { position:absolute; width:32px; height:32px; min-width:32px; min-height:32px; padding:0; border-radius:50%;
   transform:translate(calc(-50% + var(--expand-x,20px)),calc(-50% + var(--expand-y,20px))) scale(var(--node-scale,1)); transform-origin:center; border-color:var(--category-color,var(--accent));
   background:color-mix(in srgb,var(--category-color,var(--accent)) 16%,var(--surface)); color:var(--text); font-size:16px; line-height:1; font-weight:700; touch-action:manipulation; }

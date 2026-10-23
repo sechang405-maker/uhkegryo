@@ -31,6 +31,7 @@ import SessionUsageNotice from '../components/SessionUsageNotice.mjs';
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
 import { createMobileResultOrigin, resolveMobileResult } from "../lib/mobile-result-flow.mjs";
 import PersonalTermCreator from "../components/PersonalTermCreator";
+import { createPersonalTermClient } from "../lib/personal-terms.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
 
@@ -88,6 +89,8 @@ export default function HomePage() {
   const [mobilePanel, setMobilePanel] = useState("reference");
   const [mobileResultNotice, setMobileResultNotice] = useState(null);
   const [personalTermOpen, setPersonalTermOpen] = useState(false);
+  const [personalTerms, setPersonalTerms] = useState([]);
+  const personalTermClient = useMemo(() => createPersonalTermClient(), []);
   const mobilePanelRevisionRef = useRef(0);
   const [termGuide, setTermGuide] = useState(null);
   const [termSearch, setTermSearch] = useState(null);
@@ -222,6 +225,13 @@ export default function HomePage() {
     }).catch((error) => { if (!controller.signal.aborted && loadId === sessionLoadRef.current) setRestoreError(error?.message === SERVICE_UNAVAILABLE_ERROR ? SERVICE_UNAVAILABLE_ERROR : RESTORE_ERROR); });
     return () => controller.abort();
   }, [restoreAttempt]);
+
+  useEffect(() => {
+    if(uiDemoEnabled||!conversationReady) return;
+    let active=true;
+    personalTermClient.list().then(result=>{if(active)setPersonalTerms(result.items||[]);}).catch(()=>{});
+    return ()=>{active=false;};
+  },[conversationReady,personalTermClient]);
 
   function showDemoSession(session) {
     sessionIdRef.current = session.session_id;
@@ -1197,7 +1207,7 @@ export default function HomePage() {
             <button type="button" onClick={() => navigateBoard("home")}>용어 둘러보기</button>
           </div>
         ) : hasTerms ? (
-          <TermGraph terms={HOME_TERMS} catalogTerms={ACTIVE_TERMS} selectedIds={graphTermIds}
+          <TermGraph terms={HOME_TERMS} catalogTerms={ACTIVE_TERMS} personalTerms={personalTerms} selectedIds={graphTermIds}
             focusedId={graphFocusId} onFocus={setGraphFocusId} list={graphList} onListChange={setGraphList}
             selectedSearchQuery={graphSearchScope.selectedQuery}
             onToggle={(id) => {setGraphTermIds((ids) => toggleTerm(ids, id));setGraphFocusId(id);}}
@@ -1288,7 +1298,7 @@ export default function HomePage() {
             {requestLength >= 450 && <span id="request-count" className="character-count" role="status">{requestLength} / 500</span>}
           </div>
         </form>
-        <PersonalTermCreator open={personalTermOpen} onClose={() => setPersonalTermOpen(false)} />
+        <PersonalTermCreator open={personalTermOpen} onClose={() => setPersonalTermOpen(false)} onItemsChange={setPersonalTerms} />
       </aside>
       <dialog className="image-preview" ref={previewDialogRef} aria-labelledby="preview-title"
         onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.close(); }}
