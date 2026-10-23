@@ -1,5 +1,18 @@
 # Agent 공개 API 계약
 
+> 이 문서의 agent/job 계약은 원본 팀 MVP에서 시작했습니다. 현재 개인 개편에서 추가된 개인 AI 용어 API는 아래 보충 계약을 따르며, 상세 설계는 [개인 AI 용어 구현 계획](../superpowers/plans/2026-10-22-personal-ai-term-cards.md)을 함께 확인합니다.
+
+## 개인 AI 용어 API 보충 계약
+
+- `POST /api/personal-terms/proposals`: 사용자 설명으로 구조화 초안을 생성한다. `Idempotency-Key`가 필수이며 생성만으로 활성화하지 않는다.
+- `GET /api/personal-terms`: 현재 익명 프로필 소유자의 항목만 조회한다. `include_deleted=true`일 때 복구 가능한 삭제 항목도 포함한다.
+- `PATCH /api/personal-terms/{term_id}`: 소유자의 검토 가능한 항목을 수정한다.
+- `POST /api/personal-terms/{term_id}/confirm`: 사용자가 검토한 초안을 명시적으로 활성화한다.
+- `DELETE /api/personal-terms/{term_id}`와 `POST /api/personal-terms/{term_id}/restore`: 영구 삭제 없이 soft delete·복구한다.
+- `POST /api/term-search`: 공용 카드 또는 현재 소유자의 `active` 개인 용어 ID를 서버에서 다시 확인하고, 저장된 검색 표현을 사용한다. 클라이언트가 보낸 이름이나 검색문을 신뢰하지 않는다.
+
+모든 개인 용어 작업은 익명 HttpOnly 프로필 쿠키를 소유권 경계로 사용합니다. 이는 로그인 계정 인증이나 다중 기기 보안을 제공한다는 뜻이 아닙니다. 다른 소유자이거나 검색할 수 없는 상태의 ID는 존재 여부를 노출하지 않는 방식으로 거부합니다.
+
 ## Why
 
 자연어 해석과 검색은 오래 걸리거나 일시적으로 실패할 수 있다. 세션 소유권, 비동기 job, 결과 상태, 자동 재시도 규칙을 하나의 공개 계약으로 고정한다.

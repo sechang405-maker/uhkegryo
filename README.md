@@ -1,13 +1,11 @@
 # UH케그려 — 일러스트 용어와 레퍼런스 추천·검색 서비스
 
-> 공개한 개인 프로젝트 저장소입니다. `aihuman-7th/proj2-4`의 `main` 커밋 `1708bec`를 파일 스냅샷으로 가져왔습니다. 아래의 팀 배포·PR·평가 기록은 원본 프로젝트의 역사적 증거이며, 이 저장소의 실험 결과나 배포 완료를 뜻하지 않습니다. 저장소 공개와 서비스 호스팅 배포는 별개이며, 별도 DB·API 키·배포 대상 없이 원본 서비스를 실험에 연결하지 마세요.
-
-**원본 팀 배포(참고용, 이 저장소의 배포 아님):** [https://uhkegryo.vercel.app/](https://uhkegryo.vercel.app/)
+> 공개한 개인 개편 프로젝트 저장소입니다. 원본은 팀 프로젝트 `aihuman-7th/proj2-4`의 `main` 커밋 `1708bec`이며, 현재 저장소에서는 이후의 개인 설계·구현·검증을 이어가고 있습니다. 원본 팀 작업과 개인 개편 범위는 아래 표에서 구분합니다. 저장소 공개와 서비스 호스팅은 별개입니다.
 
 > 프리랜서 또는 캐릭터 아트를 작업하는 일러스트레이터가 자료를 찾고 용어를 검색하는 시간을 줄이는 것을 지향합니다. 전문 용어가 낯선 사용자의 일상어를 **체형/소체, 포즈, 구도**의 드로잉 용어와 역할별 Pinterest 탐색 계획으로 바꾸는 서비스입니다.
 
-> **현재 상태: PostgreSQL job 저장, LLM → resolver → MCP 검색 → 응답 조립 worker, 세션 기억, 3D 용어 그래프와 결과·대화 UI 구현됨**
-> `POST /api/agent`는 세션 쿠키와 queued job을 만들고, `GET /api/jobs/{job_id}`는 동일 세션의 job을 조회합니다. worker는 claim한 job을 LLM 해석·resolver 검증·Pinterest 검색·응답 조립까지 처리하고, 재시도와 lease 복구를 수행합니다. frontend는 입력·제출·polling, 완료 답변·용어·Pin 미리보기·대화 이력을 표시합니다. 실제 운영 브라우저 E2E는 별도 검증 대상입니다. Job trace와 generation 관측 코드는 구현됐습니다. PR #108에서 공용·로컬 합성 trace 수신을 검증했으며, 실제 LLM 요청 관측·원격 Prompt 운영·Dataset 연결은 미검증입니다. 별도 MCP 서비스의 `get_active_term_card` FastMCP 도구는 Cloud Run IAM으로 배포됐으며, 로컬·운영 MCP client 호출을 검증했습니다. 아래의 목표 구조와 계획 항목은 완료 기능으로 해석하면 안 됩니다.
+> **현재 상태: Docker Compose로 실행 가능한 동작 프로토타입**
+> 자연어 입력을 LLM이 해석하고 서버가 카탈로그로 검증한 뒤 레퍼런스를 검색합니다. 현재 개인 저장소에는 세션 기억, 3D 용어 그래프, 개인 AI 용어 생성·검수·저장·그래프 표시·검색·삭제/복구, 결과·대화 UI가 구현돼 있습니다. 공개 저장소 자체는 호스팅 서비스가 아니며, 새 환경 전체 흐름과 실제 모델 품질은 아래 검증 범위를 확인해야 합니다.
 
 ## 한눈에 보기
 
@@ -20,7 +18,28 @@
 | 현재 한계 | 초보자에게는 용어 발견을 돕지만 숙련된 일러스트레이터에게도 반복적으로 유용한지는 아직 확인이 필요하다. 이는 측정된 결론이 아니라 개발자 관찰과 후속 사용자 검증 과제다. |
 | 의도적 비범위 | 이미지 분석 모델은 만들지 않았다. 업로드 이미지 분석·이미지 생성·특정 작가 화풍 복제도 현재 범위에 포함하지 않는다. |
 | 팀 | UH케그려 (4조) |
-| 현재 실행 가능 범위 | Docker Compose 기반 FastAPI `GET /health`, PostgreSQL 세션·Job API와 LLM worker, 카탈로그 시작 검증, MCP 도구 |
+| 현재 실행 가능 범위 | Docker Compose 기반 frontend·FastAPI·PostgreSQL·SearXNG·MCP, 세션·Job worker, 3D 그래프와 개인 AI 용어 전체 흐름 |
+
+## 30초 사용 흐름
+
+1. 자연어로 원하는 포즈·체형·구도·시점을 설명합니다.
+2. LLM이 의도와 모호성을 해석하고, 서버가 허용된 용어와 검색 조건을 검증합니다.
+3. 3D 그래프에서 관련 용어를 펼치거나 직접 선택하고, 현재 용어만 또는 선택 조건 전체로 레퍼런스를 검색합니다.
+4. 카탈로그에 없는 용어는 **새 용어 만들기**에서 설명을 입력해 AI 초안을 받습니다.
+5. 사용자가 이름·설명·카테고리·검색 표현을 확인하고 명시적으로 저장하면 개인 용어가 그래프와 검색에 연결됩니다. 삭제는 복구할 수 있습니다.
+6. 이전 대화의 결과를 다시 열거나 일시적으로 끊긴 검색 job의 상태를 다시 확인할 수 있습니다.
+
+LLM이 낸 초안은 자동으로 공용 전문용어가 되지 않습니다. 개인 용어는 현재 브라우저의 익명 로컬 프로필에만 연결되며, 로그인 계정이나 다중 기기 동기화를 제공하지 않습니다.
+
+## 원본 팀 작업과 개인 개편 범위
+
+| 구분 | 범위 |
+| --- | --- |
+| 원본 팀 프로젝트 | 자연어 해석, 검증된 TERM_CARD 카탈로그, 비동기 job/worker, SearXNG·Pinterest 레퍼런스 검색, MCP 계약과 팀 배포·평가 기록 |
+| 현재 개인 개편 | 고정 3D 용어 그래프와 직접 자식 확장, 밝은 UI와 모바일 흐름, 대화·검색 복구, 개인 AI 용어의 생성·검수·저장·그래프·검색·삭제/복구, Docker Compose 신규 실행 패키징 |
+| 그대로 보존한 경계 | 공용 카탈로그는 개인 용어가 덮어쓰지 않으며, 원본 팀 배포·PR·평가 수치는 현재 개인 저장소의 새 성과로 재사용하지 않음 |
+
+원본 팀 참여자와 당시 역할은 [원본 팀 프로젝트 참여자](#원본-팀-프로젝트-참여자)에, 원본 배포와 검증 기록은 [원본 배포와 데모 기록](#원본-배포와-데모-기록)에 남겨 두었습니다. 개인 AI 용어 설계의 상세 배경은 [구현 계획 문서](./docs/superpowers/plans/2026-10-22-personal-ai-term-cards.md)에서 확인할 수 있습니다.
 
 ## 현재 개인 저장소 UI
 
@@ -55,7 +74,15 @@
 - 모바일에서는 검색 완료를 알리고 사용자가 명시적으로 결과 패널을 열 수 있습니다. 늦게 도착한 결과가 사용자가 이동한 패널이나 다른 대화를 강제로 덮지 않습니다.
 - 용어 설명은 사용자용 한국어 정의를 사용하며, 내부 LLM 단서 질문을 설명 대체값으로 노출하지 않습니다. 접이식 조작 안내에서 선택·펼치기·검색·회전을 구분합니다.
 
-## 팀원
+### 개인 AI 용어
+
+- `새 용어 만들기`에서 원하는 자세나 개념을 설명하면 LLM이 이름·실제 용어 설명·카테고리·한국어 별칭·영어 검색 표현을 구조화한 **초안**을 만듭니다.
+- 생성된 초안은 사용자가 확인·수정하고 `저장`해야 활성화됩니다. 기존 공용 또는 개인 용어와 유사하면 경고하지만 자동 병합하거나 공용 카드를 대체하지 않습니다.
+- 활성 개인 용어는 현재 익명 프로필에만 보이며, 해당 카테고리의 고정 3D 슬롯과 목록에 표시됩니다. 저장된 검색 표현을 재사용하므로 레퍼런스 검색마다 LLM을 다시 호출하지 않습니다.
+- 개인 용어를 삭제하면 그래프와 새 검색에서 제외되며, 삭제 목록에서 원래 설명·검색 표현·레이아웃 슬롯을 유지한 채 복구할 수 있습니다.
+- 이는 로그인 계정 기반 접근 제어나 다중 기기 동기화가 아닙니다. 현재 경계와 잔여 보안 제약은 [개인 AI 용어 구현 계획](./docs/superpowers/plans/2026-10-22-personal-ai-term-cards.md)을 참고하세요.
+
+## 원본 팀 프로젝트 참여자
 
 | 이름 | GitHub | 역할 | 한마디 |
 | --- | --- | --- | --- |
@@ -86,6 +113,14 @@
 | “낮은 곳에서 올려다보는 앉은 캐릭터” | `pose: seated`, `view: low angle`, `perspective: foreshortening` |
 
 용어 해석은 사용자의 의도를 확인하는 제안이며, 신체 비율이나 포즈를 단정하는 판정이 아닙니다.
+
+## 이번 피드백에서 확인하고 싶은 것
+
+1. LLM은 사용자의 말을 검색어로 바꾸는 역할에 집중해야 하는가, 아니면 드로잉 조언까지 제공하는 편이 유용한가?
+2. 검증된 공용 TERM_CARD와 LLM이 제안한 개인 용어를 사용자가 충분히 구분하고 신뢰 수준을 판단할 수 있는가?
+3. 입력이 모호할 때 추가 질문을 먼저 하는 흐름과, 제한을 표시한 결과를 먼저 보여 주는 흐름 중 어느 쪽이 실제 작업을 덜 끊는가?
+
+현재 구현은 LLM 출력을 그대로 신뢰하지 않고 공용 카드 ID를 resolver로 검증합니다. 개인 용어는 별도 초안으로 표시하고 사용자 확인 뒤 저장합니다. 다만 이 상호작용이 초보자와 숙련자에게 각각 얼마나 유용한지는 아직 사용자 평가가 필요합니다.
 
 ## 프로젝트 상태와 후속 개발
 
@@ -143,27 +178,31 @@ LLM은 링크를 임의로 만들거나 데이터 출처를 지어내지 않습�
 
 SearXNG 검색 규칙은 [SearXNG Pinterest 검색 Spec](docs/specs/searxng-pinterest-search.md), widget 기반 Pin 미리보기·보관 경계는 [Pinterest 기능 Spec](docs/specs/pinterest-widget-crawler.md)을 단일 기준으로 사용합니다. 서버에는 JSON Search API가 활성화된 SearXNG 주소를 `SEARXNG_BASE_URL`로 설정해야 합니다. 용어 선택·설명·검색 조각은 구현 후 팀이 작성·검수한 TERM_CARD JSON 카탈로그만 사용합니다. 카탈로그는 시작 시 검증해 메모리에 로드하며 요청 중 파일을 다시 읽거나 DB에 적재하지 않습니다. Getty는 용어 조사 시 참고한 자료일 뿐, 서비스 데이터·사용자 화면·LLM 입력·런타임 조회에 포함하지 않습니다. 새 카드나 외부 자료는 출처·권리·품질을 사람이 검토하고 계약·평가를 갱신한 뒤에만 활성 데이터로 표시합니다. 검토하지 않은 데이터를 완료된 카탈로그로 주장하지 않습니다.
 
-## API와 MCP 상태
+## 현재 로컬 API와 원본 MCP 기록
 
-| 항목 | 현재 상태 | 최종 목표 |
+아래 표에서 로컬 API·UI 상태는 현재 개인 저장소 기준입니다. Cloud Run과 IAM 항목은 원본 팀 프로젝트의 역사적 배포 기록이며, 현재 개인 저장소가 해당 운영 자원을 제공한다는 뜻이 아닙니다.
+
+| 항목 | 구현·검증 상태 | 다음 확인 |
 | --- | --- | --- |
-| `GET /health` | 구현됨. `{"status":"ok"}` 반환 | Cloud Run 상태 확인 |
+| `GET /health` | 현재 로컬 API에서 `{"status":"ok"}` 반환 | 새 환경 Compose 상태 확인 |
 | `POST /api/agent` | PostgreSQL 영속화 구현됨. 세션 쿠키 발급·재사용, `202 + job_id` 반환 | 실제 환경 요청 증거 |
 | `GET /api/jobs/{job_id}` | PostgreSQL 영속화 구현됨. 소유 job의 상태·완료 결과·실패 조회 | 실제 운영 UI 연결 검증 |
 | DB 영속화·실제 worker | 구현됨. PostgreSQL job claim, LLM adapter·resolver·Pinterest provider·response assembler pipeline, retry·lease recovery | 실제 환경 실행 증거 |
 | LLM 해석·resolver 연동 | 구현됨. worker가 활성 TERM_CARD를 LLM에 전달하고 resolver·검색 결과를 조립해 저장 | 실제 모델 품질 평가 |
 | Pinterest 검색 실행 | worker 연결 구현됨. SearXNG Pinterest 엔진 검색·widget enrichment 코드와 단위 테스트 존재 | 실제 SearXNG 인스턴스 연결·검색 결과 검증 |
 | Next.js UI | 입력·제출·polling, 3D 용어 그래프, 목록·결과 카테고리 색상, 모바일 결과 안내, 저장 레퍼런스 재열기와 상태 재확인 구현됨 | 실제 외부 검색·다양한 기기에서 지속 검증 |
+| `/api/personal-terms` | 익명 프로필 소유 범위에서 AI 초안·목록·수정·확정·soft delete·복구 구현됨 | 실제 계정 인증·다중 기기 경계는 제공하지 않음 |
+| `POST /api/term-search` | 공용 카드와 소유자의 활성 개인 용어를 ID로 재검증한 뒤 저장된 검색 표현으로 검색 | 외부 검색 품질·실패율 추가 측정 |
 | `/docs` | FastAPI 기본 문서에서 확인 가능 | 요청·응답 모델 및 오류 응답 확인 |
-| `/mcp` | `backend.mcp.main:app`에 마운트된 Streamable HTTP endpoint를 Cloud Run IAM으로 배포함. 무인증 `403`, 인증된 도구 목록·`found`·`not_found` 호출을 검증함. [호출 증거](docs/mcp-client-evidence.md) | Streamable HTTP endpoint와 도구 호출 증거 |
+| `/mcp` | 로컬 Compose에 포함됨. 원본 팀에서는 Cloud Run IAM 배포와 인증/무인증 호출을 검증함. [원본 호출 증거](docs/mcp-client-evidence.md) | 현재 로컬 실행과 원본 배포 기록을 구분 |
 | TERM_CARD JSON 카탈로그 | 구현됨. API·MCP 시작 시 검증 후 역할별 활성 카드를 메모리에 로드 | 요청 중 재읽기·DB 적재 없이 활성 카드를 조회 |
-| MCP 접근 제어 | Cloud Run IAM 검증됨. 최종 `roles/run.invoker`는 `mcp-caller` 서비스 계정에만 부여됨 | 내부 호출자만 접근 |
+| 원본 MCP 접근 제어 | 원본 팀 Cloud Run에서 `mcp-caller` 서비스 계정의 `roles/run.invoker`를 검증함 | 현재 개인 저장소의 운영 배포 증거가 아님 |
 
 `/mcp`를 공개 데모 API처럼 무제한 노출하지 않습니다. 실제 배포 전 Cloud Run IAM, 연결 방법, 도구 목록과 외부 클라이언트 호출 결과를 함께 검증·기록합니다.
 
 ## 신규 사용자를 위한 Docker Compose 실행
 
-현재 저장소는 공개되어 누구나 소스와 커밋 이력을 내려받아 로컬에서 실행 구성을 검토할 수 있습니다. 저장소 공개는 호스팅 서비스 배포나 운영 계정 제공을 뜻하지 않으며, 각 사용자는 자신의 API 키와 로컬 환경을 준비해야 합니다. 별도 라이선스는 이번 공개 전환에서 추가하지 않았습니다.
+현재 저장소는 공개되어 누구나 소스와 커밋 이력을 내려받아 로컬에서 실행 구성을 검토할 수 있습니다. 저장소 공개는 호스팅 서비스 배포나 운영 계정 제공을 뜻하지 않으며, 각 사용자는 자신의 API 키와 로컬 환경을 준비해야 합니다. 현재 별도 `LICENSE` 파일을 지정하지 않았으므로 재사용·배포 조건은 저장소 소유자와 별도로 확인해야 합니다.
 
 ### 준비물
 
@@ -193,7 +232,7 @@ Copy-Item .env.example .env
 
 macOS/Linux에서는 마지막 명령 대신 `cp .env.example .env`를 사용합니다.
 
-`.env`에서 `OPENROUTER_API_KEY=` 뒤에 **본인의 키**를 입력합니다. 실제 키나 개인 DB URL을 Git에 커밋하지 마세요. 기본 로컬 DB를 쓸 때 다른 필수 값은 없습니다.
+`.env`에서 `OPENROUTER_API_KEY=` 뒤에 **본인의 키**를 입력합니다. 실제 키나 개인 DB URL을 Git에 커밋하지 마세요. 기본 로컬 DB를 쓸 때 다른 필수 값은 없습니다. 자연어 해석과 개인 용어 초안 생성은 외부 LLM을 호출하므로 제공자 정책에 따라 사용량 제한이나 비용이 발생할 수 있습니다. 모델·가격·한도는 OpenRouter 계정에서 실행 전에 확인하세요.
 
 ```powershell
 docker compose up --build -d
@@ -209,7 +248,7 @@ docker compose ps
 (Invoke-RestMethod -Uri 'http://127.0.0.1:3100/service-health')
 ```
 
-두 응답 모두 `status`가 `ok`여야 합니다. UI는 `http://127.0.0.1:3100`에서 엽니다. 이 health 확인은 DB migration과 서비스 연결을 확인하지만 유료 LLM 요청이나 외부 검색 결과까지 검증하지는 않습니다.
+두 응답 모두 `status`가 `ok`여야 합니다. UI는 `http://127.0.0.1:3100`에서 엽니다. 이 health 확인 자체는 LLM 요청을 보내지 않습니다. DB migration과 서비스 연결만 확인하며 실제 LLM 품질이나 외부 검색 결과까지 검증하지는 않습니다.
 
 ### 종료, 재시작, 업데이트
 
@@ -406,12 +445,13 @@ frontend 개발 서버도 해당 PowerShell 창에서 `Ctrl+C`로 중지합니�
 
 | 문서 | 내용 |
 | --- | --- |
-| [PRD](./docs/PRD.md) | 제품 요구사항, 사용자 흐름, 범위와 수용 기준 |
-| [SDD](./docs/SDD.md) | 시스템 아키텍처, 데이터 흐름, 검증·비동기 처리 설계 |
+| [원본 MVP PRD](./docs/PRD.md) | 원본 팀 제품 요구사항과 당시 수용 기준. 현재 개인 기능의 완전한 명세는 아님 |
+| [원본 MVP SDD](./docs/SDD.md) | 원본 팀 아키텍처와 비동기 처리 설계. 현재 개인 기능은 현행 코드와 아래 계획 문서를 함께 확인 |
+| [개인 AI 용어 구현 계획](./docs/superpowers/plans/2026-10-22-personal-ai-term-cards.md) | 사용자별 초안·저장·그래프·검색·삭제/복구의 설계와 단계별 구현 근거 |
 | [도메인 프로필](./docs/domains/illustration-reference/domain-profile.md) | 사용자, 업무 경험, 경쟁 서비스, 범위와 데이터 출처 |
 | [경쟁 서비스 분석](./docs/domains/illustration-reference/competitive-analysis.md) | 실제 시작 흐름 비교, 차별점과 조사 한계 |
 | [설계 문서](./docs/domains/illustration-reference/design.md) | LLM·결정론 코드·MCP의 책임 분리와 폴백 설계 |
-| [API 계약](./docs/specs/api-contract.md) | `POST /api/agent`, 비동기 job 상태, 완료 결과, worker 실패·재시도 및 LLM JSON 계약 |
+| [API 계약](./docs/specs/api-contract.md) | 원본 agent/job 계약과 현재 개인 용어 API 보충 계약 |
 | [로컬 개발 재현](./docs/specs/local-development-reproduction.md) | clone 뒤 API·migration·frontend를 현재 구현 범위까지 시작하는 절차 |
 | [로컬 Langfuse Compose](./docs/specs/local-langfuse-compose.md) | 로컬 Langfuse와 필수 저장 서비스 구성 |
 | [로컬 SearXNG Compose](./docs/specs/local-searxng-compose.md) | 로컬 SearXNG 서비스·JSON API 설정 |
@@ -429,16 +469,19 @@ frontend 개발 서버도 해당 PowerShell 창에서 `Ctrl+C`로 중지합니�
 
 ## 원본 배포와 데모 기록
 
+원본 팀 배포는 [https://uhkegryo.vercel.app/](https://uhkegryo.vercel.app/)입니다. 현재 개인 개편판의 배포가 아니며, 개인 저장소의 최신 UI를 평가하려면 위 Docker Compose 절차로 실행해야 합니다.
+
 | 제출 증거 | 상태 |
 | --- | --- |
-| 사용자 UI URL | 미배포 |
-| Cloud Run Agent API URL | 미배포 |
+| 현재 개인 개편 UI URL | 미배포 |
+| 현재 개인 개편 화면 캡처 | 공개용 최신 캡처 미첨부 |
+| 원본 팀 Cloud Run Agent API URL | 현재 개인 저장소의 배포 증거로 사용하지 않음 |
 | 외부 MCP client 연결·도구 호출 증거 화면 | 카드 조회 운영 검증 기록 있음; 최신 검색 경로 화면 정리 필요 |
 | Langfuse 대시보드 스크린샷 | 합성 trace 수신 검증 있음; 실제 요청 화면 정리 필요 |
 | 정상·실패 경로 데모 영상 | 미제작 |
 
 배포와 평가가 끝나면 실제 URL·실행 날짜·모델·프롬프트 버전·데이터셋 버전만 기록합니다. 추정 수치나 아직 존재하지 않는 URL은 적지 않습니다.
 
-## 대화 기억 변경
+## 현재 대화 기억 상태
 
-대화 기억 백엔드: 익명 쿠키 소유자와 여러 대화를 분리하고, /api/sessions 생성·목록·열람·이력 조회를 제공한다. /api/agent는 선택적 session_id를 받는다. 최근 6개 기록·현재 조건·요약을 전달하고 과거 기록 기반 회상 답변에 원본 job 출처를 붙인다. 적용 전 003_conversation_owners.sql migration이 필요하며 startup에서 자동 적용하지 않는다. 운영 적용·실제 모델 품질 평가는 별도이고 UI는 이번 범위에 포함하지 않는다.
+익명 HttpOnly 쿠키 소유자와 여러 대화를 분리하고, `/api/sessions` 생성·목록·열람·이력 조회를 제공합니다. `/api/agent`는 선택적 `session_id`를 받고, 최근 기록·현재 조건·요약을 전달하며 과거 답변의 저장 레퍼런스를 다시 열 수 있습니다. 대화 목록과 전환 UI도 현재 frontend에 연결돼 있습니다. Docker Compose에서는 `db-migrate`가 001부터 현재 migration까지 비파괴 순서로 적용한 뒤 API가 시작됩니다. 이는 로그인 계정 인증이나 다중 기기 동기화를 의미하지 않으며, 실제 모델 품질과 장기 보관 정책은 계속 검증 대상입니다.
