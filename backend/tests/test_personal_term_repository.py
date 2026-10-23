@@ -100,7 +100,7 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
                 "owner-a", created.term_id, PersonalTermUpdate(role="composition")
             )
 
-        await sessions.create_session("owner-a")
+        replacement_session_a = await sessions.create_session("owner-a")
         assert [term.term_id for term in await repository.list_terms("owner-a")] == [created.term_id]
         await sessions.delete_session("owner-a", session_a)
         assert (await repository.get_term("owner-a", created.term_id)).status == "active"
@@ -113,7 +113,7 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         with pytest.raises(PersonalTermNotFound):
             await repository.get_active_term("owner-a", created.term_id)
         assert await repository.list_terms("owner-a") == []
-        assert await repository.list_active_terms_for_session(str(session_a)) == []
+        assert await repository.list_active_terms_for_session(str(replacement_session_a)) == []
         with pytest.raises(PersonalTermNotFound):
             await repository.soft_delete("owner-b", created.term_id)
 
@@ -125,7 +125,7 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         assert repeated_restore.status == "active"
         assert repeated_restore.layout_slot == active.layout_slot
         assert [term.term_id for term in await repository.list_active_terms_for_session(
-            str(session_a)
+            str(replacement_session_a)
         )] == [created.term_id]
 
         proposed, _ = await repository.create_proposal(
@@ -137,7 +137,7 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         assert restored_proposed.status == "proposed"
         assert restored_proposed.layout_slot is None
         assert [term.term_id for term in await repository.list_active_terms_for_session(
-            str(session_a)
+            str(replacement_session_a)
         )] == [created.term_id]
 
         generating, _ = await repository.begin_generation(
