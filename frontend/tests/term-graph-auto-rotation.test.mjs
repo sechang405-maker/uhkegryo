@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import {
   advanceAutoRotation,
   advanceGraphViewAutoRotation,
+  beginManualRotation,
   createAutoRotationState,
+  finishManualRotation,
   manualRotationStarted,
   pauseAutoRotation,
-  stopAutoRotation,
 } from '../lib/term-graph-auto-rotation.mjs';
 
 test('frame-time integration completes one turn in 120 seconds',()=>{
@@ -41,15 +42,39 @@ test('pause discards hidden time and reduced motion produces no rotation',()=>{
   assert.ok(Math.abs(resumed.deltaYaw-(Math.PI*2*16/120000))<1e-12);
 });
 
-test('manual stop persists through later frames and graph rerenders',()=>{
+test('manual rotation resumes from the current angle after ten quiet seconds',()=>{
   let state=createAutoRotationState();
   ({state}=advanceAutoRotation(state,0,true));
-  state=stopAutoRotation(state);
-  for(const now of [16,32,1000]) {
+  const beforeDrag=advanceAutoRotation(state,16,true);
+  state=beginManualRotation(beforeDrag.state);
+  state=finishManualRotation(state,1000);
+  for(const now of [10999,11000]) {
     const step=advanceAutoRotation(state,now,true);
     state=step.state;
     assert.equal(step.deltaYaw,0);
-    assert.equal(state.stopped,true);
+  }
+  const resumed=advanceAutoRotation(state,11016,true);
+  assert.ok(Math.abs(resumed.deltaYaw-(Math.PI*2*16/120000))<1e-12);
+});
+
+test('another manual rotation resets the ten second wait',()=>{
+  let state=finishManualRotation(beginManualRotation(createAutoRotationState()),1000);
+  state=beginManualRotation(state);
+  state=finishManualRotation(state,9000);
+  assert.equal(advanceAutoRotation(state,18999,true).deltaYaw,0);
+  const boundary=advanceAutoRotation(state,19000,true);
+  assert.equal(boundary.deltaYaw,0);
+  assert.ok(advanceAutoRotation(boundary.state,19016,true).deltaYaw>0);
+});
+
+test('holding a drag prevents timer based resumption',()=>{
+  let state=finishManualRotation(beginManualRotation(createAutoRotationState()),0);
+  state=beginManualRotation(state);
+  for(const now of [10000,30000]) {
+    const step=advanceAutoRotation(state,now,true);
+    state=step.state;
+    assert.equal(step.deltaYaw,0);
+    assert.equal(state.manualActive,true);
   }
 });
 
@@ -66,6 +91,6 @@ test('graph view integration changes only yaw and preserves pitch and zoom',()=>
   assert.ok(second.view.yaw>.5);
   assert.equal(second.view.pitch,.2);
   assert.equal(second.view.zoom,.9);
-  const stopped=advanceGraphViewAutoRotation(second.view,stopAutoRotation(second.state),132,true);
+  const stopped=advanceGraphViewAutoRotation(second.view,beginManualRotation(second.state),132,true);
   assert.deepEqual(stopped.view,second.view);
 });

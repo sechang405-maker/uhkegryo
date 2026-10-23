@@ -16,10 +16,11 @@ import { GRAPH_HELP_ITEMS } from '../lib/term-graph-help.mjs';
 import { attachPersonalTermOverlay, personalGraphTerms } from '../lib/term-graph-personal-layout.mjs';
 import {
   advanceGraphViewAutoRotation,
+  beginManualRotation,
   createAutoRotationState,
+  finishManualRotation,
   manualRotationStarted,
   pauseAutoRotation,
-  stopAutoRotation,
 } from '../lib/term-graph-auto-rotation.mjs';
 
 const GRAPH_MOTION_DURATION=180;
@@ -53,7 +54,7 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
   const suppressClick=useRef(false);
   const hiddenAt=useRef(null);
   const autoRotationRef=useRef(createAutoRotationState());
-  const [autoRotationStopped,setAutoRotationStopped]=useState(false);
+  const [pointerHeld,setPointerHeld]=useState(false);
   const responsiveModeChecked=useRef(false);
   const onListChangeRef=useRef(onListChange);
   onListChangeRef.current=onListChange;
@@ -104,7 +105,7 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
     document.addEventListener('visibilitychange',update);
     return ()=>document.removeEventListener('visibilitychange',update);
   },[list]);
-  const autoRotationActive=!autoRotationStopped&&!list&&!reducedMotion&&pageVisible;
+  const autoRotationActive=!pointerHeld&&!list&&!reducedMotion&&pageVisible;
   useEffect(()=>{
     if((!hasMotion&&!autoRotationActive)||list||reducedMotion||!pageVisible) return;
     let frame=0;
@@ -170,15 +171,15 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
   },[list]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.25)})); }
-  function stopAutomaticRotation() {
-    if(autoRotationRef.current.stopped) return;
-    autoRotationRef.current=stopAutoRotation(autoRotationRef.current);
-    setAutoRotationStopped(true);
+  function beginManualGraphRotation() {
+    if(autoRotationRef.current.manualActive) return;
+    autoRotationRef.current=beginManualRotation(autoRotationRef.current);
   }
   function start(event) {
     if(event.button!==0) return;
     if(event.target.closest?.('.term-graph-node')) return;
     pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    setPointerHeld(true);
     suppressClick.current=false;
     const pair=[...pointers.current.values()];
     gesture.current={x:event.clientX,y:event.clientY,view,
@@ -191,7 +192,7 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
     pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});
     const pair=[...pointers.current.values()],g=gesture.current;
     if(pair.length===2 && g.distance) {
-      if(manualRotationStarted(pair.length,0)) stopAutomaticRotation();
+      if(manualRotationStarted(pair.length,0)) beginManualGraphRotation();
       suppressClick.current=true;
       const distance=Math.hypot(pair[0].x-pair[1].x,pair[0].y-pair[1].y);
       g.latest={...g.view,zoom:clamp(g.view.zoom*distance/g.distance,.65,1.25)};
@@ -199,7 +200,7 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
     } else if(pair.length===1) {
       const dx=event.clientX-g.x,dy=event.clientY-g.y;
       if(!manualRotationStarted(pair.length,Math.hypot(dx,dy))) return;
-      stopAutomaticRotation();
+      beginManualGraphRotation();
       suppressClick.current=true;
       g.latest={...g.view,yaw:g.view.yaw+dx*.006,pitch:clamp(g.view.pitch+dy*.006,-1.2,1.2)};
       setView(g.latest);
@@ -210,6 +211,13 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
     if(!pointers.current.delete(event.pointerId)) return;
     const remaining=pointers.current.values().next().value;
     gesture.current=remaining ? {...remaining,view:gesture.current?.latest||view,distance:null} : null;
+    if(!remaining) {
+      const now=performance.now();
+      autoRotationRef.current=autoRotationRef.current.manualActive
+        ? finishManualRotation(autoRotationRef.current,now)
+        : pauseAutoRotation(autoRotationRef.current,now);
+      setPointerHeld(false);
+    }
   }
   function pick(node) {
     if(suppressClick.current) return;
