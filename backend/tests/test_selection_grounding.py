@@ -23,6 +23,8 @@ def catalog(snapshot_factory, card_factory):
         card_factory("pose_sitting", label_ko="시팅", label_en="seated pose"),
         card_factory("view_front", role="view", label_ko="프런트 뷰", label_en="front view"),
         card_factory("pose_action", label_ko="액션 포즈", label_en="action pose"),
+        card_factory("pose_gesture", label_ko="동세/액션 라인", label_en="gesture drawing"),
+        card_factory("pose_running", label_ko="달리기", label_en="running pose"),
     ], dsd=("pose_action",))
 
 
@@ -80,6 +82,31 @@ def test_filtered_card_cannot_keep_its_original_integrated_answer(catalog):
 
 def test_english_evidence_must_not_be_part_of_an_unrelated_word(catalog):
     assert resolve(output(evidence="standing"), catalog, request_text="understanding composition").status == STATUS_ALL_INVALID
+
+
+@pytest.mark.parametrize("term_id", ["pose_gesture", "pose_action"])
+def test_named_activity_is_not_silently_replaced_with_a_generic_motion_card(catalog, term_id):
+    result = resolve(
+        output(term_id, "발레를 하는 동작"),
+        catalog,
+        request_text="발레를 하는 동작을 추가할래",
+    )
+    assert result.status == STATUS_ALL_INVALID
+
+
+def test_explicit_motion_technique_and_supported_activity_remain_selectable(catalog):
+    technique = resolve(
+        output("pose_gesture", "동세/액션 라인"),
+        catalog,
+        request_text="발레 동작의 동세/액션 라인을 찾고 싶어",
+    )
+    supported = resolve(
+        output("pose_running", "달리기를 하는 동작"),
+        catalog,
+        request_text="달리기를 하는 동작을 추가할래",
+    )
+    assert technique.status == STATUS_PROCEED
+    assert supported.status == STATUS_PROCEED
 
 
 def test_descriptive_support_and_parent_card_names_are_not_exact_label_conflicts(catalog, card_factory):

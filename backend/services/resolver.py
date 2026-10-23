@@ -31,7 +31,11 @@ from backend.schemas.models import InterpretationOutput, InterpretationSelection
 from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.input_safety import normalize_input_text
 from backend.services.clarification_policy import public_wording, CATALOG_FALLBACK
-from backend.services.selection_grounding import has_affirmed_evidence, only_names_other_cards
+from backend.services.selection_grounding import (
+    has_affirmed_evidence,
+    only_names_other_cards,
+    overgeneralizes_named_activity,
+)
 
 STATUS_PROCEED = "proceed"
 STATUS_CLARIFY = "clarify"
@@ -137,6 +141,9 @@ def resolve(
             continue
         card = snapshot.get_active(selection.term_id)
         if card is None or Role(card.get("role")) != selection.role or card.get('component') == 'composite':
+            invalid.append(selection)
+            continue
+        if overgeneralizes_named_activity(selection, sources):
             invalid.append(selection)
             continue
         if only_names_other_cards(selection, snapshot):

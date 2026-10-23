@@ -4,6 +4,33 @@ import re
 from backend.services.input_safety import normalize_input_text
 
 
+_GENERIC_MOTION_CARD_TERMS = {
+    "pose_gesture": ("동세", "액션 라인", "gesture drawing", "action line"),
+    "pose_action": ("액션 포즈", "action pose"),
+}
+_NAMED_ACTIVITY_REQUEST = re.compile(
+    r"[가-힣a-z0-9_-]{2,24}(?:을|를)?\s*하(?:는|고\s*있는)\s*(?:동작|자세|포즈)",
+    re.IGNORECASE,
+)
+
+
+def overgeneralizes_named_activity(selection, sources):
+    """Reject a generic motion-technique card for a distinct requested activity.
+
+    A request such as ``발레를 하는 동작`` is not evidence that the user asked
+    for the catalog's generic ``동세/액션 라인`` technique.  Explicit requests
+    for that technique remain valid, as do selections of specific supported
+    activity cards such as running.
+    """
+    explicit_terms = _GENERIC_MOTION_CARD_TERMS.get(selection.term_id)
+    if not explicit_terms:
+        return False
+    normalized_sources = [normalize_input_text(source).casefold() for source in sources]
+    if any(term.casefold() in source for source in normalized_sources for term in explicit_terms):
+        return False
+    return any(_NAMED_ACTIVITY_REQUEST.search(source) for source in normalized_sources)
+
+
 def has_affirmed_evidence(evidence, sources):
     """Require a source occurrence not immediately excluded or marked uncertain.
 
