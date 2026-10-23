@@ -358,8 +358,9 @@ def test_personal_term_creation_request_never_returns_a_catalog_card(monkeypatch
     assert result.agent_status is AgentStatus.REFERENCE_GUIDANCE
     assert result.reference_plan is None
     assert result.answer_text == ""
-    assert "아직 준비 중" in result.user_message
-    assert "초안 검토" in result.user_message
+    assert "새 용어 만들기" in result.user_message
+    assert "그래프 표시와 검색 연결은 다음 단계" in result.user_message
+    assert "AI 초안 확인·수정" in result.user_message
     assert len(adapter.calls) == 1
     assert recovery.failures == []
 
