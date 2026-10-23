@@ -10,10 +10,14 @@ from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.llm import LLMTimeout
 from backend.services.personal_term_generator import (
     PersonalTermGenerationFailed,
+    PersonalTermGenerationInProgress,
     PersonalTermGenerationRetryRequired,
     PersonalTermGenerator,
 )
-from backend.services.personal_term_repository import PersonalTermRepository
+from backend.services.personal_term_repository import (
+    PersonalTermIdempotencyConflict,
+    PersonalTermRepository,
+)
 from backend.services.session_repository import SessionRepository
 from backend.tests.test_conversation_sessions import database_case
 
@@ -46,6 +50,20 @@ class RecordingTransport:
         if isinstance(response, Exception):
             raise response
         return json.dumps(response, ensure_ascii=False)
+
+
+class BlockingTransport:
+    def __init__(self, response, entered, release):
+        self.response = response
+        self.entered = entered
+        self.release = release
+        self.calls = 0
+
+    async def generate(self, messages, response_format):
+        self.calls += 1
+        self.entered.set()
+        await self.release.wait()
+        return json.dumps(self.response, ensure_ascii=False)
 
 
 def catalog():
@@ -145,5 +163,43 @@ def test_timeout_requires_explicit_retry_and_does_not_create_an_active_term():
         assert retried.record.status == "proposed"
         assert retried.record.generation_attempts == 2
         assert len(transport.calls) == 2
+
+    asyncio.run(database_case(case))
+
+
+def test_concurrent_generation_keeps_one_llm_call_and_one_idempotent_record():
+    async def case(pool):
+        sessions = SessionRepository(pool)
+        repository = PersonalTermRepository(pool)
+        await sessions.create_session("owner-a")
+        entered, release = asyncio.Event(), asyncio.Event()
+        transport = BlockingTransport(generated_payload(), entered, release)
+        generator = PersonalTermGenerator(repository, catalog(), transport=transport)
+
+        first = asyncio.create_task(generator.propose(
+            "owner-a", "동시에 만드는 자세", idempotency_key="concurrent-generation"
+        ))
+        await asyncio.wait_for(entered.wait(), timeout=5)
+
+        try:
+            with pytest.raises(PersonalTermGenerationInProgress):
+                await generator.propose(
+                    "owner-a", "동시에 만드는 자세", idempotency_key="concurrent-generation"
+                )
+            with pytest.raises(PersonalTermIdempotencyConflict):
+                await generator.propose(
+                    "owner-a", "서로 다른 입력", idempotency_key="concurrent-generation"
+                )
+        finally:
+            release.set()
+
+        completed = await asyncio.wait_for(first, timeout=5)
+        repeated = await generator.propose(
+            "owner-a", "동시에 만드는 자세", idempotency_key="concurrent-generation"
+        )
+
+        assert transport.calls == 1
+        assert completed.record.term_id == repeated.record.term_id
+        assert len(await repository.list_terms("owner-a")) == 1
 
     asyncio.run(database_case(case))

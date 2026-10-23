@@ -127,3 +127,41 @@ def test_unknown_owner_cannot_create_or_discover_terms():
         assert await repository.list_terms("unknown-cookie", include_deleted=True) == []
 
     asyncio.run(database_case(case))
+
+
+def test_concurrent_confirmation_serializes_slots_per_owner():
+    async def case(pool):
+        sessions = SessionRepository(pool)
+        repository = PersonalTermRepository(pool)
+        await sessions.create_session("owner-a")
+        await sessions.create_session("owner-b")
+
+        a_first, _ = await repository.create_proposal(
+            "owner-a", draft(label_ko="첫 자세"),
+            idempotency_key="owner-a-first", input_hash="owner-a-first",
+        )
+        a_second, _ = await repository.create_proposal(
+            "owner-a", draft(label_ko="둘째 자세"),
+            idempotency_key="owner-a-second", input_hash="owner-a-second",
+        )
+        b_first, _ = await repository.create_proposal(
+            "owner-b", draft(label_ko="다른 소유자 자세"),
+            idempotency_key="owner-b-first", input_hash="owner-b-first",
+        )
+
+        confirmed_a_first, confirmed_a_second, confirmed_b = await asyncio.gather(
+            repository.confirm_term("owner-a", a_first.term_id),
+            repository.confirm_term("owner-a", a_second.term_id),
+            repository.confirm_term("owner-b", b_first.term_id),
+        )
+
+        assert {confirmed_a_first.layout_slot, confirmed_a_second.layout_slot} == {0, 1}
+        assert confirmed_b.layout_slot == 0
+        assert {term.term_id for term in await repository.list_terms("owner-a")} == {
+            a_first.term_id, a_second.term_id,
+        }
+        assert [term.term_id for term in await repository.list_terms("owner-b")] == [b_first.term_id]
+        with pytest.raises(PersonalTermNotFound):
+            await repository.get_term("owner-b", a_first.term_id)
+
+    asyncio.run(database_case(case))

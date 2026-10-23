@@ -42,6 +42,8 @@ def test_session_titles_use_latest_nonempty_cards_and_keep_owner_isolation():
 async def database_case(run, *, legacy=False):
     url = os.environ.get("MEMORY_TEST_DATABASE_URL")
     if not url:
+        if os.environ.get("REQUIRE_DATABASE_TESTS") == "1":
+            pytest.fail("MEMORY_TEST_DATABASE_URL is required when DB tests are mandatory")
         pytest.skip("MEMORY_TEST_DATABASE_URL required for isolated PostgreSQL tests")
     schema = "memory_test_" + uuid.uuid4().hex
     admin = await asyncpg.connect(url)
