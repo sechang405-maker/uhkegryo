@@ -270,7 +270,7 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 .chat-request { display: grid; justify-items: end; gap: 7px; margin-top: 24px; }
 .chat-request span { color: var(--accent); font-size: 11px; letter-spacing: .1em; }
 .chat-request p { width: fit-content; max-width: 92%; margin: 0; padding: 12px 14px; border: 2px solid var(--accent); border-radius: 16px 16px 3px 16px; background: var(--surface-raised); color: var(--text); font-size: 14px; line-height: 1.6; }
-.conversation-answer { margin-top:24px; padding:16px; border:1px solid color-mix(in srgb,var(--border) 38%,transparent); border-radius:16px; background:var(--surface); }
+.conversation-answer { margin-top:24px; padding:16px; border:2px solid var(--accent); border-radius:16px; background:var(--surface); }
 .term-detail { display: grid; gap: 14px; margin-top: 24px; padding: 20px; border: 3px solid var(--border); border-radius: 18px; background: var(--surface-raised); }
 .term-detail-eyebrow { color: var(--accent); font-size: 11px; letter-spacing: .1em; }
 .term-detail h3 { margin: 0; color: var(--text); font-size: 20px; }
