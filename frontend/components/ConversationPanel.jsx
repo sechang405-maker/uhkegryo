@@ -21,7 +21,7 @@ export default function ConversationPanel({ turns, reopenableTurnIds = new Set()
         : <article className="term-detail conversation-answer" aria-label="통합 답변">
           <span className="term-detail-eyebrow">{turn.demo ? "UH · 더미 답변" : "UH · 답변"}</span>
           <MarkdownAnswer job={turn.job} />
-          {onCreatePersonalTerm && turn.job?.result?.user_message?.includes("개인 용어를 만드는 화면") &&
+          {onCreatePersonalTerm && turn.job?.result?.user_message?.includes("새 용어 만들기") &&
             <button className="conversation-reference-button" type="button" onClick={onCreatePersonalTerm}>새 용어 만들기 열기</button>}
           {reopenableTurnIds.has(turn.id) && <button className="conversation-reference-button" type="button"
             onClick={() => onOpenReferences(turn)}>이 답변의 레퍼런스 보기</button>}
