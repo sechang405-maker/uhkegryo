@@ -72,7 +72,7 @@ echo "   gcloud secrets create SEARXNG_SECRET --data-file=- --project=${PROJECT_
 echo ""
 
 echo "=== 5. Cloud Build 트리거 생성 (GitHub 연결 필요) ==="
-echo "콘솔에서 수동 생성: Cloud Build > 트리거 > 저장소 연결 (sechang405-maker/proj2-4-rag-langgraph-lab)"
+echo "콘솔에서 수동 생성: Cloud Build > 트리거 > 저장소 연결 (sechang405-maker/uhkegryo)"
 echo "설정:"
 echo "  - 이름: deploy-api"
 echo "  - 이벤트: 브랜치 푸시"

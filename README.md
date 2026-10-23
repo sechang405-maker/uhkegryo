@@ -186,8 +186,8 @@ Langfuse와 그 저장소는 기본 실행에 포함되지 않으며 `observabil
 ### 처음 실행
 
 ```powershell
-git clone https://github.com/sechang405-maker/proj2-4-rag-langgraph-lab.git
-cd proj2-4-rag-langgraph-lab
+git clone https://github.com/sechang405-maker/uhkegryo.git
+cd uhkegryo
 Copy-Item .env.example .env
 ```
 
@@ -280,8 +280,8 @@ docker compose logs db-migrate api frontend
 ### PowerShell
 
 ```powershell
-git clone https://github.com/sechang405-maker/proj2-4-rag-langgraph-lab.git
-cd proj2-4-rag-langgraph-lab
+git clone https://github.com/sechang405-maker/uhkegryo.git
+cd uhkegryo
 Copy-Item .env.example .env
 # .env에 DATABASE_URL, OPENROUTER_API_KEY, Langfuse 내부 비밀값을 채운 뒤 실행
 docker compose up --build -d
@@ -334,7 +334,7 @@ API health의 기대 본문은 `{"status":"ok"}`입니다. 두 Langfuse health e
 API와 별도로, 새 PowerShell 창에서 frontend를 시작합니다. Langfuse UI가 3000을 사용하므로 Next.js는 **3001** 포트를 사용합니다.
 
 ```powershell
-cd proj2-4-rag-langgraph-lab\frontend
+cd uhkegryo\frontend
 npm ci
 npm run dev -- --port 3001
 ```

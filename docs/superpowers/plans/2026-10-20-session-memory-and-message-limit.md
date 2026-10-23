@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Base: `f3a5c854b8af55dec9fb5c9fee3aca0c1e4a2813`; personal repository `sechang405-maker/proj2-4-rag-langgraph-lab` only.
+- Base: `f3a5c854b8af55dec9fb5c9fee3aca0c1e4a2813`; personal repository `sechang405-maker/uhkegryo` only.
 - Twenty accepted messages are allowed; the twenty-first new message receives HTTP 429 `SESSION_MESSAGE_LIMIT_REACHED`, retryable false.
 - Accepted messages count once even when processing fails or retries; rejected submissions count zero. Session-lifetime idempotency lookup precedes admission limits.
 - Resetting conversation context never resets admission counts. Actual new sessions start with empty memory and zero messages.

@@ -22,5 +22,5 @@
 ## Task 3: Runtime and main
 
 - [ ] Compare changed runtime files to HEAD, back up and sync only changed files. Build runtime frontend; restart only inspected existing Uhkegryo processes needing new source.
-- [ ] Verify actual3100 using local mocks. Publish exact files to sechang405-maker/proj2-4-rag-langgraph-lab main, fast-forward local checkout, compare remote blobs/source/runtime and wait for Tests/Secret Scan.
+- [ ] Verify actual3100 using local mocks. Publish exact files to sechang405-maker/uhkegryo main, fast-forward local checkout, compare remote blobs/source/runtime and wait for Tests/Secret Scan.
 - [ ] Record completed/failed/unexecuted checks, commit URL and exact remaining blockers separately from publication status.
