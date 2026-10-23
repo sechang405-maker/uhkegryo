@@ -344,6 +344,25 @@ def test_worker_guidance_uses_single_interpretation_without_search(monkeypatch, 
     assert recovery.failures == []
 
 
+def test_personal_term_creation_request_never_returns_a_catalog_card(monkeypatch, snapshot_factory):
+    output = InterpretationOutput(
+        interpretation_state=InterpretationState.DRAWING_CHAT,
+        answer_text="발레 용어를 추가하려면 특징을 더 알려 주세요.",
+    )
+    job = {**JOB, "request_text": "발레 동작을 용어에 추가하고 싶어."}
+    adapter, jobs, recovery = FakeAdapter(output), FakeJobs(job), FakeRecovery()
+
+    _run(_worker(monkeypatch, jobs, recovery, snapshot_factory([]), adapter).run_once())
+
+    result = jobs.writes[-1][1]
+    assert result.agent_status is AgentStatus.REFERENCE_GUIDANCE
+    assert result.reference_plan is None
+    assert "아직 준비 중" in result.answer_text
+    assert "초안 검토" in result.answer_text
+    assert len(adapter.calls) == 1
+    assert recovery.failures == []
+
+
 def test_worker_stores_partial_result_as_completed(
     monkeypatch, snapshot_factory, card_factory
 ):

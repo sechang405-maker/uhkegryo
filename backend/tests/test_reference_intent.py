@@ -3,6 +3,19 @@ import pytest
 from backend.services import reference_intent
 
 
+@pytest.mark.parametrize("text", [
+    "발레 동작을 용어에 추가하고 싶어.",
+    "내 전용 텀카드를 만들고 싶어",
+    "새로운 포즈를 용어로 등록해줘",
+])
+def test_personal_term_creation_intent_is_not_reference_search(text):
+    assert reference_intent.requests_personal_term_creation(text)
+
+
+def test_ordinary_reference_addition_is_not_personal_term_creation():
+    assert not reference_intent.requests_personal_term_creation("발레 동작 레퍼런스를 검색해줘")
+
+
 @pytest.mark.parametrize('text', [
     '이런 캐릭터를 그리고 싶어', '그런 포즈 보고 싶어', '찾아줘',
     '서 있는 캐릭터를 그리고 싶어요', '그 설명대로 레퍼런스 보여줘',

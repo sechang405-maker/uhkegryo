@@ -7,6 +7,13 @@ which cards, if any, can actually be searched.
 import re
 
 
+PERSONAL_TERM_CREATION_GUIDANCE = (
+    "개인 용어를 만드는 화면은 아직 준비 중입니다. 현재는 기존 텀카드만 검색하거나 선택할 수 있어요. "
+    "계획된 방법은 ‘새 용어 만들기’에서 설명 입력 → AI 초안 검토·수정 → 저장 순서이며, "
+    "화면이 연결되기 전에는 새 용어가 그래프나 검색에 추가되지 않습니다."
+)
+
+
 def current_action_text(text):
     text = re.sub(r'"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<!\w)\'[^\'\n]*\'', ' ', text)
     scoped = re.search(r'\b[1-3]\s*번(?:은|는|을|를)?\s*찾지\s*말고\s*(.+)$', text)
@@ -20,6 +27,21 @@ def current_action_text(text):
     return ' '.join(clause for clause in clauses if not re.search(
         r'기억(?:나|해|하|해요)|했었|했지|했더|했는데|했던|했나|했어|했나요|달라고\s*했|'
         r'\b(?:remember|recalled|previously|earlier|yesterday)\b', clause, re.I)).strip()
+
+
+def requests_personal_term_creation(text):
+    """Identify explicit requests to create/register a new term card.
+
+    This is intentionally narrower than ordinary requests to add an existing
+    condition to the current search.
+    """
+    current = current_action_text(text)
+    return bool(re.search(
+        r'(?:용어|텀\s*카드)(?:에|를|을|로)?[^.!?\n]{0,32}(?:추가|등록|만들|생성)|'
+        r'(?:추가|등록|만들|생성)[^.!?\n]{0,24}(?:용어|텀\s*카드)',
+        current,
+        re.I,
+    ))
 
 
 def search_forbidden(text):

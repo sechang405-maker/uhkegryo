@@ -8,13 +8,17 @@ import logging
 from typing import Any, Mapping
 
 from backend.schemas.enums import AgentStatus, FailureCode, JobStatus, ReasonCode, Role
-from backend.schemas.models import AgentResult
+from backend.schemas.models import AgentResult, InterpretationOutput
 from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.conversation_memory import ConversationMemory
 from backend.services import conversation_context
 from backend.services import reference_update
 from backend.services import recommendations
-from backend.services.reference_intent import explicit_non_search
+from backend.services.reference_intent import (
+    PERSONAL_TERM_CREATION_GUIDANCE,
+    explicit_non_search,
+    requests_personal_term_creation,
+)
 from backend.services.input_safety import is_out_of_scope_input, is_unsafe_input
 from backend.services.job_repository import JobRepository, StaleJobAttempt
 from backend.services.job_retry_recovery import JobRetryRecovery
@@ -180,6 +184,14 @@ class AgentJobWorker:
                                 active_cards_json=format_active_cards_json(self._snapshot),
                                 session_context=conversation_context.prompt_context(context),
                                 **({"validation_feedback": feedback} if feedback else {}),
+                            )
+                        if requests_personal_term_creation(job["request_text"]):
+                            interpretation = InterpretationOutput(
+                                interpretation_state="needs_clarification",
+                                answer_text=PERSONAL_TERM_CREATION_GUIDANCE,
+                                unresolved_constraints=["개인 용어 생성 화면 미연결"],
+                                clarifying_question=PERSONAL_TERM_CREATION_GUIDANCE,
+                                clarification_type="catalog_limitation",
                             )
                         if interpretation.interpretation_state == 'select_terms' and explicit_non_search(job['request_text']):
                             raise LLMInvalidStructuredOutput('Explicit non-search intent conflicts with selected reference terms',
