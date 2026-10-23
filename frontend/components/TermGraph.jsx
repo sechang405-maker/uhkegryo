@@ -14,6 +14,13 @@ import {
 } from '../lib/term-graph-motion.mjs';
 import { GRAPH_HELP_ITEMS } from '../lib/term-graph-help.mjs';
 import { attachPersonalTermOverlay, personalGraphTerms } from '../lib/term-graph-personal-layout.mjs';
+import {
+  advanceGraphViewAutoRotation,
+  createAutoRotationState,
+  manualRotationStarted,
+  pauseAutoRotation,
+  stopAutoRotation,
+} from '../lib/term-graph-auto-rotation.mjs';
 
 const GRAPH_MOTION_DURATION=180;
 
@@ -31,6 +38,8 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
   const graph=motionState.displayGraph;
   const hasMotion=Object.keys(motionState.presence).length>0;
   const [view,setView]=useState(INITIAL_VIEW);
+  const viewRef=useRef(view);
+  viewRef.current=view;
   const [notice,setNotice]=useState('');
   const [sceneSize,setSceneSize]=useState({width:1000,height:680});
   const responsivePoints=useMemo(()=>projectGraph(logicalGraph,INITIAL_VIEW),[logicalGraph]);
@@ -43,6 +52,8 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
   const pointers=useRef(new Map());
   const suppressClick=useRef(false);
   const hiddenAt=useRef(null);
+  const autoRotationRef=useRef(createAutoRotationState());
+  const [autoRotationStopped,setAutoRotationStopped]=useState(false);
   const responsiveModeChecked=useRef(false);
   const onListChangeRef=useRef(onListChange);
   onListChangeRef.current=onListChange;
@@ -64,6 +75,7 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
     if(list) return;
     const media=window.matchMedia('(prefers-reduced-motion: reduce)');
     const update=()=>{
+      autoRotationRef.current=pauseAutoRotation(autoRotationRef.current,performance.now());
       setReducedMotion(media.matches);
       if(media.matches) setMotionState(current=>createGraphMotionState(current.logicalGraph,current.expandedIds));
     };
@@ -75,6 +87,7 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
     if(list) return;
     const update=()=>{
       const now=performance.now();
+      autoRotationRef.current=pauseAutoRotation(autoRotationRef.current,now);
       if(document.hidden) {
         hiddenAt.current=now;
         setPageVisible(false);
@@ -91,17 +104,27 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
     document.addEventListener('visibilitychange',update);
     return ()=>document.removeEventListener('visibilitychange',update);
   },[list]);
+  const autoRotationActive=!autoRotationStopped&&!list&&!reducedMotion&&pageVisible;
   useEffect(()=>{
-    if(!hasMotion||list||reducedMotion||!pageVisible) return;
+    if((!hasMotion&&!autoRotationActive)||list||reducedMotion||!pageVisible) return;
     let frame=0;
     const tick=now=>{
       setMotionNow(now);
-      setMotionState(current=>finishGraphMotion(current,now));
+      if(hasMotion) setMotionState(current=>finishGraphMotion(current,now));
+      if(autoRotationActive) {
+        const currentView=viewRef.current;
+        const advanced=advanceGraphViewAutoRotation(currentView,autoRotationRef.current,now,true);
+        autoRotationRef.current=advanced.state;
+        if(advanced.view!==currentView) {
+          viewRef.current=advanced.view;
+          setView(advanced.view);
+        }
+      }
       frame=requestAnimationFrame(tick);
     };
     frame=requestAnimationFrame(tick);
     return ()=>cancelAnimationFrame(frame);
-  },[hasMotion,list,reducedMotion,pageVisible]);
+  },[hasMotion,list,reducedMotion,pageVisible,autoRotationActive]);
   useEffect(()=>{
     if(list) setMotionState(current=>createGraphMotionState(current.logicalGraph,current.expandedIds));
   },[list]);
@@ -147,6 +170,11 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
   },[list]);
   function rotate(dx,dy) { setView(v=>({...v,yaw:v.yaw+dx,pitch:clamp(v.pitch+dy,-1.2,1.2)})); }
   function zoom(delta) { setView(v=>({...v,zoom:clamp(v.zoom+delta,.65,1.25)})); }
+  function stopAutomaticRotation() {
+    if(autoRotationRef.current.stopped) return;
+    autoRotationRef.current=stopAutoRotation(autoRotationRef.current);
+    setAutoRotationStopped(true);
+  }
   function start(event) {
     if(event.button!==0) return;
     if(event.target.closest?.('.term-graph-node')) return;
@@ -163,13 +191,15 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
     pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});
     const pair=[...pointers.current.values()],g=gesture.current;
     if(pair.length===2 && g.distance) {
+      if(manualRotationStarted(pair.length,0)) stopAutomaticRotation();
       suppressClick.current=true;
       const distance=Math.hypot(pair[0].x-pair[1].x,pair[0].y-pair[1].y);
       g.latest={...g.view,zoom:clamp(g.view.zoom*distance/g.distance,.65,1.25)};
       setView(g.latest);
     } else if(pair.length===1) {
       const dx=event.clientX-g.x,dy=event.clientY-g.y;
-      if(Math.hypot(dx,dy)<5) return;
+      if(!manualRotationStarted(pair.length,Math.hypot(dx,dy))) return;
+      stopAutomaticRotation();
       suppressClick.current=true;
       g.latest={...g.view,yaw:g.view.yaw+dx*.006,pitch:clamp(g.view.pitch+dy*.006,-1.2,1.2)};
       setView(g.latest);
@@ -249,7 +279,7 @@ export default function TermGraph({terms, catalogTerms=terms, personalTerms=[], 
         ref={sceneRef} aria-describedby="term-graph-help" onKeyDown={key} onPointerDown={start} onPointerMove={move}
         onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
         data-yaw={view.yaw.toFixed(3)} data-pitch={view.pitch.toFixed(3)} data-zoom={view.zoom.toFixed(2)}
-        data-animating={hasMotion} data-page-visible={pageVisible}>
+        data-animating={hasMotion} data-page-visible={pageVisible} data-auto-rotating={autoRotationActive}>
         {graph.edges.some(edge=>edge.relation) && <div className="term-graph-relation-legend" aria-label="조건 연결선 안내">
           <span data-relation="all">실선: 모두 필요</span><span data-relation="any">점선: 하나 이상</span>
         </div>}
