@@ -26,10 +26,10 @@ class PersonalTermDraft(BaseModel):
     label_ko: ShortText
     label_en: ShortText
     plain_meaning_ko: LongText
-    reference_checkpoints_ko: list[ListText] = Field(default_factory=list)
-    cautions_ko: list[ListText] = Field(default_factory=list)
-    aliases_ko: list[ListText] = Field(default_factory=list)
-    query_fragments_en: list[ListText] = Field(default_factory=list)
+    reference_checkpoints_ko: list[ListText] = Field(default_factory=list, max_length=12)
+    cautions_ko: list[ListText] = Field(default_factory=list, max_length=12)
+    aliases_ko: list[ListText] = Field(default_factory=list, max_length=12)
+    query_fragments_en: list[ListText] = Field(default_factory=list, max_length=12)
     source_input: SourceInput
     proposal_kind: Literal["descriptive", "coined", "ambiguous"]
     uncertainty_ko: LongText | None = None
@@ -69,3 +69,42 @@ class PersonalTermRecord(PersonalTermDraft):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None = None
+
+
+class GeneratedPersonalTermDraft(BaseModel):
+    """Strict LLM output; server-owned source_input is deliberately absent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Role
+    label_ko: ShortText
+    label_en: ShortText
+    plain_meaning_ko: LongText
+    reference_checkpoints_ko: list[ListText] = Field(min_length=1, max_length=12)
+    cautions_ko: list[ListText] = Field(default_factory=list, max_length=12)
+    aliases_ko: list[ListText] = Field(default_factory=list, max_length=12)
+    query_fragments_en: list[ListText] = Field(min_length=1, max_length=12)
+    proposal_kind: Literal["descriptive", "coined", "ambiguous"]
+    uncertainty_ko: LongText | None = None
+
+    @model_validator(mode="after")
+    def ambiguous_requires_uncertainty(self):
+        if self.proposal_kind == "ambiguous" and self.uncertainty_ko is None:
+            raise ValueError("ambiguous proposals require uncertainty_ko")
+        return self
+
+    def with_source_input(self, source_input: str) -> PersonalTermDraft:
+        return PersonalTermDraft(**self.model_dump(), source_input=source_input)
+
+
+class PersonalTermGenerationRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    personal_term_id: UUID
+    term_id: str = Field(pattern=r"^personal_[0-9a-f]{32}$")
+    status: Literal["generating", "proposed", "active", "deleted", "failed"]
+    source_input: SourceInput
+    generation_attempts: int = Field(ge=0)
+    generation_error_code: str | None = None
+    created_at: datetime
+    updated_at: datetime
