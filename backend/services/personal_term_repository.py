@@ -272,6 +272,18 @@ class PersonalTermRepository:
             raise PersonalTermNotFound
         return _record(row)
 
+    async def list_active_terms_for_session(self, session_id: str) -> list[PersonalTermRecord]:
+        """Resolve active terms through the claimed job's server-owned session."""
+        rows = await self._pool.fetch(
+            """SELECT p.* FROM personal_terms p
+               JOIN sessions s ON s.owner_id=p.owner_id
+               WHERE s.session_id=$1::uuid AND p.status='active'
+                 AND (s.retained OR s.last_activity_at + interval '3 months' > now())
+               ORDER BY p.created_at, p.personal_term_id""",
+            session_id,
+        )
+        return [_record(row) for row in rows]
+
     async def update_term(
         self, token: str, term_id: str, update: PersonalTermUpdate
     ) -> PersonalTermRecord:

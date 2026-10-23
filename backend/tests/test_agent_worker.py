@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -17,6 +18,7 @@ from backend.schemas.enums import (
 )
 from backend.schemas.models import InterpretationOutput, InterpretationSelection, PinResult
 from backend.services.job_repository import StaleJobAttempt
+from backend.services.job_trace import JobTracer
 from backend.services.llm import LLMInvalidStructuredOutput, LLMTimeout
 from backend.services.response_assembler import RoleSearchOutcome
 from backend.services import agent_worker
@@ -161,15 +163,90 @@ def _run(coro):
 
 def _worker(
     monkeypatch, jobs, recovery, snapshot, adapter, heartbeat_interval=10,
-    mcp_gateway=None, widget_client=None,
+    mcp_gateway=None, widget_client=None, personal_terms=None,
 ):
     monkeypatch.setattr(agent_worker, "JobRepository", lambda _pool: jobs)
     monkeypatch.setattr(agent_worker, "JobRetryRecovery", lambda _pool: recovery)
     monkeypatch.setattr(agent_worker, "ConversationMemory", lambda _pool: EmptyMemory(jobs))
     return AgentJobWorker(
         object(), snapshot, adapter=adapter, heartbeat_interval=heartbeat_interval,
-        mcp_gateway=mcp_gateway, widget_client=widget_client,
+        mcp_gateway=mcp_gateway, widget_client=widget_client, personal_terms=personal_terms,
+        tracer=JobTracer(),
     )
+
+
+class FakePersonalTerms:
+    def __init__(self, records):
+        self.records = records
+        self.sessions = []
+
+    async def list_active_terms_for_session(self, session_id):
+        self.sessions.append(session_id)
+        return self.records
+
+
+def _personal_record(term_id="personal_0123456789abcdef0123456789abcdef"):
+    now = datetime.now(UTC)
+    return SimpleNamespace(
+        personal_term_id="01234567-89ab-cdef-0123-456789abcdef",
+        term_id=term_id,
+        status="active",
+        role=Role.POSE,
+        label_ko="발레 아라베스크",
+        label_en="ballet arabesque",
+        plain_meaning_ko="한쪽 다리로 서서 다른 다리를 뒤로 길게 뻗는 발레 자세",
+        reference_checkpoints_ko=["지지 다리와 뒤로 뻗은 다리의 균형"],
+        cautions_ko=[],
+        aliases_ko=["아라베스크"],
+        query_fragments_en=["ballet arabesque pose"],
+        source_input="발레 아라베스크 자세",
+        proposal_kind="descriptive",
+        uncertainty_ko=None,
+        layout_slot=0,
+        generation_attempts=1,
+        created_at=now,
+        updated_at=now,
+        deleted_at=None,
+    )
+
+
+def test_worker_recognizes_newly_saved_personal_term_in_same_session(
+    monkeypatch, snapshot_factory,
+):
+    term_id = "personal_0123456789abcdef0123456789abcdef"
+    job = {**JOB, "request_text": "발레 아라베스크 자세로 찾아줘"}
+    output = InterpretationOutput(
+        interpretation_state=InterpretationState.SELECT_TERMS,
+        answer_text="저장한 발레 아라베스크 자세로 찾아볼게요.",
+        selections=[InterpretationSelection(
+            role=Role.POSE, term_id=term_id, evidence=["발레 아라베스크 자세"], confidence=0.95,
+        )],
+        unresolved_constraints=[],
+    )
+    jobs, recovery, adapter = FakeJobs(job), FakeRecovery(), FakeAdapter(output)
+    personal_terms = FakePersonalTerms([_personal_record(term_id)])
+    worker = _worker(
+        monkeypatch, jobs, recovery, snapshot_factory([]), adapter,
+        personal_terms=personal_terms,
+    )
+
+    _run(worker.run_once(search_outcomes={Role.POSE: RoleSearchOutcome(role=Role.POSE)}))
+
+    assert personal_terms.sessions == ["session-1"]
+    prompt_cards = json.loads(adapter.calls[0][1]["active_cards_json"])["active_cards"]
+    assert next(card for card in prompt_cards if card["term_id"] == term_id) == {
+        "role": "pose",
+        "term_id": term_id,
+        "label_ko": "발레 아라베스크",
+        "confidence_gate": {},
+        "requires_all_of": [],
+        "requires_any_of": [],
+        "plain_meaning_ko": "한쪽 다리로 서서 다른 다리를 뒤로 길게 뻗는 발레 자세",
+        "reference_checkpoints_ko": ["지지 다리와 뒤로 뻗은 다리의 균형"],
+    }
+    result = jobs.writes[-1][1]
+    assert result.reference_plan.terms[0].term_id == term_id
+    assert result.reference_plan.terms[0].plain_meaning_ko == "한쪽 다리로 서서 다른 다리를 뒤로 길게 뻗는 발레 자세"
 
 
 def test_worker_runs_claimed_job_through_assembler(monkeypatch, snapshot_factory, card_factory):

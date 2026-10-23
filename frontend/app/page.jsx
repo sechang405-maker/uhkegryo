@@ -1247,12 +1247,13 @@ export default function HomePage() {
         )}
       </section>
 
-      <aside id="conversation-panel" className="prompt-panel" aria-labelledby="prompt-title">
+      <aside id="conversation-panel" className="prompt-panel" aria-label="대화">
+        {!uiDemoEnabled && <div className="prompt-toolbar">
+          <button className="personal-term-open" type="button"
+            onClick={() => setPersonalTermOpen(true)}>＋ 새 용어 만들기</button>
+        </div>}
         <div className="panel-top" ref={chatScrollRef}>
           {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
-          <h2 id="prompt-title">UH케 그릴 건가요?</h2>
-          {!uiDemoEnabled && <button className="personal-term-open" type="button"
-            onClick={() => setPersonalTermOpen(true)}>＋ 새 용어 만들기</button>}
           {restoreError && <div role="alert"><p>{restoreError}</p>
             <button type="button" onClick={() => setRestoreAttempt((value) => value + 1)}>{restoreError === SERVICE_UNAVAILABLE_ERROR ? "연결 다시 확인" : "대화 다시 불러오기"}</button></div>}
           {storageFailed && <p className="form-error" role="status">브라우저 기록을 읽거나 쓰지 못했습니다. 일부 기록이 복원되지 않을 수 있지만 현재 대화는 계속 사용할 수 있습니다.</p>}

@@ -32,6 +32,8 @@ from backend.services.llm import format_active_cards_json
 from backend.services.mcp_pinterest_search import parse_search_result, pop_search_diagnostics
 from backend.services.mcp_tool_gateway import McpToolGateway
 from backend.services.pinterest_widget import PinterestWidgetClient
+from backend.services.personal_catalog import with_personal_terms
+from backend.services.personal_term_repository import PersonalTermRepository
 from backend.services.searxng_pinterest_search import SearXNGPinterestSearchProvider
 from backend.services.resolver import ResolutionResult
 from backend.services.response_assembler import RoleSearchOutcome, assemble
@@ -65,6 +67,7 @@ class AgentJobWorker:
         local_search_url: str = '',
         heartbeat_interval: float = 10,
         tracer: JobTracer | None = None,
+        personal_terms: PersonalTermRepository | None = None,
     ) -> None:
         self._pool = pool
         self._jobs = JobRepository(pool)
@@ -79,6 +82,7 @@ class AgentJobWorker:
         self._search_slots = asyncio.Semaphore(SEARCH_CONCURRENCY)
         self._heartbeat_interval = heartbeat_interval
         self._tracer = tracer if tracer is not None else JobTracer.from_settings()
+        self._personal_terms = personal_terms
 
     async def run_once(
         self,
@@ -142,6 +146,12 @@ class AgentJobWorker:
                     self._adapter = CodexInterpretationAdapter()
                 else:
                     self._adapter = LLMInterpretationAdapter()
+            snapshot = self._snapshot
+            if self._personal_terms is not None:
+                snapshot = with_personal_terms(
+                    snapshot,
+                    await self._personal_terms.list_active_terms_for_session(str(job["session_id"])),
+                )
             with trace.stage("memory-context"):
                 context = await conversation_context.prepare(self._memory, job, self._adapter, trace)
                 recommendations.reset_context(job, context)
@@ -155,7 +165,7 @@ class AgentJobWorker:
             if callable(combined) and not recommendation_intent and not conversation_context.is_clear_new_request(job["request_text"], context):
                 terms = ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms", [])
                 routed = await combined(job["request_text"], **conversation_context.trace_args(job),
-                    active_cards_json=format_active_cards_json(self._snapshot),
+                    active_cards_json=format_active_cards_json(snapshot),
                     session_context=conversation_context.prompt_context(context),
                     current_reference_terms=[{key: term[key] for key in ("role", "term_id", "label_ko", "label_en")} for term in terms],
                     current_reference_roles=[term["role"] for term in terms],
@@ -170,18 +180,18 @@ class AgentJobWorker:
             if recall_only:
                 result = recalled
             else:
-                previous = reference_update.previous_terms(context, self._snapshot)
+                previous = reference_update.previous_terms(context, snapshot)
                 refresh = context.get("reference_action") in ("refresh_all", "refresh_roles", "refresh_terms")
                 interpretation = None
                 with trace.stage("validating"):
                     if refresh:
-                        resolution = reference_update.refresh_resolution(previous, self._snapshot, context)
+                        resolution = reference_update.refresh_resolution(previous, snapshot, context)
                     else:
                         interpretation = routed.interpretation if routed is not None else None
                         if interpretation is None:
                             interpretation = await self._adapter.interpret(
                                 job["request_text"], **conversation_context.trace_args(job),
-                                active_cards_json=format_active_cards_json(self._snapshot),
+                                active_cards_json=format_active_cards_json(snapshot),
                                 session_context=conversation_context.prompt_context(context),
                                 **({"validation_feedback": feedback} if feedback else {}),
                             )
@@ -197,7 +207,7 @@ class AgentJobWorker:
                             raise LLMInvalidStructuredOutput('Explicit non-search intent conflicts with selected reference terms',
                                 stage='conversation_validation', feedback=[{'path': [], 'code': 'reference_intent_conflict'}])
                         recommendation_decision = await recommendations.handle(
-                            self._memory, job, interpretation, self._snapshot, context)
+                            self._memory, job, interpretation, snapshot, context)
                         if context.get('_recommendation_topic_reset'):
                             previous = {}
                         if recommendation_decision:
@@ -208,14 +218,14 @@ class AgentJobWorker:
                                 previous = {}
                         else:
                             interpretation = await conversation_context.reference_fallback(
-                                self._memory, job, interpretation, self._snapshot, context)
+                                self._memory, job, interpretation, snapshot, context)
                             resolution = await conversation_context.validate(
-                                self._memory, job, interpretation, self._snapshot, context=context)
+                                self._memory, job, interpretation, snapshot, context=context)
                             resolution = reference_update.select_searches(resolution, previous)
                 if recommendation_decision and recommendation_decision.result:
                     result = recommendation_decision.result
                 elif resolution.status == 'chat':
-                    result = assemble(resolution, self._snapshot, answer_text=interpretation.answer_text)
+                    result = assemble(resolution, snapshot, answer_text=interpretation.answer_text)
                 else:
                     with trace.stage("searching"):
                         with self._tracer.phase("search-status-update"):
@@ -230,7 +240,7 @@ class AgentJobWorker:
                                     for term_id, term in previous.items()}} if refresh else {}),
                             )
                     with self._tracer.phase("search-result-assembly") as metrics:
-                        result = assemble(resolution, self._snapshot, search_outcomes,
+                        result = assemble(resolution, snapshot, search_outcomes,
                             answer_text=("기존 조건을 유지하고 요청한 카드의 레퍼런스만 다시 찾았어요."
                                 if context.get("reference_action") == "refresh_terms"
                                 else "기존 조건은 유지하고 요청한 역할의 레퍼런스를 다시 찾았어요."
@@ -255,7 +265,7 @@ class AgentJobWorker:
                     return
                 with self._tracer.phase("conversation-state-update") as metrics:
                     if not recall_only and not refresh:
-                        state = conversation_context.next_state(context, job, interpretation, result, snapshot=self._snapshot)
+                        state = conversation_context.next_state(context, job, interpretation, result, snapshot=snapshot)
                         state = recommendations.next_state(state, job, recommendation_decision)
                     await self._memory.complete(job, result, state)
                     metrics.update(state_saved=True)
@@ -677,6 +687,7 @@ async def run_worker(snapshot: CatalogSnapshot, *, http_resources=None) -> None:
                 pool, snapshot, mcp_gateway=mcp_gateway, widget_client=widget_client,
                 search_json_loader=http_resources.search_json,
                 local_search_url=settings.searxng_base_url if local_codex else '',
+                personal_terms=PersonalTermRepository(pool),
             ).run_forever(
                 concurrency=settings.worker_concurrency
             )

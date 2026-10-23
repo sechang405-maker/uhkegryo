@@ -50,7 +50,7 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         sessions = SessionRepository(pool)
         repository = PersonalTermRepository(pool)
         session_a = await sessions.create_session("owner-a")
-        await sessions.create_session("owner-b")
+        session_b = await sessions.create_session("owner-b")
 
         created, was_created = await repository.create_proposal(
             "owner-a", draft(), idempotency_key="proposal-key", input_hash="input-v1"
@@ -89,6 +89,10 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         assert active.status == "active"
         assert active.layout_slot == 0
         assert (await repository.get_active_term("owner-a", created.term_id)).term_id == created.term_id
+        assert [term.term_id for term in await repository.list_active_terms_for_session(
+            str(session_a)
+        )] == [created.term_id]
+        assert await repository.list_active_terms_for_session(str(session_b)) == []
         with pytest.raises(PersonalTermNotFound):
             await repository.get_active_term("owner-b", created.term_id)
         with pytest.raises(PersonalTermStateConflict):
@@ -109,6 +113,7 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         with pytest.raises(PersonalTermNotFound):
             await repository.get_active_term("owner-a", created.term_id)
         assert await repository.list_terms("owner-a") == []
+        assert await repository.list_active_terms_for_session(str(session_a)) == []
         with pytest.raises(PersonalTermNotFound):
             await repository.soft_delete("owner-b", created.term_id)
 
@@ -119,6 +124,9 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         repeated_restore = await repository.restore_term("owner-a", created.term_id)
         assert repeated_restore.status == "active"
         assert repeated_restore.layout_slot == active.layout_slot
+        assert [term.term_id for term in await repository.list_active_terms_for_session(
+            str(session_a)
+        )] == [created.term_id]
 
         proposed, _ = await repository.create_proposal(
             "owner-a", draft(label_ko="restore proposed"),
@@ -128,6 +136,9 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         restored_proposed = await repository.restore_term("owner-a", proposed.term_id)
         assert restored_proposed.status == "proposed"
         assert restored_proposed.layout_slot is None
+        assert [term.term_id for term in await repository.list_active_terms_for_session(
+            str(session_a)
+        )] == [created.term_id]
 
         generating, _ = await repository.begin_generation(
             "owner-a", "still generating", idempotency_key="generating-delete",
