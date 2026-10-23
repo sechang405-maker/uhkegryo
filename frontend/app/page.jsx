@@ -30,6 +30,7 @@ import { readConversationUsage } from '../lib/server-conversation.mjs';
 import SessionUsageNotice from '../components/SessionUsageNotice.mjs';
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
 import { createMobileResultOrigin, resolveMobileResult } from "../lib/mobile-result-flow.mjs";
+import PersonalTermCreator from "../components/PersonalTermCreator";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
 
@@ -86,6 +87,7 @@ export default function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState("reference");
   const [mobileResultNotice, setMobileResultNotice] = useState(null);
+  const [personalTermOpen, setPersonalTermOpen] = useState(false);
   const mobilePanelRevisionRef = useRef(0);
   const [termGuide, setTermGuide] = useState(null);
   const [termSearch, setTermSearch] = useState(null);
@@ -1222,6 +1224,8 @@ export default function HomePage() {
         <div className="panel-top" ref={chatScrollRef}>
           {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
           <h2 id="prompt-title">UH케 그릴 건가요?</h2>
+          {!uiDemoEnabled && <button className="personal-term-open" type="button"
+            onClick={() => setPersonalTermOpen(true)}>＋ 새 용어 만들기</button>}
           {restoreError && <div role="alert"><p>{restoreError}</p>
             <button type="button" onClick={() => setRestoreAttempt((value) => value + 1)}>{restoreError === SERVICE_UNAVAILABLE_ERROR ? "연결 다시 확인" : "대화 다시 불러오기"}</button></div>}
           {storageFailed && <p className="form-error" role="status">브라우저 기록을 읽거나 쓰지 못했습니다. 일부 기록이 복원되지 않을 수 있지만 현재 대화는 계속 사용할 수 있습니다.</p>}
@@ -1229,7 +1233,8 @@ export default function HomePage() {
           {olderError && <p role="alert">{olderError}</p>}
           <ConversationPanel key={sessionId || "no-session"} turns={turns}
             reopenableTurnIds={reopenableTurnIds} onOpenReferences={openTurn}
-            onRetryStatus={retryTurnStatus} retryStatusBusy={conversationBusy} />
+            onRetryStatus={retryTurnStatus} retryStatusBusy={conversationBusy}
+            onCreatePersonalTerm={() => setPersonalTermOpen(true)} />
           <TermGuide term={termGuide} />
           {uiDemoEnabled && <div className="demo-scenarios" aria-label="대표 샘플 입력">
             <p>대표 예시를 선택한 뒤 전송해 보세요.</p>
@@ -1283,6 +1288,7 @@ export default function HomePage() {
             {requestLength >= 450 && <span id="request-count" className="character-count" role="status">{requestLength} / 500</span>}
           </div>
         </form>
+        <PersonalTermCreator open={personalTermOpen} onClose={() => setPersonalTermOpen(false)} />
       </aside>
       <dialog className="image-preview" ref={previewDialogRef} aria-labelledby="preview-title"
         onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.close(); }}
