@@ -55,6 +55,8 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         created, was_created = await repository.create_proposal(
             "owner-a", draft(), idempotency_key="proposal-key", input_hash="input-v1"
         )
+        with pytest.raises(PersonalTermNotFound):
+            await repository.get_active_term("owner-a", created.term_id)
         repeated, repeated_created = await repository.create_proposal(
             "owner-a", draft(), idempotency_key="proposal-key", input_hash="input-v1"
         )
@@ -86,6 +88,9 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
         active = await repository.confirm_term("owner-a", created.term_id)
         assert active.status == "active"
         assert active.layout_slot == 0
+        assert (await repository.get_active_term("owner-a", created.term_id)).term_id == created.term_id
+        with pytest.raises(PersonalTermNotFound):
+            await repository.get_active_term("owner-b", created.term_id)
         with pytest.raises(PersonalTermStateConflict):
             await repository.update_term(
                 "owner-a", created.term_id, PersonalTermUpdate(role="composition")
@@ -98,6 +103,8 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
 
         deleted = await repository.soft_delete("owner-a", created.term_id)
         assert deleted.status == "deleted" and deleted.deleted_at is not None
+        with pytest.raises(PersonalTermNotFound):
+            await repository.get_active_term("owner-a", created.term_id)
         assert await repository.list_terms("owner-a") == []
         with pytest.raises(PersonalTermNotFound):
             await repository.soft_delete("owner-b", created.term_id)

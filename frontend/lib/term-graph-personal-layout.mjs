@@ -83,12 +83,15 @@ function personalPoint(term) {
 
 export function personalGraphTerms(records = []) {
   return records.filter(record=>record?.status==="active"&&record.term_id&&record.role&&Number.isInteger(record.layout_slot))
-    .map(record=>({
+    .map(record=>{
+      const query=(record.query_fragments_en||[]).filter(Boolean).join(" ").trim();
+      return {
       role:record.role,term_id:record.term_id,label_ko:record.label_ko,
       plain_meaning_ko:record.plain_meaning_ko,reference_checkpoints:[...(record.reference_checkpoints_ko||[])],
-      cautions:[...(record.cautions_ko||[])],recommended_search_query:null,requires_all_of:[],requires_any_of:[],
-      search_disabled:true,is_personal:true,layout_slot:record.layout_slot,
-    }));
+      cautions:[...(record.cautions_ko||[])],query_fragments:[...(record.query_fragments_en||[])],
+      recommended_search_query:query?`${query} drawing`:null,requires_all_of:[],requires_any_of:[],
+      search_disabled:!query,is_personal:true,layout_slot:record.layout_slot,
+    };});
 }
 
 export function attachPersonalTermOverlay(graph, records = []) {

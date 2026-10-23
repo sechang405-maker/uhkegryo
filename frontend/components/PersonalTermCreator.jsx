@@ -60,7 +60,7 @@ export default function PersonalTermCreator({ open, onClose, onItemsChange }) {
     <section className="personal-term-dialog" role="dialog" aria-modal="true" aria-labelledby="personal-term-title">
       <header><div><span>나만의 AI 초안</span><h2 id="personal-term-title">새 용어 만들기</h2></div>
         <button type="button" aria-label="닫기" onClick={onClose}>×</button></header>
-      <p className="personal-term-scope">저장한 개인 용어는 해당 카테고리의 3D 그래프에 표시됩니다. 개인 용어 검색 연결은 다음 단계에서 제공됩니다.</p>
+      <p className="personal-term-scope">저장한 개인 용어는 해당 카테고리의 3D 그래프에 표시되고 레퍼런스 검색에 사용할 수 있습니다.</p>
       {!draft ? <form onSubmit={generate}>
         <label htmlFor="personal-term-input">원하는 자세나 그림 개념 설명</label>
         <textarea id="personal-term-input" value={sourceInput} maxLength={300} required

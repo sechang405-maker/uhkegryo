@@ -32,6 +32,7 @@ import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../component
 import { createMobileResultOrigin, resolveMobileResult } from "../lib/mobile-result-flow.mjs";
 import PersonalTermCreator from "../components/PersonalTermCreator";
 import { createPersonalTermClient } from "../lib/personal-terms.mjs";
+import { personalGraphTerms } from "../lib/term-graph-personal-layout.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
 
@@ -135,7 +136,8 @@ export default function HomePage() {
   const galleryTerm = galleryRows.find((row) => row.term.term_id === activeGalleryTermId)?.term || galleryRows[0]?.term || null;
   const queryTerm = ["results", "term-results"].includes(boardView) && hasGalleryRows ? galleryTerm : homeTerm;
   const showingGraph = !(boardView === "results" && historyTurnId) && !( ["results", "term-results"].includes(boardView) && hasGalleryRows );
-  const graphSearchScope = createGraphSearchScope(ACTIVE_TERMS, graphTermIds, graphFocusId);
+  const graphCatalogTerms = useMemo(()=>[...ACTIVE_TERMS,...personalGraphTerms(personalTerms)],[personalTerms]);
+  const graphSearchScope = createGraphSearchScope(graphCatalogTerms, graphTermIds, graphFocusId);
   const recommendedSearchQuery = showingGraph ? graphSearchScope.selectedQuery : getRecommendedSearchQuery(queryTerm);
   const pendingTurnIds = turns.filter(isTurnPending).map((turn) => `${turn.id}:${turn.screen_generation ?? ""}`).join(",");
   const conversationBusy = !conversationReady || isSubmitting || Boolean(pendingTurnIds) || Boolean(deletingId);

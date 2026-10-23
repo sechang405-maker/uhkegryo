@@ -7,7 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from backend.schemas.enums import FailureCode, ReasonCode, Role
 from backend.schemas.models import TermResult
+from backend.routes.agent import _database_call, _owner, get_repositories
 from backend.services.failure_mapping import OperationalFailure
+from backend.services.personal_term_repository import PersonalTermNotFound, PersonalTermRepository
 from backend.services.pinterest_widget import PinterestWidgetClient, PinterestWidgetProvider
 from backend.services.response_assembler import RoleSearchOutcome
 from backend.services.search_url_builder import build_search_url
@@ -47,6 +49,32 @@ def get_search_provider(suffix: str, *, exclude_pin_ids=()) -> PinterestWidgetPr
     )
 
 
+async def resolve_personal_search_card(
+    request: Request, response: Response, term_id: str,
+) -> tuple[dict, dict]:
+    """Resolve owner-controlled active values; never trust client copy or query text."""
+    sessions, _ = await _database_call(get_repositories())
+    token = await _owner(request, response, sessions)
+    repository = PersonalTermRepository(sessions._pool)
+    try:
+        saved = await _database_call(repository.get_active_term(token, term_id))
+    except PersonalTermNotFound:
+        raise HTTPException(404, "검색할 수 있는 용어를 찾을 수 없습니다.") from None
+    if not saved.query_fragments_en:
+        raise HTTPException(409, "저장된 영어 검색 표현이 없어 검색할 수 없습니다.")
+    return ({
+        "role": saved.role.value,
+        "label_ko": saved.label_ko,
+        "label_en": saved.label_en,
+        "query_fragments": saved.query_fragments_en,
+        "look_for": saved.reference_checkpoints_ko,
+    }, {
+        "plain_meaning_ko": saved.plain_meaning_ko,
+        "selection_reason_template_ko": "내가 저장한 개인 용어",
+        "reference_checkpoints_ko": saved.reference_checkpoints_ko,
+    })
+
+
 @router.post("/api/term-search", response_model=TermResult)
 async def search_term(payload: TermSearchRequest, request: Request, response: Response) -> TermResult:
     settings = get_settings()
@@ -54,11 +82,17 @@ async def search_term(payload: TermSearchRequest, request: Request, response: Re
         raise HTTPException(503, '로컬 이미지 검색이 연결되지 않았습니다. SearXNG 실행 설정을 확인해 주세요.')
     snapshot = request.app.state.catalog
     card = snapshot.get_active(payload.term_id)
+    personal_feedback = None
+    if card is None and payload.term_id.startswith("personal_"):
+        card, personal_feedback = await resolve_personal_search_card(
+            request, response, payload.term_id)
     if card is None:
         raise HTTPException(404, "사용 가능한 용어를 찾을 수 없습니다.")
     if snapshot.is_direct_search_disabled(payload.term_id):
         raise HTTPException(409, "이 용어는 직접 검색할 수 없습니다.")
-    feedback, plain_meaning = require_user_description(snapshot, payload.term_id)
+    feedback, plain_meaning = ((personal_feedback, personal_feedback["plain_meaning_ko"])
+                               if personal_feedback is not None
+                               else require_user_description(snapshot, payload.term_id))
     slots = request.app.state.term_search_slots
     if slots.locked():
         raise HTTPException(429, "검색 중입니다. 잠시 후 다시 시도해 주세요.",

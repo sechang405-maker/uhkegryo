@@ -259,6 +259,19 @@ class PersonalTermRepository:
             raise PersonalTermNotFound
         return _record(row)
 
+    async def get_active_term(self, token: str, term_id: str) -> PersonalTermRecord:
+        """Return only an active card owned by this anonymous profile."""
+        row = await self._pool.fetchrow(
+            """SELECT p.* FROM personal_terms p
+               JOIN anonymous_owners o USING(owner_id)
+               WHERE o.session_token_hash=$1 AND p.term_id=$2 AND p.status='active'""",
+            hash_session_token(token),
+            term_id,
+        )
+        if row is None:
+            raise PersonalTermNotFound
+        return _record(row)
+
     async def update_term(
         self, token: str, term_id: str, update: PersonalTermUpdate
     ) -> PersonalTermRecord:

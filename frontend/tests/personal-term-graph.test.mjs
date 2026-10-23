@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { ACTIVE_TERMS, HOME_TERMS } from "../lib/home-catalog.mjs";
 import { buildExpandedTermGraph } from "../lib/term-graph.mjs";
 import { attachPersonalTermOverlay, personalGraphTerms } from "../lib/term-graph-personal-layout.mjs";
+import { createGraphSearchScope } from "../lib/recommended-query.mjs";
 
 const personal = (overrides = {}) => ({
   term_id: "personal_11111111111111111111111111111111",
@@ -25,16 +26,25 @@ function segmentDistance(start,end,point) {
   return Math.hypot(point.x-start.x-dx*amount,point.y-start.y-dy*amount,point.z-start.z-dz*amount);
 }
 
-test("only active personal records become owner-local graph terms with search disabled", () => {
+test("only active personal records become searchable owner-local graph terms", () => {
   const terms=personalGraphTerms([
     personal(), personal({term_id:"personal_22222222222222222222222222222222",status:"proposed"}),
     personal({term_id:"personal_33333333333333333333333333333333",status:"deleted"}),
   ]);
   assert.equal(terms.length,1);
   assert.equal(terms[0].is_personal,true);
-  assert.equal(terms[0].search_disabled,true);
+  assert.equal(terms[0].search_disabled,false);
+  assert.equal(terms[0].recommended_search_query,"ballet arabesque pose drawing");
   assert.equal(terms[0].plain_meaning_ko,personal().plain_meaning_ko);
   assert.deepEqual(terms[0].reference_checkpoints,personal().reference_checkpoints_ko);
+});
+
+test("personal and public terms share the explicit selected-condition query", () => {
+  const custom=personalGraphTerms([personal()])[0],publicTerm=ACTIVE_TERMS.find(term=>term.term_id==="pose_standing"),
+    scope=createGraphSearchScope([...ACTIVE_TERMS,custom],[publicTerm.term_id,custom.term_id],custom.term_id);
+  assert.equal(scope.focusedTerm.term_id,custom.term_id);
+  assert.deepEqual(scope.selectedTerms.map(term=>term.term_id),[publicTerm.term_id,custom.term_id]);
+  assert.match(scope.selectedQuery,/ballet arabesque pose/);
 });
 
 test("personal overlay adds one category parent without moving any public world coordinate", () => {
@@ -79,7 +89,7 @@ test("representative personal slots avoid real 3-D node collisions and unrelated
   }
 });
 
-test("graph UI identifies personal nodes, focuses their explanation, and keeps search disabled", () => {
+test("graph UI identifies personal nodes and enables explicit selection and search", () => {
   const graphSource=readFileSync(new URL("../components/TermGraph.jsx",import.meta.url),"utf8"),
     pageSource=readFileSync(new URL("../app/page.jsx",import.meta.url),"utf8"),
     creatorSource=readFileSync(new URL("../components/PersonalTermCreator.jsx",import.meta.url),"utf8");
@@ -87,7 +97,9 @@ test("graph UI identifies personal nodes, focuses their explanation, and keeps s
   assert.match(graphSource,/attachPersonalTermOverlay/);
   assert.match(graphSource,/data-personal/);
   assert.match(graphSource,/내 용어/);
-  assert.match(graphSource,/개인 용어 검색은 다음 단계/);
+  assert.doesNotMatch(graphSource,/개인 용어 검색은 다음 단계/);
+  assert.match(graphSource,/onToggle\(node\.id\)/);
+  assert.match(pageSource,/personalGraphTerms\(personalTerms\)/);
   assert.match(pageSource,/setPersonalTerms/);
   assert.match(pageSource,/onItemsChange/);
   assert.match(creatorSource,/onItemsChange/);
