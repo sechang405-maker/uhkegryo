@@ -99,9 +99,10 @@ def test_existing_cookie_and_jobs_survive_migration():
         await pool.execute("""INSERT INTO jobs(job_id,session_id,request_text,request_text_hash,
                            idempotency_key_hash,idempotency_expires_at,status)
                            VALUES($1,$2,'original','hash','key',now(),'queued')""", jid, sid)
-        migration = Path(__file__).parents[1] / "db/migrations/003_conversation_owners.sql"
-        await pool.execute(migration.read_text(encoding="utf-8"))
-        await pool.execute((migration.parent / '006_local_retention.sql').read_text(encoding='utf-8'))
+        migrations = Path(__file__).parents[1] / "db/migrations"
+        for migration in sorted(migrations.glob("*.sql")):
+            if migration.name >= "003":
+                await pool.execute(migration.read_text(encoding="utf-8"))
         repository = SessionRepository(pool)
         assert await repository.resolve_session("old-cookie") == str(sid)
         assert await repository.session_for_job("old-cookie", str(jid)) == str(sid)

@@ -33,6 +33,8 @@ class FakePool:
         self.calls.append((query, args))
         if self.error is not None:
             raise self.error
+        if "FROM owner_session_tokens" in query:
+            return None
         return {"owner_id": str(uuid.uuid4()), "default_session_id": None}
 
     async def execute(self, query, *args):
@@ -49,9 +51,9 @@ def test_create_session_stores_only_hash_and_returns_uuid():
     result = _run(repository.create_session("opaque-token"))
 
     assert uuid.UUID(result)
-    assert result == pool.calls[1][1][0]
+    assert result == pool.calls[2][1][0]
     assert result != "opaque-token"
-    query, args = pool.calls[0]
+    query, args = pool.calls[1]
     assert "INSERT INTO anonymous_owners" in query
     assert args[1] == hash_session_token("opaque-token")
     assert args[0] != "opaque-token"

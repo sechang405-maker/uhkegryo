@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000"
     environment: str = "development"
 
+    # Invitation-only Google login. `local` preserves the existing private runtime.
+    auth_mode: Literal['local', 'google_invite'] = 'local'
+    google_client_id: str = ''
+    google_client_secret: str = Field(default='', repr=False)
+    google_redirect_uri: str = ''
+    auth_frontend_origin: str = 'http://localhost:3100'
+    invite_code_pepper: str = Field(default='', repr=False)
+    invite_redeem_attempt_limit: int = Field(default=5, ge=1, le=20)
+    invite_redeem_window_seconds: int = Field(default=900, ge=60, le=3600)
+
     # MCP (기본 비활성화 — 실제 도구 준비 후 true로 변경)
     mcp_enabled: bool = False
     mcp_base_url: str = ""
@@ -64,6 +74,17 @@ class Settings(BaseSettings):
 
     @model_validator(mode='after')
     def local_codex_boundary(self):
+        if self.auth_mode == 'google_invite':
+            required = (self.google_client_id, self.google_client_secret,
+                        self.google_redirect_uri, self.invite_code_pepper)
+            if not all(required) or len(self.invite_code_pepper) < 16:
+                raise ValueError('Google invite mode requires OIDC settings and a strong invite pepper')
+            frontend = urlsplit(self.auth_frontend_origin)
+            redirect = urlsplit(self.google_redirect_uri)
+            if frontend.scheme not in ('http', 'https') or not frontend.netloc or frontend.path not in ('', '/'):
+                raise ValueError('AUTH_FRONTEND_ORIGIN must be an origin without a path')
+            if redirect.scheme not in ('http', 'https') or not redirect.netloc:
+                raise ValueError('GOOGLE_REDIRECT_URI must be an absolute URL')
         if self.llm_backend != 'codex-cli':
             return self
         db = urlsplit(self.database_url)

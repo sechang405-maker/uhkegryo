@@ -14,6 +14,8 @@ from fastapi.responses import JSONResponse
 from backend.routes.agent import ApiContractError, close_result_tracer, close_widget_client, router as agent_router
 from backend.routes.term_search import router as term_search_router
 from backend.routes.personal_terms import router as personal_terms_router
+from backend.routes.auth import close_auth_http, router as auth_router
+from backend.services.auth_session_repository import AuthSessionUnavailable
 from backend.shared.auth import set_session_cookie
 from backend.services.catalog_repository import CatalogLoadError, load_catalog
 from backend.shared.config import get_settings, resolve_term_cards_dir
@@ -44,6 +46,7 @@ async def lifespan(app: FastAPI):
         remove_resources(resources)
         await resources.aclose()
         await close_widget_client()
+        await close_auth_http()
         await asyncio.to_thread(close_result_tracer)
 
 app = FastAPI(title="2차 프로젝트 API", lifespan=lifespan)
@@ -56,6 +59,22 @@ async def local_codex_guard(request, call_next):
         if not local_request_allowed(request.client.host if request.client else '',
                                      request.headers.get('host', ''), request.headers.get('origin')):
             return JSONResponse(status_code=403, content={'detail': '로컬 접속만 허용됩니다.'})
+    return await call_next(request)
+
+
+@app.middleware('http')
+async def invite_auth_guard(request, call_next):
+    if (settings.auth_mode == 'google_invite' and request.url.path.startswith('/api/')
+            and not request.url.path.startswith('/api/auth/')):
+        token = request.cookies.get('session_id')
+        if not token:
+            return JSONResponse(status_code=401, content={'detail': 'Google 로그인이 필요합니다.'})
+        try:
+            from backend.routes.auth import get_auth_services
+            _, auth_sessions, _, _ = await get_auth_services()
+            request.state.account = await auth_sessions.resolve_app_session(token)
+        except AuthSessionUnavailable:
+            return JSONResponse(status_code=401, content={'detail': '로그인 세션이 만료되었습니다.'})
     return await call_next(request)
 
 app.add_middleware(
@@ -83,6 +102,7 @@ async def handle_api_contract_error(request: FastAPI, exc: ApiContractError) -> 
 app.include_router(agent_router)
 app.include_router(term_search_router)
 app.include_router(personal_terms_router)
+app.include_router(auth_router)
 
 
 @app.exception_handler(Exception)

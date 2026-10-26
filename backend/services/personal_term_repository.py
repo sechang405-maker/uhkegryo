@@ -156,7 +156,7 @@ class PersonalTermRepository:
     ) -> PersonalTermGenerationRecord:
         row = await self._pool.fetchrow(
             """SELECT p.* FROM personal_terms p
-               JOIN anonymous_owners o USING(owner_id)
+               JOIN owner_session_tokens o USING(owner_id)
                WHERE o.session_token_hash=$1 AND p.idempotency_key_hash=$2""",
             hash_session_token(token),
             _digest(idempotency_key),
@@ -170,7 +170,7 @@ class PersonalTermRepository:
             """UPDATE personal_terms p
                SET status='generating', generation_attempts=generation_attempts+1,
                    generation_error_code=NULL, updated_at=now()
-               FROM anonymous_owners o
+               FROM owner_session_tokens o
                WHERE o.owner_id=p.owner_id AND o.session_token_hash=$1
                  AND p.term_id=$2 AND p.status='failed'
                RETURNING p.*""",
@@ -192,7 +192,7 @@ class PersonalTermRepository:
                    cautions_ko=$8::jsonb, aliases_ko=$9::jsonb,
                    query_fragments_en=$10::jsonb, proposal_kind=$11,
                    uncertainty_ko=$12, generation_error_code=NULL, updated_at=now()
-               FROM anonymous_owners o
+               FROM owner_session_tokens o
                WHERE o.owner_id=p.owner_id AND o.session_token_hash=$1
                  AND p.term_id=$2 AND p.status='generating'
                RETURNING p.*""",
@@ -219,7 +219,7 @@ class PersonalTermRepository:
         row = await self._pool.fetchrow(
             """UPDATE personal_terms p
                SET status='failed', generation_error_code=$3, updated_at=now()
-               FROM anonymous_owners o
+               FROM owner_session_tokens o
                WHERE o.owner_id=p.owner_id AND o.session_token_hash=$1
                  AND p.term_id=$2 AND p.status='generating'
                RETURNING p.*""",
@@ -237,7 +237,7 @@ class PersonalTermRepository:
         statuses = "('proposed','active','deleted')" if include_deleted else "('proposed','active')"
         rows = await self._pool.fetch(
             f"""SELECT p.* FROM personal_terms p
-                JOIN anonymous_owners o USING(owner_id)
+                JOIN owner_session_tokens o USING(owner_id)
                 WHERE o.session_token_hash=$1 AND p.status IN {statuses}
                 ORDER BY p.created_at, p.personal_term_id""",
             hash_session_token(token),
@@ -250,7 +250,7 @@ class PersonalTermRepository:
         statuses = "('proposed','active','deleted')" if include_deleted else "('proposed','active')"
         row = await self._pool.fetchrow(
             f"""SELECT p.* FROM personal_terms p
-                JOIN anonymous_owners o USING(owner_id)
+                JOIN owner_session_tokens o USING(owner_id)
                 WHERE o.session_token_hash=$1 AND p.term_id=$2 AND p.status IN {statuses}""",
             hash_session_token(token),
             term_id,
@@ -263,7 +263,7 @@ class PersonalTermRepository:
         """Return only an active card owned by this anonymous profile."""
         row = await self._pool.fetchrow(
             """SELECT p.* FROM personal_terms p
-               JOIN anonymous_owners o USING(owner_id)
+               JOIN owner_session_tokens o USING(owner_id)
                WHERE o.session_token_hash=$1 AND p.term_id=$2 AND p.status='active'""",
             hash_session_token(token),
             term_id,
@@ -292,7 +292,7 @@ class PersonalTermRepository:
             async with connection.transaction():
                 current = await connection.fetchrow(
                     """SELECT p.* FROM personal_terms p
-                       JOIN anonymous_owners o USING(owner_id)
+                       JOIN owner_session_tokens o USING(owner_id)
                        WHERE o.session_token_hash=$1 AND p.term_id=$2
                          AND p.status IN ('proposed','active')
                        FOR UPDATE OF p""",
@@ -369,7 +369,7 @@ class PersonalTermRepository:
             """UPDATE personal_terms p
                SET deleted_from_status=CASE WHEN p.status='deleted' THEN p.deleted_from_status ELSE p.status END,
                    status='deleted', deleted_at=COALESCE(p.deleted_at, now()), updated_at=now()
-               FROM anonymous_owners o
+               FROM owner_session_tokens o
                WHERE o.owner_id=p.owner_id AND o.session_token_hash=$1 AND p.term_id=$2
                  AND p.status IN ('proposed','active','deleted')
                RETURNING p.*""",
@@ -379,7 +379,7 @@ class PersonalTermRepository:
         if row is None:
             owned_status = await self._pool.fetchval(
                 """SELECT p.status FROM personal_terms p
-                   JOIN anonymous_owners o USING(owner_id)
+                   JOIN owner_session_tokens o USING(owner_id)
                    WHERE o.session_token_hash=$1 AND p.term_id=$2""",
                 hash_session_token(token), term_id,
             )
@@ -393,7 +393,7 @@ class PersonalTermRepository:
             """UPDATE personal_terms p
                SET status=COALESCE(p.deleted_from_status, 'proposed'), deleted_from_status=NULL,
                    deleted_at=NULL, updated_at=now()
-               FROM anonymous_owners o
+               FROM owner_session_tokens o
                WHERE o.owner_id=p.owner_id AND o.session_token_hash=$1
                  AND p.term_id=$2 AND p.status='deleted'
                RETURNING p.*""",
@@ -409,11 +409,15 @@ class PersonalTermRepository:
 
 
 async def _owner_id(connection, token: str, *, lock: bool = False):
-    suffix = " FOR UPDATE" if lock else ""
-    return await connection.fetchval(
-        "SELECT owner_id FROM anonymous_owners WHERE session_token_hash=$1" + suffix,
+    owner_id = await connection.fetchval(
+        "SELECT owner_id FROM owner_session_tokens WHERE session_token_hash=$1",
         hash_session_token(token),
     )
+    if owner_id is not None and lock:
+        await connection.fetchval(
+            "SELECT owner_id FROM anonymous_owners WHERE owner_id=$1 FOR UPDATE", owner_id,
+        )
+    return owner_id
 
 
 def _digest(value: str) -> str:

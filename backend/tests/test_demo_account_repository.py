@@ -6,12 +6,8 @@ import uuid
 import asyncpg
 import pytest
 
-from backend.services.demo_account_repository import (
-    AccountConflict,
-    AdminPermissionDenied,
-    DemoAccountRepository,
-    InviteUnavailable,
-)
+from backend.services.demo_account_repository import AdminPermissionDenied, DemoAccountRepository
+from backend.services.invite_code_repository import InviteCodeRepository
 from backend.services.session_repository import SessionRepository
 from backend.tests.test_conversation_sessions import database_case
 
@@ -28,36 +24,24 @@ async def _seed_account(pool, *, role="user", status="active", limit=0, email=No
     return str(account_id)
 
 
-def test_invited_account_starts_at_zero_and_preserves_anonymous_owner_data():
+def test_code_invited_account_starts_at_zero_and_preserves_anonymous_owner_data():
     async def case(pool):
         accounts = DemoAccountRepository(pool)
         sessions = SessionRepository(pool)
         legacy_session = await sessions.create_session("legacy-cookie")
         admin_id = await _seed_account(pool, role="admin", email="admin@example.com")
-
-        invitation = await accounts.create_invite(admin_id, "  Person@Example.COM  ")
-        assert invitation.email_normalized == "person@example.com"
-        repeated = await accounts.create_invite(admin_id, "person@example.com")
-        assert repeated.invite_id == invitation.invite_id
-
-        concurrent = await asyncio.gather(*[
-            accounts.create_invite(admin_id, "concurrent@example.com") for _ in range(2)
-        ])
-        assert len({item.invite_id for item in concurrent}) == 1
-        assert await pool.fetchval(
-            "SELECT count(*) FROM admin_audit_events WHERE action='invite_created'"
-        ) == 2
-
-        account = await accounts.accept_invite(
-            google_subject="google-person", verified_email="PERSON@example.com",
-            display_name="Person",
+        invites = InviteCodeRepository(pool, pepper="test-pepper")
+        invitation = await invites.issue(admin_id, beneficiary_label="Person")
+        account = await invites.redeem(
+            invitation.raw_code, google_subject="google-person",
+            verified_email="PERSON@example.com", display_name="Person",
         )
         assert account.email_normalized == "person@example.com"
         assert account.ai_request_limit == 0
         assert account.status == "active" and account.role == "user"
-        assert (await accounts.accept_invite(
-            google_subject="google-person", verified_email="person@example.com",
-            display_name="Person",
+        assert (await invites.redeem(
+            invitation.raw_code, google_subject="google-person",
+            verified_email="person@example.com", display_name="Person",
         )).account_id == account.account_id
 
         owner = await pool.fetchrow(
@@ -81,19 +65,10 @@ def test_invited_account_starts_at_zero_and_preserves_anonymous_owner_data():
 
         accepted_invite = await pool.fetchrow(
             "SELECT status,accepted_by_account_id FROM invites WHERE invite_id=$1",
-            uuid.UUID(invitation.invite_id),
+            uuid.UUID(invitation.record.invite_id),
         )
-        assert accepted_invite["status"] == "accepted"
+        assert accepted_invite["status"] == "redeemed"
         assert str(accepted_invite["accepted_by_account_id"]) == account.account_id
-
-        with pytest.raises(InviteUnavailable):
-            await accounts.accept_invite(
-                google_subject="google-stranger", verified_email="stranger@example.com",
-            )
-        with pytest.raises(AccountConflict):
-            await accounts.accept_invite(
-                google_subject="different-subject", verified_email="person@example.com",
-            )
 
     asyncio.run(database_case(case))
 
@@ -106,7 +81,9 @@ def test_only_active_admin_can_invite_disable_and_adjust_limit_with_audit():
         target_id = await _seed_account(pool, email="target@example.com")
 
         with pytest.raises(AdminPermissionDenied):
-            await accounts.create_invite(user_id, "blocked@example.com")
+            await InviteCodeRepository(pool, pepper="test-pepper").issue(
+                user_id, beneficiary_label="blocked",
+            )
         with pytest.raises(AdminPermissionDenied):
             await accounts.set_ai_request_limit(user_id, target_id, 5, reason="not allowed")
 

@@ -31,6 +31,7 @@ import SessionUsageNotice from '../components/SessionUsageNotice.mjs';
 import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../components/LoadingIndicator.mjs";
 import { createMobileResultOrigin, resolveMobileResult } from "../lib/mobile-result-flow.mjs";
 import PersonalTermCreator from "../components/PersonalTermCreator";
+import AuthAccessControl from "../components/AuthAccessControl";
 import { createPersonalTermClient, reconcilePersonalTermState } from "../lib/personal-terms.mjs";
 import { personalGraphTerms } from "../lib/term-graph-personal-layout.mjs";
 import { createConditionRemovalController, readCurrentConditions, removeCurrentCondition } from "../lib/current-conditions.mjs";
@@ -1179,6 +1180,7 @@ export default function HomePage() {
 
   return (
     <main className="workspace" data-mobile-panel={mobilePanel}>
+      <AuthAccessControl />
       <nav className="mobile-workspace-nav" aria-label="작업 화면">
         <HistoryLogo open={menuOpen} onClick={toggleMenu} />
         <button type="button" aria-pressed={mobilePanel === "reference"} aria-controls="reference-panel"

@@ -30,13 +30,19 @@ class SessionRepository:
     async def ensure_session(connection, token: str, *, new=False) -> str:
         if not token:
             raise ValueError("token must not be empty")
+        token_hash = hash_session_token(token)
         owner = await connection.fetchrow(
-            """INSERT INTO anonymous_owners(owner_id, session_token_hash)
-               VALUES ($1::uuid, $2) ON CONFLICT (session_token_hash) DO UPDATE
-               SET session_token_hash=EXCLUDED.session_token_hash
-               RETURNING owner_id, default_session_id, retained""",
-            str(uuid.uuid4()), hash_session_token(token),
+            """SELECT owner_id,default_session_id,retained FROM owner_session_tokens
+               WHERE session_token_hash=$1""", token_hash,
         )
+        if owner is None:
+            owner = await connection.fetchrow(
+                """INSERT INTO anonymous_owners(owner_id, session_token_hash)
+                   VALUES ($1::uuid, $2) ON CONFLICT (session_token_hash) DO UPDATE
+                   SET session_token_hash=EXCLUDED.session_token_hash
+                   RETURNING owner_id, default_session_id, retained""",
+                str(uuid.uuid4()), token_hash,
+            )
         default = owner["default_session_id"]
         if not new and default is not None:
             existing = await connection.fetchval(
@@ -60,7 +66,7 @@ class SessionRepository:
         if not token:
             raise ValueError("token must not be empty")
         value = await self._pool.fetchval(
-            f"""SELECT s.session_id FROM sessions s JOIN anonymous_owners o
+            f"""SELECT s.session_id FROM sessions s JOIN owner_session_tokens o
                 ON o.default_session_id=s.session_id AND o.owner_id=s.owner_id
                 WHERE o.session_token_hash=$1 AND {LIVE}""", hash_session_token(token),
         )
@@ -68,7 +74,7 @@ class SessionRepository:
 
     async def has_owner(self, token: str) -> bool:
         return bool(token) and bool(await self._pool.fetchval(
-            "SELECT 1 FROM anonymous_owners WHERE session_token_hash=$1", hash_session_token(token),
+            "SELECT 1 FROM owner_session_tokens WHERE session_token_hash=$1", hash_session_token(token),
         ))
 
     async def list_sessions(self, token: str, limit=20, offset=0) -> list[dict]:
@@ -81,7 +87,7 @@ class SessionRepository:
                      THEN jsonb_array_length(j.final_payload_json #> '{{reference_plan,terms}}') > 0
                      ELSE FALSE END
                  ORDER BY j.created_at DESC, j.job_id DESC LIMIT 1) AS title_terms
-                FROM sessions s JOIN anonymous_owners o USING(owner_id)
+                FROM sessions s JOIN owner_session_tokens o USING(owner_id)
                 WHERE o.session_token_hash=$1 AND {LIVE}
                 ORDER BY s.last_activity_at DESC, s.session_id LIMIT $2 OFFSET $3""",
             hash_session_token(token), limit, offset,
@@ -92,12 +98,12 @@ class SessionRepository:
         from backend.services.job_repository import JobNotFound
         if touch:
             query = f"""UPDATE sessions s SET last_activity_at=now()
-                        FROM anonymous_owners o WHERE o.owner_id=s.owner_id
+                        FROM owner_session_tokens o WHERE o.owner_id=s.owner_id
                         AND o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}
                         RETURNING s.*, {EXPIRY} AS expires_at, {USAGE_COUNT_SQL}"""
         else:
             query = f"""SELECT s.*, {EXPIRY} AS expires_at, {USAGE_COUNT_SQL}
-                        FROM sessions s JOIN anonymous_owners o USING(owner_id)
+                        FROM sessions s JOIN owner_session_tokens o USING(owner_id)
                         WHERE o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}"""
         row = await self._pool.fetchrow(query, hash_session_token(token), session_id)
         if row is None:
@@ -108,7 +114,7 @@ class SessionRepository:
         """Read the owner-scoped, authoritative conversation condition ledger."""
         from backend.services.job_repository import JobNotFound
         value = await self._pool.fetchval(
-            f"""SELECT s.memory_json FROM sessions s JOIN anonymous_owners o USING(owner_id)
+            f"""SELECT s.memory_json FROM sessions s JOIN owner_session_tokens o USING(owner_id)
                 WHERE o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}""",
             hash_session_token(token), session_id,
         )
@@ -128,7 +134,7 @@ class SessionRepository:
             async with connection.transaction():
                 row = await connection.fetchrow(
                     f"""SELECT s.session_id,s.memory_json FROM sessions s
-                        JOIN anonymous_owners o USING(owner_id)
+                        JOIN owner_session_tokens o USING(owner_id)
                         WHERE o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}
                         FOR UPDATE OF s""",
                     hash_session_token(token), session_id,
@@ -180,7 +186,7 @@ class SessionRepository:
         from backend.services.job_repository import JobNotFound
         value = await self._pool.fetchval(
             f"""SELECT s.session_id FROM jobs j JOIN sessions s USING(session_id)
-                JOIN anonymous_owners o USING(owner_id)
+                JOIN owner_session_tokens o USING(owner_id)
                 WHERE o.session_token_hash=$1 AND j.job_id=$2::uuid AND {LIVE}""",
             hash_session_token(token), job_id,
         )
@@ -215,10 +221,13 @@ class SessionRepository:
         async with self._pool.acquire() as connection:
             async with connection.transaction():
                 # Match ensure_session's owner -> session lock order.
-                await connection.fetchval('''SELECT owner_id FROM anonymous_owners
-                    WHERE session_token_hash=$1 FOR UPDATE''', hash_session_token(token))
+                owner_id = await connection.fetchval('''SELECT owner_id FROM owner_session_tokens
+                    WHERE session_token_hash=$1''', hash_session_token(token))
+                if owner_id is not None:
+                    await connection.fetchval('''SELECT owner_id FROM anonymous_owners
+                        WHERE owner_id=$1 FOR UPDATE''', owner_id)
                 row = await connection.fetchval('''SELECT s.session_id FROM sessions s
-                    JOIN anonymous_owners o USING(owner_id)
+                    JOIN owner_session_tokens o USING(owner_id)
                     WHERE s.session_id=$1::uuid AND o.session_token_hash=$2 FOR UPDATE OF s''',
                     session_id, hash_session_token(token))
                 if row is None:

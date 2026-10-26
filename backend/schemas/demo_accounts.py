@@ -27,13 +27,17 @@ class InviteRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     invite_id: str
-    email_normalized: str
-    status: Literal["pending", "accepted", "revoked"]
+    email_normalized: str | None = None
+    beneficiary_label: str | None = None
+    code_hint: str | None = None
+    initial_ai_request_limit: int = 0
+    status: Literal["pending", "redeemed", "revoked", "expired"]
     created_by_account_id: str
     accepted_by_account_id: str | None = None
     created_at: datetime
     accepted_at: datetime | None = None
     revoked_at: datetime | None = None
+    expires_at: datetime | None = None
 
 
 class QuotaOperation(BaseModel):

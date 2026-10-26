@@ -47,6 +47,8 @@ class FakeConnection:
 
     async def fetchrow(self, query, *args):
         self.calls.append((query, args))
+        if "FROM owner_session_tokens" in query:
+            return None
         if "INSERT INTO anonymous_owners" in query:
             return {"owner_id": args[0], "default_session_id": None}
         if "SET lease_expires_at = now()" in query:
@@ -148,7 +150,9 @@ def test_new_session_and_job_share_transaction():
         session_token=token, request_text="draw", idempotency_key=JOB_ID
     ))
 
-    session_query, session_args = connection.calls[0]
+    session_query, session_args = next(
+        (query, args) for query, args in connection.calls if "INSERT INTO anonymous_owners" in query
+    )
     assert "INSERT INTO anonymous_owners" in session_query
     assert session_args[1] == hash_session_token(token)
     assert "opaque-session-token" not in session_args

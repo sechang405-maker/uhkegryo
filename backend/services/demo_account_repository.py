@@ -13,14 +13,6 @@ class AdminPermissionDenied(Exception):
     pass
 
 
-class InviteUnavailable(Exception):
-    pass
-
-
-class AccountConflict(Exception):
-    pass
-
-
 class AccountNotFound(Exception):
     pass
 
@@ -29,77 +21,32 @@ class DemoAccountRepository:
     def __init__(self, pool: Any) -> None:
         self._pool = pool
 
-    async def create_invite(self, actor_account_id: str, email: str) -> InviteRecord:
-        normalized = _normalize_email(email)
-        async with self._pool.acquire() as connection:
-            async with connection.transaction():
-                actor = await _active_admin(connection, actor_account_id)
-                row = await connection.fetchrow(
-                    """INSERT INTO invites(invite_id,email_normalized,created_by_account_id)
-                       VALUES($1,$2,$3) ON CONFLICT(email_normalized) DO NOTHING
-                       RETURNING *""",
-                    uuid.uuid4(), normalized, actor["account_id"],
-                )
-                if row is None:
-                    existing = await connection.fetchrow(
-                        "SELECT * FROM invites WHERE email_normalized=$1 FOR UPDATE", normalized,
-                    )
-                    if existing is not None and existing["status"] == "pending":
-                        return _invite(existing)
-                    raise InviteUnavailable
-                await _audit(connection, actor["account_id"], None, "invite_created", {
-                    "email_normalized": normalized,
-                })
-                return _invite(row)
-
-    async def accept_invite(
-        self, *, google_subject: str, verified_email: str, display_name: str | None = None,
-    ) -> DemoAccountRecord:
-        subject = google_subject.strip()
-        if not subject:
-            raise ValueError("google_subject is required")
-        normalized = _normalize_email(verified_email)
-        async with self._pool.acquire() as connection:
-            async with connection.transaction():
-                by_subject = await connection.fetchrow(
-                    "SELECT * FROM accounts WHERE google_subject=$1 FOR UPDATE", subject,
-                )
-                by_email = await connection.fetchrow(
-                    "SELECT * FROM accounts WHERE email_normalized=$1 FOR UPDATE", normalized,
-                )
-                if by_subject is not None or by_email is not None:
-                    if (by_subject is None or by_email is None
-                            or by_subject["account_id"] != by_email["account_id"]):
-                        raise AccountConflict
-                    return _account(by_subject)
-                invitation = await connection.fetchrow(
-                    """SELECT * FROM invites WHERE email_normalized=$1 AND status='pending'
-                       FOR UPDATE""", normalized,
-                )
-                if invitation is None:
-                    raise InviteUnavailable
-                account_id = uuid.uuid4()
-                row = await connection.fetchrow(
-                    """INSERT INTO accounts(
-                           account_id,google_subject,email_normalized,display_name,last_login_at)
-                       VALUES($1,$2,$3,$4,now()) RETURNING *""",
-                    account_id, subject, normalized, display_name,
-                )
-                await connection.execute(
-                    """INSERT INTO anonymous_owners(owner_id,account_id)
-                       VALUES($1,$2)""", uuid.uuid4(), account_id,
-                )
-                await connection.execute(
-                    """UPDATE invites SET status='accepted',accepted_by_account_id=$2,accepted_at=now()
-                       WHERE invite_id=$1""", invitation["invite_id"], account_id,
-                )
-                return _account(row)
-
     async def get_account(self, account_id: str) -> DemoAccountRecord:
         row = await self._pool.fetchrow("SELECT * FROM accounts WHERE account_id=$1", uuid.UUID(account_id))
         if row is None:
             raise AccountNotFound
         return _account(row)
+
+    async def get_by_google_subject(self, google_subject: str) -> DemoAccountRecord | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM accounts WHERE google_subject=$1", google_subject,
+        )
+        return _account(row) if row is not None else None
+
+    async def record_google_login(
+        self, google_subject: str, *, verified_email: str, display_name: str | None,
+    ) -> DemoAccountRecord | None:
+        row = await self._pool.fetchrow(
+            """UPDATE accounts
+               SET email_normalized=$2,display_name=$3,last_login_at=now(),updated_at=now()
+               WHERE google_subject=$1 AND status='active' RETURNING *""",
+            google_subject, verified_email.casefold(), display_name,
+        )
+        if row is None:
+            row = await self._pool.fetchrow(
+                "SELECT * FROM accounts WHERE google_subject=$1", google_subject,
+            )
+        return _account(row) if row is not None else None
 
     async def set_ai_request_limit(
         self, actor_account_id: str, target_account_id: str, new_limit: int, *, reason: str,
@@ -164,19 +111,13 @@ async def _audit(connection: Any, actor_id, target_id, action: str, details: dic
     )
 
 
-def _normalize_email(email: str) -> str:
-    value = email.strip().casefold()
-    if not value or "@" not in value or value.startswith("@") or value.endswith("@"):
-        raise ValueError("a valid email is required")
-    return value
-
-
 def _account(row: Any) -> DemoAccountRecord:
     return DemoAccountRecord(**{**dict(row), "account_id": str(row["account_id"])})
 
 
 def _invite(row: Any) -> InviteRecord:
     data = dict(row)
+    data.pop("code_hash", None)
     data["invite_id"] = str(data["invite_id"])
     data["created_by_account_id"] = str(data["created_by_account_id"])
     if data["accepted_by_account_id"] is not None:
