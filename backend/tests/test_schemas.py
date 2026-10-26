@@ -68,7 +68,7 @@ from backend.schemas.models import MAX_PINS_PER_ROLE, PROGRESS_POLL_AFTER_MS
                 "INTERNAL_CODE_ERROR",
             ],
         ),
-        (InterpretationState, ["select_terms", "needs_clarification", "drawing_chat"]),
+        (InterpretationState, ["select_terms", "needs_clarification", "drawing_chat", "out_of_scope"]),
         (
             ClarificationType,
             ["abstract_intent", "insufficient_visual_evidence", "conflicting_constraints", "catalog_limitation"],

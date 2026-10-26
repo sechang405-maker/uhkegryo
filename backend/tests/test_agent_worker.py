@@ -362,6 +362,35 @@ def test_worker_completes_clear_non_illustration_request_without_retry_or_adapte
     assert recovery.failures == []
 
 
+@pytest.mark.parametrize("request_text", [
+    "파이썬으로 정렬 함수를 짜줘",
+    "내일 서울 날씨를 알려줘",
+])
+def test_worker_accepts_model_out_of_scope_as_normal_completed_result(
+    monkeypatch, snapshot_factory, request_text
+):
+    jobs = FakeJobs({**JOB, "request_text": request_text, "attempt": 1})
+    recovery = FakeRecovery()
+    adapter = FakeAdapter(InterpretationOutput(interpretation_state="out_of_scope"))
+
+    worker = _worker(monkeypatch, jobs, recovery, snapshot_factory([]), adapter)
+
+    async def process_claimed():
+        with JobTracer().attempt(jobs.job) as trace:
+            await worker._process_claimed(jobs.job, None, trace)
+
+    _run(process_claimed())
+
+    result = jobs.writes[-1][1]
+    assert result.agent_status is AgentStatus.OUT_OF_SCOPE
+    assert result.reason_codes == [ReasonCode.OUT_OF_SCOPE_REQUEST]
+    assert result.reference_plan is None
+    assert result.clarifying_question is None
+    assert len(adapter.calls) == 1
+    assert JobStatus.SEARCHING not in [status for status, _, _ in jobs.writes]
+    assert recovery.failures == []
+
+
 def test_worker_records_structured_validation_failure(monkeypatch, snapshot_factory):
     error = LLMInvalidStructuredOutput("private model output")
     jobs, recovery = FakeJobs(), FakeRecovery()

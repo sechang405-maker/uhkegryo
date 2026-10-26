@@ -36,6 +36,10 @@ SEARCH_REASON_CODES = {
     ReasonCode.PIN_RESULTS_EMPTY,
     ReasonCode.PIN_SEARCH_UNAVAILABLE,
 }
+OUT_OF_SCOPE_MESSAGE = (
+    "어케그려는 캐릭터 그림을 위한 용어·포즈·구도·레퍼런스 탐색을 도와드려요. "
+    "그리고 싶은 캐릭터나 장면을 설명해 주세요."
+)
 
 
 @dataclass
@@ -57,6 +61,12 @@ def assemble(
     *, answer_text: str = "",
 ) -> AgentResult:
     """resolution과 카탈로그·검색 결과를 조합해 최종 `AgentResult`를 만든다."""
+    if resolution.status == 'out_of_scope':
+        return AgentResult(
+            agent_status=AgentStatus.OUT_OF_SCOPE,
+            reason_codes=[ReasonCode.OUT_OF_SCOPE_REQUEST],
+            user_message=OUT_OF_SCOPE_MESSAGE,
+        )
     if resolution.status == 'chat':
         return AgentResult(agent_status=AgentStatus.DRAWING_CHAT, answer_text=answer_text)
     if resolution.status == 'guidance':

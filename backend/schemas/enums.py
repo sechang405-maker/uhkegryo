@@ -121,6 +121,7 @@ class InterpretationState(StrEnum):
     NEEDS_CLARIFICATION = "needs_clarification"
 
     DRAWING_CHAT = "drawing_chat"
+    OUT_OF_SCOPE = "out_of_scope"
 
 
 class ClarificationType(StrEnum):

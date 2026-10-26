@@ -22,6 +22,52 @@ def chat(text='둥근 강아지의 실루엣부터 가볍게 그려 보세요.')
     return InterpretationOutput(interpretation_state='drawing_chat', answer_text=text)
 
 
+def out_of_scope():
+    return InterpretationOutput(interpretation_state='out_of_scope')
+
+
+def test_out_of_scope_has_a_distinct_interpreter_to_api_contract(snapshot_factory):
+    output = out_of_scope()
+    resolution = resolve(output, snapshot_factory([]), request_text='파이썬 정렬 함수를 짜줘')
+    assert resolution.status == 'out_of_scope' and not resolution.terms
+    result = assemble(resolution, snapshot_factory([]), answer_text=output.answer_text)
+    assert result.agent_status == 'out_of_scope'
+    assert result.reason_codes == ['OUT_OF_SCOPE_REQUEST']
+    assert result.reference_plan is None and result.clarifying_question is None
+    assert '캐릭터' in result.user_message and '레퍼런스' in result.user_message
+
+
+@pytest.mark.parametrize('extra', [
+    {'answer_text':'파이썬 코드는 이렇게 작성하세요.'},
+    {'clarifying_question':'무엇을 도와드릴까요?'},
+    {'clarification_type':'abstract_intent'},
+    {'unresolved_constraints':['서비스 범위 밖']},
+    {'context_updates':[{'role':'pose','term_id':'pose_sitting','evidence':'앉은'}]},
+    {'selections':[{'role':'pose','term_id':'pose_sitting','evidence':['앉은'],'confidence':1}]},
+])
+def test_out_of_scope_interpretation_cannot_leak_content_or_create_conditions(extra):
+    with pytest.raises(ValidationError):
+        InterpretationOutput.model_validate({
+            'interpretation_state':'out_of_scope',
+            'answer_text':'',
+            **extra,
+        })
+
+
+def test_adapter_prompt_accepts_structured_out_of_scope_without_retry():
+    transport = _FakeCompletions([_FakeResponse(json.dumps(
+        out_of_scope().model_dump(mode='json'), ensure_ascii=False
+    ))])
+    adapter = _adapter(transport)
+    output = asyncio.run(adapter.interpret(
+        '내일 서울 날씨를 알려줘',
+        job_id='outside', session_id='synthetic', attempt=1, max_attempts=3,
+    ))
+    assert output.interpretation_state == 'out_of_scope'
+    assert len(transport.calls) == 1
+    assert 'interpretation_state=out_of_scope' in transport.calls[0]['messages'][0]['content']
+
+
 def test_chat_has_its_own_contract_and_no_catalog_requirements(snapshot_factory):
     output = chat('동그라미를 조합해 앉은 강아지의 러프부터 시작할 수 있어요.')
     resolution = resolve(output, snapshot_factory([]), request_text='뭘 그리지?')

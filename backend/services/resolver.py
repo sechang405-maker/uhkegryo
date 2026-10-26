@@ -10,7 +10,7 @@ LLM `InterpretationOutput`은 후보일 뿐이며, resolver가 활성 JSON 카�
 - 직접 검색 금지(direct_search_disabled) 카드는 URL·provider 호출 금지
 - 카테고리와 무관하게 고유 카드 후보를 모두 유지 (전체 최대 10개)
 
-`interpretation_state`는 스키마가 `select_terms`/`needs_clarification`으로 강제하며,
+`interpretation_state`는 스키마가 상태별 출력 형태를 강제하며,
 needs_clarification일 때는 `clarification_type`을 서버 사유 코드로 매핑한다.
 모델의 문맥 질문은 공개 문구 검사를 통과하면 유지하고, 부적합한 문구만 고정 질문으로 복귀한다.
 명확한 카탈로그 한계는 추가 질문 대신 안내 결과로 조립한다.
@@ -112,6 +112,8 @@ def resolve(
     verified_source_texts: Mapping[str, Sequence[str]] | None = None,
 ) -> ResolutionResult:
     """LLM 해석 후보를 카탈로그와 대조해 결정론 검증하고 조정 계층에 넘길 결과를 만든다."""
+    if interpretation.interpretation_state is InterpretationState.OUT_OF_SCOPE:
+        return ResolutionResult(status='out_of_scope')
     if interpretation.interpretation_state is InterpretationState.DRAWING_CHAT:
         return ResolutionResult(status='chat')
     if interpretation.interpretation_state is InterpretationState.NEEDS_CLARIFICATION:

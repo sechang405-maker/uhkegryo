@@ -474,6 +474,7 @@ class InterpretationOutput(BaseModel):
       clarifying_question=null, clarification_type=null
     - needs_clarification: selections=[], unresolved_constraints 1개 이상,
       비어 있지 않은 clarifying_question 필수, clarification_type 필수
+    - out_of_scope: 모든 콘텐츠·선택·질문 필드가 비어 있고 서버가 공개 안내를 조립
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -497,6 +498,15 @@ class InterpretationOutput(BaseModel):
 
     @model_validator(mode="after")
     def _validate_state_rules(self) -> "InterpretationOutput":
+        if self.interpretation_state is InterpretationState.OUT_OF_SCOPE:
+            if (self.answer_text or self.selections or self.context_updates
+                    or self.unresolved_constraints or self.clarifying_question is not None
+                    or self.clarification_type is not None or self.recommendation_candidates
+                    or self.topic_reset_evidence is not None):
+                raise ValueError(
+                    "out_of_scope forbids model content, reference conditions and conversation updates"
+                )
+            return self
         if self.interpretation_state is InterpretationState.DRAWING_CHAT:
             if (not self.answer_text.strip() or self.selections or self.context_updates
                     or self.unresolved_constraints or self.clarifying_question is not None

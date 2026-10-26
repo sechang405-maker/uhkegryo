@@ -36,7 +36,7 @@ from backend.services.personal_catalog import with_personal_terms
 from backend.services.personal_term_repository import PersonalTermRepository
 from backend.services.searxng_pinterest_search import SearXNGPinterestSearchProvider
 from backend.services.resolver import ResolutionResult
-from backend.services.response_assembler import RoleSearchOutcome, assemble
+from backend.services.response_assembler import OUT_OF_SCOPE_MESSAGE, RoleSearchOutcome, assemble
 from backend.services.failure_mapping import DATABASE_ERRORS, OperationalFailure, classify_failure
 
 logger = logging.getLogger(__name__)
@@ -132,10 +132,7 @@ class AgentJobWorker:
                     reason_codes=[ReasonCode.OUT_OF_SCOPE_REQUEST],
                     reference_plan=None,
                     clarifying_question=None,
-                    user_message=(
-                        "어케그려는 캐릭터 그림을 위한 용어·포즈·구도·레퍼런스 탐색을 도와드려요. "
-                        "그리고 싶은 캐릭터나 장면을 설명해 주세요."
-                    ),
+                    user_message=OUT_OF_SCOPE_MESSAGE,
                 )
                 if await self._update(job_id, attempt, JobStatus.COMPLETED, result=result):
                     trace.completed(result)
@@ -227,7 +224,7 @@ class AgentJobWorker:
                             resolution = reference_update.select_searches(resolution, previous)
                 if recommendation_decision and recommendation_decision.result:
                     result = recommendation_decision.result
-                elif resolution.status == 'chat':
+                elif resolution.status in ('chat', 'out_of_scope'):
                     result = assemble(resolution, snapshot, answer_text=interpretation.answer_text)
                 else:
                     with trace.stage("searching"):
