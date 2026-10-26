@@ -47,6 +47,7 @@ test('only a successful server-created conversation resets quota and clears the 
     setUsage: value => { state.usage = value; }, setSessions: noop, setRequestText: value => { state.draft = value; }, setError: value => { state.error = value; },
     deleteInFlightRef: { current: false }, submitInFlightRef: { current: false }, isSubmitting: false, uiDemoEnabled: false,
     visitScreen: noop, crypto: { randomUUID: () => 'new-navigation' }, screenGenerationRef: { current: 0 }, sessionLoadRef: { current: 0 },
+    liveReferenceHydratedRef: { current: false },
     cancelHistory: noop, gallerySelectionRef: { current: { reset: noop } }, setSessionId: noop, setTurns: noop, setJob: noop,
     setTermSearch: noop, setTermGuide: noop, setBoardView: noop, resetSketchSearches: noop, termSearchControllerRef: { current: null },
     previewDialogRef: { current: null }, setPreviewPin: noop, pollerRef: { current: null }, setConversationReady: noop,

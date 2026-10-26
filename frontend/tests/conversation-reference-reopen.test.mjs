@@ -57,5 +57,5 @@ test("conversation answers wire an explicit saved-reference action without submi
   assert.match(openTurn, /setMobilePanel\("reference"\)/);
   assert.match(openTurn, /gallerySelectionRef\.current\.open\(turn\)/);
   assert.doesNotMatch(openTurn, /submit\(|\/api\/agent/);
-  assert.match(page, /createMindMapSlots\(renderedResultTerms\(job, turns, referenceJob\)\)/);
+  assert.match(page, /createMindMapSlots\(filterLiveTerms\([\s\S]*renderedResultTerms\(job, turns, referenceJob\)/);
 });

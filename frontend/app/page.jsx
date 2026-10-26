@@ -34,6 +34,7 @@ import PersonalTermCreator from "../components/PersonalTermCreator";
 import { createPersonalTermClient, reconcilePersonalTermState } from "../lib/personal-terms.mjs";
 import { personalGraphTerms } from "../lib/term-graph-personal-layout.mjs";
 import { createConditionRemovalController, readCurrentConditions, removeCurrentCondition } from "../lib/current-conditions.mjs";
+import { clearLiveReferenceState, filterLiveTerms, readLiveReferenceState, writeLiveReferenceState } from "../lib/live-reference-state.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
 
@@ -97,6 +98,7 @@ export default function HomePage() {
   const [conditionBusyId, setConditionBusyId] = useState(null);
   const [conditionError, setConditionError] = useState("");
   const conditionControllerRef = useRef(null);
+  const liveReferenceHydratedRef = useRef(false);
   if (!conditionControllerRef.current) {
     conditionControllerRef.current = createConditionRemovalController(setCurrentConditions);
   }
@@ -125,10 +127,10 @@ export default function HomePage() {
   const screenHistoryRef = useRef(null);
   const screenSnapshotRef = useRef(null);
   const screenGenerationRef = useRef(0);
-  const mindMapSlots = useMemo(
-    () => createMindMapSlots(renderedResultTerms(job, turns, referenceJob)),
-    [job, turns, historyTurnId, referenceJob],
-  );
+  const mindMapSlots = useMemo(() => createMindMapSlots(filterLiveTerms(
+    renderedResultTerms(job, turns, referenceJob), currentConditions,
+    { loaded: conditionsLoaded, historical: Boolean(historyTurnId) },
+  )), [job, turns, historyTurnId, referenceJob, currentConditions, conditionsLoaded]);
   const reopenableTurnIds = useMemo(() => reopenableReferenceTurnIds(turns), [turns]);
   const hasTerms = homeSlots.some((slot) => slot.terms.length > 0);
   const activeTermId = homeSlots.some((slot) => slot.terms.some((term) => term.term_id === selectedTermId))
@@ -203,7 +205,13 @@ export default function HomePage() {
     try {
       const items = await removeCurrentCondition(id, termId);
       conditionControllerRef.current.resolve(ticket, items);
-      if (id === sessionIdRef.current) setConditionsLoaded(true);
+      if (id === sessionIdRef.current) {
+        setConditionsLoaded(true);
+        setSketchSearches(current => Object.fromEntries(Object.entries(current)
+          .filter(([id]) => id !== termId)));
+        setTermSearch(null);
+        setBoardView('results');
+      }
     } catch (removeError) {
       if (id === sessionIdRef.current) {
         setConditionError(removeError.message || "검색 조건을 해제하지 못했습니다.");
@@ -212,6 +220,49 @@ export default function HomePage() {
       if (id === sessionIdRef.current) setConditionBusyId(null);
     }
   }
+
+  function browserSessionStorage() {
+    try { return window.sessionStorage; } catch { return null; }
+  }
+
+  function restoreLiveReference(restored) {
+    const liveJob = restored.referenceJob || restored.turns.at(-1)?.job || null;
+    const saved = readLiveReferenceState(
+      browserSessionStorage(), restored.sessionId, liveJob?.job_id || null,
+    );
+    if (saved) {
+      setTermSearch(saved.termSearch);
+      setSketchSearches(saved.sketchSearches);
+      setBoardView(saved.boardView);
+      setActiveGalleryTermId(saved.termSearch?.term?.term_id || null);
+    } else {
+      setTermSearch(null);
+      setSketchSearches({});
+      setBoardView('results');
+    }
+    liveReferenceHydratedRef.current = true;
+    return Boolean(saved);
+  }
+
+  useEffect(() => {
+    if (uiDemoEnabled || !conversationReady || !sessionId || historyTurnId
+        || !liveReferenceHydratedRef.current) return;
+    const completedTermSearch = termSearch && termSearch.loading === false && !termSearch.error
+      ? termSearch : null;
+    const visibleTermIds = new Set([
+      ...mindMapSlots.flatMap(slot => slot.terms).map(term => term.term_id),
+      ...(completedTermSearch ? [completedTermSearch.term.term_id] : []),
+    ]);
+    const completedSketches = Object.fromEntries(Object.entries(sketchSearches).filter(
+      ([termId, search]) => visibleTermIds.has(termId) && search?.term && !search.loading && !search.error,
+    ));
+    writeLiveReferenceState(browserSessionStorage(), sessionId, {
+      baseJobId: job?.job_id || null,
+      boardView,
+      termSearch: completedTermSearch,
+      sketchSearches: completedSketches,
+    });
+  }, [conversationReady, sessionId, historyTurnId, job, boardView, termSearch, sketchSearches, mindMapSlots]);
 
   useEffect(() => {
     let cancelled = false;
@@ -247,6 +298,7 @@ export default function HomePage() {
   useEffect(() => {
     if (uiDemoEnabled) return;
     const controller = new AbortController();
+    liveReferenceHydratedRef.current = false;
     cancelHistory();
     restoreController.current = controller;
     const loadId = ++sessionLoadRef.current;
@@ -269,6 +321,7 @@ export default function HomePage() {
       setTurns(restored.turns);
       gallerySelectionRef.current.reset(restored.sessionId);
       gallerySelectionRef.current.live(restored.referenceJob || restored.turns.at(-1)?.job || null, restored.sessionId);
+      restoreLiveReference(restored);
       setConversationReady(true);
     }).catch((error) => { if (!controller.signal.aborted && loadId === sessionLoadRef.current) setRestoreError(error?.message === SERVICE_UNAVAILABLE_ERROR ? SERVICE_UNAVAILABLE_ERROR : RESTORE_ERROR); });
     return () => controller.abort();
@@ -464,6 +517,7 @@ export default function HomePage() {
           }
           setTermSearch(null);
           setTermGuide(null);
+          resetSketchSearches(false);
         }
       }
     }, onError: (id, message) => {
@@ -988,6 +1042,7 @@ export default function HomePage() {
     termSearchControllerRef.current?.abort();
     pollerRef.current?.stop();
     setConversationReady(false);
+    liveReferenceHydratedRef.current = false;
     setRestoreError("");
     setPollError("");
     setSessionId(session.session_id);
@@ -1010,10 +1065,10 @@ export default function HomePage() {
       setReferenceJob(restored.previousReferenceJob);
       setTurns(restored.turns);
       gallerySelectionRef.current.live(restored.referenceJob || restored.turns.at(-1)?.job || null, restored.sessionId);
+      const restoredLiveReference = restoreLiveReference(restored);
       setConversationReady(true);
-      setActiveGalleryTermId(null);
+      if (!restoredLiveReference) setActiveGalleryTermId(null);
       if(navigationId === screenGenerationRef.current) {
-        setBoardView("results");
         setMobilePanel("reference");
       }
     } catch {
@@ -1052,6 +1107,7 @@ export default function HomePage() {
       setSessions((items) => [created, ...items.filter((item) => item.session_id !== created.session_id)]);
       setSessionId(created.session_id);
       sessionIdRef.current = created.session_id;
+      liveReferenceHydratedRef.current = true;
       activeUsageRef.current = null;
       applyUsage(created, created.session_id);
       setRequestText('');
@@ -1097,6 +1153,8 @@ export default function HomePage() {
           ++sessionLoadRef.current;
           pollerRef.current?.stop();
           sessionIdRef.current = null;
+          liveReferenceHydratedRef.current = false;
+          clearLiveReferenceState(browserSessionStorage(), session.session_id);
           setSessionId(null);
           activeUsageRef.current = null;
           setUsage(null);

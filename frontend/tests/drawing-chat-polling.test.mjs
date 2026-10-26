@@ -17,7 +17,7 @@ function setup(originScreenId){
   gallerySelectionRef:{current:{live:job=>{if(resultTerms(job).length)state.gallery=job;}}},
   setBoardView:value=>{state.board=value;},setMobilePanel:value=>{state.panel=value;},
   setMobileResultNotice:value=>{state.notice=typeof value==='function'?value(state.notice):value;},
-  setTermSearch:()=>{},setTermGuide:()=>{},setPollError:()=>{},stopTurnPolling:()=>{}};
+  setTermSearch:()=>{},setTermGuide:()=>{},resetSketchSearches:()=>{},setPollError:()=>{},stopTurnPolling:()=>{}};
  vm.runInNewContext(source.slice(begin,end),context);return {state,context,update,fail};
 }
 const turn=status=>({id:'latest',job:{job_id:'latest',session_id:'session',job_status:'completed',result:{agent_status:status,answer_text:'Contextual response',reference_plan:status==='success'?{terms:[{term_id:'pose'}]}:null}}});
