@@ -148,6 +148,23 @@ class PinterestWidgetClient:
         enriched = await self._enrich_pins([pin for _, _, pin in locations])
         for (term, index, _), pin in zip(locations, enriched):
             term.pins[index] = pin
+        hydration_codes = {
+            ReasonCode.PIN_IMAGES_PARTIAL,
+            ReasonCode.PIN_IMAGES_UNAVAILABLE,
+        }
+        for term in terms:
+            term.reason_codes = [code for code in term.reason_codes if code not in hydration_codes]
+            # Provider failures and genuine empty results already have a more precise reason.
+            if term.reason_codes or not term.pins:
+                continue
+            available = sum(
+                pin.status is PinStatus.AVAILABLE and bool(pin.thumbnail_url)
+                for pin in term.pins
+            )
+            if available == 0:
+                term.reason_codes = [ReasonCode.PIN_IMAGES_UNAVAILABLE]
+            elif available < len(term.pins):
+                term.reason_codes = [ReasonCode.PIN_IMAGES_PARTIAL]
         return result
 
     async def _enrich_pins(self, pins, *, timeout_seconds=None):

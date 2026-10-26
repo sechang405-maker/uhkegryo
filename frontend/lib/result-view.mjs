@@ -61,6 +61,17 @@ export function showThumbnail(pin) {
   return pin.status === "available" && Boolean(pin.thumbnail_url);
 }
 
+export function imageAvailabilityNotice(term, failed = {}, termId = term?.term_id || '') {
+  const pins = term?.pins || [];
+  if (!pins.length) return null;
+  const available = pins.filter((pin) => pin.status === "available" && pin.thumbnail_url
+    && !failed[`${termId}:${pin.pin_id}`]).length;
+  const unavailable = pins.length - available;
+  if (!unavailable) return null;
+  if (!available) return "검색은 완료됐지만 모든 이미지를 불러오지 못했습니다. 다시 찾아 주세요.";
+  return `이미지 ${unavailable}개를 불러오지 못했습니다. 표시 가능한 결과는 유지했어요.`;
+}
+
 export function createGalleryRows(slots) {
   return slots.flatMap((slot) => slot.terms.map((term) => ({
     ...slot, term, pins: (term.pins || []).slice(0, 8),

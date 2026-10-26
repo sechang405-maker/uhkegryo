@@ -13,7 +13,7 @@ import { ACTIVE_TERMS, HOME_TERMS } from "../lib/home-catalog.mjs";
 import { createMindMapSlots, firstSelectableTermId } from "../lib/term-mind-map.mjs";
 import { getRecommendedSearchQuery, createGraphSearchScope } from "../lib/recommended-query.mjs";
 import { searchFixedTerm, searchTermMode, applySketchResult, applyPreviewRecovery } from "../lib/term-search.mjs";
-import { createGalleryRows, renderedResultTerms, reopenableReferenceTurnIds, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
+import { createGalleryRows, imageAvailabilityNotice, renderedResultTerms, reopenableReferenceTurnIds, resultTerms, roleNotice, showThumbnail, pinUnavailableMessage } from "../lib/result-view.mjs";
 import { usableGalleryPins } from "../lib/gallery-pins.mjs";
 import { createRecoveryBudget, claimRecovery, finishRecovery } from "../lib/recovery-budget.mjs";
 import { stopTurnPolling, resumeTurnPolling, upsertTurn, mergeHistoryTurns, isTurnPending } from "../lib/conversation.mjs";
@@ -1178,6 +1178,14 @@ export default function HomePage() {
                 {sketchSearches[term.term_id]?.loading && <LoadingIndicator size="small" label={`${({ drawing: "일반", sketch: "스케치", mannequinization: "도형화" })[sketchSearches[term.term_id]?.pendingSuffix]} 레퍼런스를 찾는 중입니다…`} />}
                 {sketchSearches[term.term_id]?.error && <p className="sketch-search-notice" role="alert">{sketchSearches[term.term_id].error}</p>}
                 <p className="pin-result-count" role="status">이미지 {usableGalleryPins(pins, failedThumbnails, term.term_id).length} / 최대 8개</p>
+                {imageAvailabilityNotice(term, failedThumbnails, term.term_id) &&
+                  <div className="image-availability-notice" role="status">
+                    <p>{imageAvailabilityNotice(term, failedThumbnails, term.term_id)}</p>
+                    <button type="button" disabled={Boolean(sketchSearches[term.term_id]?.loading)}
+                      onClick={() => searchCategory(term, sketchSearches[term.term_id]?.suffix || 'drawing')}>
+                      이미지 다시 검색
+                    </button>
+                  </div>}
                 {recoveryBudgetRef.current.cards[term.term_id]?.auto &&
                   !recoveryBudgetRef.current.cards[term.term_id]?.manual &&
                   !recoveryBudgetRef.current.cards[term.term_id]?.restricted &&

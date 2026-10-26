@@ -96,10 +96,15 @@ class TermResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_reason_codes(self) -> "TermResult":
-        allowed: set[ReasonCode] = {ReasonCode.PIN_RESULTS_EMPTY, ReasonCode.PIN_SEARCH_UNAVAILABLE}
+        allowed: set[ReasonCode] = {
+            ReasonCode.PIN_RESULTS_EMPTY,
+            ReasonCode.PIN_SEARCH_UNAVAILABLE,
+            ReasonCode.PIN_IMAGES_PARTIAL,
+            ReasonCode.PIN_IMAGES_UNAVAILABLE,
+        }
         if not set(self.reason_codes) <= allowed:
             raise ValueError(
-                "TermResult.reason_codes는 빈 배열, PIN_RESULTS_EMPTY, PIN_SEARCH_UNAVAILABLE 중 하나만 허용된다"
+                "TermResult.reason_codes는 빈 배열 또는 정의된 이미지 검색 상태 코드 하나만 허용된다"
             )
         if len(self.reason_codes) > 1:
             raise ValueError("TermResult.reason_codes는 최대 하나의 코드만 가진다")

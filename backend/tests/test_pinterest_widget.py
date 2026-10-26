@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from backend.main import app
 from backend.routes import agent as agent_route
-from backend.schemas.enums import AgentStatus, JobStatus, PinStatus, Role
+from backend.schemas.enums import AgentStatus, JobStatus, PinStatus, ReasonCode, Role
 from backend.schemas.models import AgentResult, JobEnvelope, PinResult, ReferencePlan, TermResult
 from backend.services.job_repository import _dump
 from backend.services.pinterest_widget import PinterestWidgetClient, PinterestWidgetProvider, WIDGET_URL
@@ -320,6 +320,50 @@ def test_failure_timeout_and_invalid_payload_are_not_cached():
         result=await client.enrich_job(_completed_job())
         assert result.result.reference_plan.terms[0].pins[0].status is PinStatus.AVAILABLE
         assert attempts == 4
+    asyncio.run(run())
+
+
+def test_completed_job_reports_partial_and_total_image_hydration_failures():
+    async def run():
+        responses = {
+            "11": _payload("11", {"image": {
+                "url": "https://i.pinimg.com/11.jpg", "width": 100, "height": 100,
+            }}),
+            "12": {"data": []},
+        }
+
+        async def load(url):
+            return responses[url.rsplit("=", 1)[-1]]
+
+        job = _completed_job()
+        job.result.reference_plan.terms[0].pins.append(_pin("12"))
+        client = PinterestWidgetClient(json_loader=load)
+
+        partial = await client.enrich_job(job)
+        term = partial.result.reference_plan.terms[0]
+        assert term.reason_codes == [ReasonCode.PIN_IMAGES_PARTIAL]
+        assert [pin.status for pin in term.pins] == [PinStatus.AVAILABLE, PinStatus.UNAVAILABLE]
+        assert partial.result.agent_status is AgentStatus.SUCCESS
+
+        responses["11"] = {"data": []}
+        client._cache.clear()
+        unavailable = await client.enrich_job(job)
+        term = unavailable.result.reference_plan.terms[0]
+        assert term.reason_codes == [ReasonCode.PIN_IMAGES_UNAVAILABLE]
+        assert all(pin.status is PinStatus.UNAVAILABLE for pin in term.pins)
+        assert unavailable.result.agent_status is AgentStatus.SUCCESS
+
+        responses["11"] = _payload("11", {"image": {
+            "url": "https://i.pinimg.com/11-recovered.jpg", "width": 100, "height": 100,
+        }})
+        responses["12"] = _payload("12", {"image": {
+            "url": "https://i.pinimg.com/12-recovered.jpg", "width": 100, "height": 100,
+        }})
+        recovered = await client.enrich_job(job)
+        term = recovered.result.reference_plan.terms[0]
+        assert term.reason_codes == []
+        assert all(pin.status is PinStatus.AVAILABLE for pin in term.pins)
+
     asyncio.run(run())
 
 

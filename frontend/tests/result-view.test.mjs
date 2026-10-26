@@ -127,3 +127,14 @@ test('legacy role board uses bounded preceding reference context outside page',(
  const job=completed('success',{reference_plan:{terms:[pose]},reference_update:{preserved_roles:['body'],replaced_roles:['pose']}});
  assert.deepEqual(view.renderedResultTerms(job,[],completed('success',{reference_plan:{terms:[body]}})),[body,pose]);
 });
+
+test("image availability notice distinguishes partial, total, empty, and provider failures", () => {
+  const available = { pin_id: "ok", status: "available", thumbnail_url: "https://i.pinimg.com/ok.jpg" };
+  const unavailable = { pin_id: "bad", status: "unavailable", thumbnail_url: null };
+  assert.match(view.imageAvailabilityNotice({ pins: [available, unavailable] }), /1/);
+  assert.match(view.imageAvailabilityNotice({ pins: [unavailable, { ...unavailable, pin_id: "bad-2" }] }), /\ubaa8\ub4e0/);
+  assert.match(view.imageAvailabilityNotice({ pins: [available] }, { "term:ok": true }, "term"), /\ubaa8\ub4e0/);
+  assert.equal(view.imageAvailabilityNotice({ pins: [], reason_codes: ["PIN_RESULTS_EMPTY"] }), null);
+  assert.equal(view.imageAvailabilityNotice({ pins: [], reason_codes: ["PIN_SEARCH_UNAVAILABLE"] }), null);
+  assert.equal(view.imageAvailabilityNotice({ pins: [available] }), null);
+});

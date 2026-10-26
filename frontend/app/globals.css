@@ -203,6 +203,10 @@ a { color: var(--accent); }
 .category-search-help p strong { display: block; margin-bottom: 6px; font-weight: 700; }
 .sketch-search-notice { margin: 0; color: var(--accent); font-size: 13px; font-weight: 400; }
 .pin-unavailable { padding: 16px; color: var(--text-secondary); font-size: 13px; }
+.image-availability-notice { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 8px; padding: 10px 12px; border: 2px solid color-mix(in srgb,var(--category-color) 55%,var(--border)); border-radius: 12px; background: color-mix(in srgb,var(--surface) 88%,var(--category-color)); color: var(--text); font-size: 13px; }
+.image-availability-notice p { margin: 0; }
+.image-availability-notice button { flex: 0 0 auto; padding: 7px 10px; border: 2px solid var(--category-color); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
+.image-availability-notice button:disabled { opacity: .6; cursor: wait; }
 .result-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .result-actions button, .result-actions a { padding: 8px 10px; border: 3px solid var(--accent); border-radius: 12px; background: transparent; color: var(--text); font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
 .result-actions button:disabled { opacity: .6; cursor: wait; }
