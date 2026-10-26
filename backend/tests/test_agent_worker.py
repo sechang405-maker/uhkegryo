@@ -495,8 +495,12 @@ def test_personal_term_creation_request_never_returns_a_catalog_card(monkeypatch
     assert result.reference_plan is None
     assert result.answer_text == ""
     assert "새 용어 만들기" in result.user_message
-    assert "그래프 표시와 검색 연결은 다음 단계" in result.user_message
     assert "AI 초안 확인·수정" in result.user_message
+    assert "명시적 저장" in result.user_message
+    assert "그래프·검색·이후 대화" in result.user_message
+    assert "익명 로컬 프로필" in result.user_message
+    assert "초안만" in result.user_message
+    assert "다음 단계" not in result.user_message
     assert len(adapter.calls) == 1
     assert recovery.failures == []
 

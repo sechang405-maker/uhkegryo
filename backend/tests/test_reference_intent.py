@@ -16,6 +16,21 @@ def test_ordinary_reference_addition_is_not_personal_term_creation():
     assert not reference_intent.requests_personal_term_creation("발레 동작 레퍼런스를 검색해줘")
 
 
+def test_personal_term_creation_guidance_matches_the_available_saved_flow():
+    guidance = reference_intent.PERSONAL_TERM_CREATION_GUIDANCE
+    assert "새 용어 만들기" in guidance
+    assert "AI 초안" in guidance
+    assert "확인·수정" in guidance
+    assert "명시적 저장" in guidance
+    assert "활성 개인 용어" in guidance
+    assert "그래프" in guidance
+    assert "검색" in guidance
+    assert "대화" in guidance
+    assert "익명 로컬 프로필" in guidance
+    assert "초안만" in guidance
+    assert "다음 단계" not in guidance
+
+
 @pytest.mark.parametrize('text', [
     '이런 캐릭터를 그리고 싶어', '그런 포즈 보고 싶어', '찾아줘',
     '서 있는 캐릭터를 그리고 싶어요', '그 설명대로 레퍼런스 보여줘',
