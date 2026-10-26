@@ -11,7 +11,7 @@ import uuid
 from time import perf_counter
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, Query, Request, Response, HTTPException
+from fastapi import APIRouter, Header, Query, Request, Response, HTTPException, Path
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -35,6 +35,8 @@ from backend.services.job_repository import (
 from backend.services.job_repository import JobRepository
 from backend.services.session_repository import SessionRepository
 from backend.services.session_repository import SessionBusy
+from backend.services.personal_term_repository import PersonalTermRepository
+from backend.services.personal_catalog import with_personal_terms
 from backend.services.failure_mapping import DATABASE_ERRORS, FAILURE_MESSAGE, classify_failure
 from backend.services.pinterest_widget import PinterestWidgetClient
 from backend.services.job_trace import JobTracer
@@ -405,6 +407,67 @@ async def open_conversation(session_id: uuid.UUID, request: Request, response: R
     token = await _owner(request, response, sessions)
     try:
         return await _database_call(sessions.get_session(token, str(session_id), touch=True))
+    except JobNotFound:
+        raise ApiContractError(ApiErrorCode.SESSION_NOT_FOUND, token) from None
+
+
+def _condition_items(state: dict, snapshot) -> list[dict]:
+    conditions = {}
+    for value in (state.get("constraints") or {}).values():
+        if value.get("term_id"):
+            conditions[value["term_id"]] = value
+    for value in ((state.get("current_topic") or {}).get("terms") or []):
+        if value.get("term_id"):
+            conditions.setdefault(value["term_id"], value)
+    excluded = state.get("excluded_conditions") or {}
+    items = []
+    for term_id, value in conditions.items():
+        card = snapshot.get_active(term_id)
+        if card is None or term_id in excluded:
+            continue
+        items.append({
+            "term_id": term_id,
+            "role": card["role"],
+            "label_ko": card["label_ko"],
+            "source_type": card.get("source_type", "team_card"),
+        })
+    role_order = {role.value: index for index, role in enumerate(snapshot.roles_order)}
+    return sorted(items, key=lambda item: (role_order.get(item["role"], 99), item["label_ko"], item["term_id"]))
+
+
+async def _session_conditions(request: Request, sessions: SessionRepository, session_id: str, state: dict) -> dict:
+    personal = PersonalTermRepository(sessions._pool)
+    records = await _database_call(personal.list_active_terms_for_session(session_id))
+    snapshot = with_personal_terms(request.app.state.catalog, records)
+    return {"items": _condition_items(state, snapshot)}
+
+
+@router.get("/api/sessions/{session_id}/conditions")
+async def current_conditions(session_id: uuid.UUID, request: Request, response: Response):
+    sessions, _ = await _database_call(get_repositories())
+    token = await _owner(request, response, sessions)
+    try:
+        state = await _database_call(sessions.get_condition_state(token, str(session_id)))
+        return await _session_conditions(request, sessions, str(session_id), state)
+    except JobNotFound:
+        raise ApiContractError(ApiErrorCode.SESSION_NOT_FOUND, token) from None
+
+
+@router.delete("/api/sessions/{session_id}/conditions/{term_id}")
+async def remove_current_condition(
+    session_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    term_id: str = Path(min_length=1, max_length=200),
+):
+    require_conversation_action(request, "remove-condition")
+    sessions, _ = await _database_call(get_repositories())
+    token = await _owner(request, response, sessions)
+    try:
+        state = await _database_call(sessions.remove_condition(token, str(session_id), term_id))
+        return await _session_conditions(request, sessions, str(session_id), state)
+    except SessionBusy:
+        raise HTTPException(409, "답변 처리 중에는 검색 조건을 바꿀 수 없습니다. 완료 후 다시 시도해 주세요.") from None
     except JobNotFound:
         raise ApiContractError(ApiErrorCode.SESSION_NOT_FOUND, token) from None
 

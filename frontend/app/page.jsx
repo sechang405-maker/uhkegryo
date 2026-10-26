@@ -33,6 +33,7 @@ import { createMobileResultOrigin, resolveMobileResult } from "../lib/mobile-res
 import PersonalTermCreator from "../components/PersonalTermCreator";
 import { createPersonalTermClient, reconcilePersonalTermState } from "../lib/personal-terms.mjs";
 import { personalGraphTerms } from "../lib/term-graph-personal-layout.mjs";
+import { createConditionRemovalController, readCurrentConditions, removeCurrentCondition } from "../lib/current-conditions.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
 
@@ -91,6 +92,14 @@ export default function HomePage() {
   const [mobileResultNotice, setMobileResultNotice] = useState(null);
   const [personalTermOpen, setPersonalTermOpen] = useState(false);
   const [personalTerms, setPersonalTerms] = useState([]);
+  const [currentConditions, setCurrentConditions] = useState([]);
+  const [conditionsLoaded, setConditionsLoaded] = useState(false);
+  const [conditionBusyId, setConditionBusyId] = useState(null);
+  const [conditionError, setConditionError] = useState("");
+  const conditionControllerRef = useRef(null);
+  if (!conditionControllerRef.current) {
+    conditionControllerRef.current = createConditionRemovalController(setCurrentConditions);
+  }
   const personalTermClient = useMemo(() => createPersonalTermClient(), []);
   const mobilePanelRevisionRef = useRef(0);
   const [termGuide, setTermGuide] = useState(null);
@@ -167,6 +176,43 @@ export default function HomePage() {
     } catch { /* Keep the latest server receipt; submission still enforces the limit. */ }
   }
 
+  async function refreshCurrentConditions(id = sessionIdRef.current) {
+    if (uiDemoEnabled || !id) {
+      setCurrentConditions([]);
+      setConditionsLoaded(Boolean(uiDemoEnabled));
+      return;
+    }
+    const ticket = conditionControllerRef.current.begin(id);
+    try {
+      const items = await readCurrentConditions(id);
+      conditionControllerRef.current.resolve(ticket, items);
+      if (id === sessionIdRef.current) setConditionsLoaded(true);
+    } catch {
+      if (id === sessionIdRef.current) {
+        setConditionError("현재 검색 조건을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      }
+    }
+  }
+
+  async function removeCondition(termId) {
+    const id = sessionIdRef.current;
+    if (!id || conditionBusyId) return;
+    const ticket = conditionControllerRef.current.begin(id);
+    setConditionBusyId(termId);
+    setConditionError("");
+    try {
+      const items = await removeCurrentCondition(id, termId);
+      conditionControllerRef.current.resolve(ticket, items);
+      if (id === sessionIdRef.current) setConditionsLoaded(true);
+    } catch (removeError) {
+      if (id === sessionIdRef.current) {
+        setConditionError(removeError.message || "검색 조건을 해제하지 못했습니다.");
+      }
+    } finally {
+      if (id === sessionIdRef.current) setConditionBusyId(null);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     setPendingRetry(false);
@@ -235,6 +281,15 @@ export default function HomePage() {
     return ()=>{active=false;};
   },[conversationReady,personalTermClient]);
 
+  useEffect(() => {
+    conditionControllerRef.current.reset(sessionId);
+    setCurrentConditions([]);
+    setConditionsLoaded(false);
+    setConditionBusyId(null);
+    setConditionError("");
+    if (conversationReady && sessionId) refreshCurrentConditions(sessionId);
+  }, [conversationReady, sessionId]);
+
   function applyPersonalTerms(nextItems) {
     const reconciled = reconcilePersonalTermState(
       nextItems, graphTermIds, graphFocusId, termSearch?.term?.term_id,
@@ -248,6 +303,7 @@ export default function HomePage() {
       setTermSearch(null);
       if (boardView === "term-results") setBoardView("results");
     }
+    if (sessionIdRef.current) refreshCurrentConditions(sessionIdRef.current);
   }
 
   function showDemoSession(session) {
@@ -384,6 +440,7 @@ export default function HomePage() {
       if (sessionIdRef.current !== activeSessionId || activeSessionId !== turn.job?.session_id) return;
       setTurns((entries) => upsertTurn(entries, turn));
       if (turn.job?.job_status === "completed") refreshSessions();
+      if (turn.job?.job_status === "completed") refreshCurrentConditions(activeSessionId);
       const mobileDecision = resolveMobileResult(mobileOrigin, {
         requestId: turn.id,
         sessionId: sessionIdRef.current,
@@ -1260,6 +1317,25 @@ export default function HomePage() {
           <button className="personal-term-open" type="button"
             onClick={() => setPersonalTermOpen(true)}>＋ 새 용어 만들기</button>
         </div>}
+          {!uiDemoEnabled && <section className="current-conditions" aria-label="현재 검색 조건" aria-busy={Boolean(conditionBusyId)}>
+            <span className="current-conditions-label">현재 검색 조건</span>
+            <div className="current-condition-chips">
+              {currentConditions.map((condition) => (
+                <span className="current-condition-chip" key={condition.term_id}
+                  style={{ '--condition-color': graphCategoryColor(condition.role) }}>
+                  <span>{condition.label_ko}{condition.source_type === "personal_term" ? " · 개인" : ""}</span>
+                  <button type="button" disabled={Boolean(conditionBusyId) || conversationBusy}
+                    aria-label={`${condition.label_ko} 검색 조건 해제`}
+                    onClick={() => removeCondition(condition.term_id)}>
+                    {conditionBusyId === condition.term_id ? "…" : "×"}
+                  </button>
+                </span>
+              ))}
+              {conditionsLoaded && !currentConditions.length && <span className="current-conditions-empty">없음</span>}
+            </div>
+            <span className="current-conditions-help">해제하면 다음 검색부터 제외됩니다.</span>
+          </section>}
+          {conditionError && <p className="condition-error" role="alert">{conditionError}</p>}
         <div className="panel-top" ref={chatScrollRef}>
           {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
           {restoreError && <div role="alert"><p>{restoreError}</p>

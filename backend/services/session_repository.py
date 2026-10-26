@@ -1,5 +1,7 @@
 """Anonymous cookie owners and independently expiring conversations."""
 from __future__ import annotations
+from copy import deepcopy
+import json
 import uuid
 from typing import Any
 from backend.shared.auth import hash_session_token
@@ -101,6 +103,78 @@ class SessionRepository:
         if row is None:
             raise JobNotFound
         return session_view(row)
+
+    async def get_condition_state(self, token: str, session_id: str) -> dict:
+        """Read the owner-scoped, authoritative conversation condition ledger."""
+        from backend.services.job_repository import JobNotFound
+        value = await self._pool.fetchval(
+            f"""SELECT s.memory_json FROM sessions s JOIN anonymous_owners o USING(owner_id)
+                WHERE o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}""",
+            hash_session_token(token), session_id,
+        )
+        if value is None:
+            raise JobNotFound
+        return deepcopy(json.loads(value) if isinstance(value, str) else (value or {}))
+
+    async def remove_condition(self, token: str, session_id: str, term_id: str) -> dict:
+        """Remove one current condition without erasing conversation history.
+
+        A session lock serializes rapid removals. In-flight answers are rejected so
+        their later memory commit cannot silently restore a condition the user just
+        removed.
+        """
+        from backend.services.job_repository import JobNotFound
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                row = await connection.fetchrow(
+                    f"""SELECT s.session_id,s.memory_json FROM sessions s
+                        JOIN anonymous_owners o USING(owner_id)
+                        WHERE o.session_token_hash=$1 AND s.session_id=$2::uuid AND {LIVE}
+                        FOR UPDATE OF s""",
+                    hash_session_token(token), session_id,
+                )
+                if row is None:
+                    raise JobNotFound
+                active = await connection.fetchval(
+                    """SELECT 1 FROM jobs WHERE session_id=$1
+                       AND status NOT IN ('completed','failed') LIMIT 1""",
+                    row["session_id"],
+                )
+                if active:
+                    raise SessionBusy
+                state = deepcopy(json.loads(row["memory_json"]) if isinstance(row["memory_json"], str)
+                                 else (row["memory_json"] or {}))
+                constraints = state.get("constraints") or {}
+                topic = deepcopy(state.get("current_topic"))
+                topic_terms = list((topic or {}).get("terms") or [])
+                matched = [value for value in constraints.values()
+                           if value.get("term_id") == term_id]
+                matched.extend(value for value in topic_terms if value.get("term_id") == term_id)
+                if not matched:
+                    return state
+                role = matched[0].get("role")
+                state["constraints"] = {
+                    key: value for key, value in constraints.items()
+                    if value.get("term_id", key) != term_id
+                }
+                topic_terms = [value for value in topic_terms if value.get("term_id") != term_id]
+                if topic is not None:
+                    if topic_terms:
+                        topic["terms"] = topic_terms
+                        state["current_topic"] = topic
+                    else:
+                        state["current_topic"] = None
+                state.setdefault("excluded_conditions", {})[term_id] = {
+                    "role": role,
+                    "term_id": term_id,
+                    "evidence": "사용자가 현재 검색 조건에서 직접 해제함",
+                    "source_job_id": None,
+                }
+                await connection.execute(
+                    "UPDATE sessions SET memory_json=$2::jsonb,last_activity_at=now() WHERE session_id=$1",
+                    row["session_id"], json.dumps(state, ensure_ascii=False),
+                )
+                return state
 
     async def session_for_job(self, token: str, job_id: str) -> str:
         from backend.services.job_repository import JobNotFound

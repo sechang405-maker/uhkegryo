@@ -13,7 +13,7 @@ function setup(originScreenId){
  const state={turns:[{id:'latest',screen_generation:screenGeneration,mobile_result_origin:createMobileResultOrigin({requestId:'latest',sessionId:'session',screenGeneration,panelRevision:0})}],board:'home',panel:'conversation',gallery:null,notice:null};let update,fail;
  const context={turns:state.turns,sessionIdRef:{current:'session'},screenGenerationRef:{current:1},mobilePanelRevisionRef:{current:0},resultTerms,upsertTurn,resolveMobileResult,
   resumeConversation:(_turns,options)=>{update=options.onUpdate;fail=options.onError;return {};},
-  setTurns:fn=>{state.turns=fn(state.turns);},refreshSessions:()=>{},
+  setTurns:fn=>{state.turns=fn(state.turns);},refreshSessions:()=>{},refreshCurrentConditions:()=>{},
   gallerySelectionRef:{current:{live:job=>{if(resultTerms(job).length)state.gallery=job;}}},
   setBoardView:value=>{state.board=value;},setMobilePanel:value=>{state.panel=value;},
   setMobileResultNotice:value=>{state.notice=typeof value==='function'?value(state.notice):value;},

@@ -260,6 +260,16 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 .mind-map-group-4 { top: 37.8%; left: 30.9%; transform: translate(-50%, -50%); }
 .prompt-panel { display: flex; flex-direction: column; height: 100vh; min-height: 0; padding: 38px 28px 26px; overflow: hidden; background: transparent; color: var(--text); }
 .prompt-toolbar { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-start; }
+.current-conditions { display:grid; flex:0 0 auto; min-width:0; gap:3px; margin-top:8px; padding:7px 9px; border:1px solid var(--border); border-radius:12px; background:var(--surface-raised); }
+.current-conditions-label { color:var(--text-secondary); font-size:11px; font-weight:800; }
+.current-condition-chips { display:flex; min-width:0; gap:5px; overflow-x:auto; scrollbar-width:thin; }
+.current-condition-chip { display:inline-flex; flex:0 0 auto; align-items:center; gap:4px; padding:3px 4px 3px 8px; border:1px solid var(--condition-color); border-radius:999px; background:color-mix(in srgb,var(--condition-color) 14%,var(--surface)); color:var(--text); font-size:12px; }
+.current-condition-chip button { display:grid; place-items:center; width:24px; height:24px; padding:0; border:0; border-radius:50%; background:transparent; color:var(--text); font-size:17px; cursor:pointer; }
+.current-condition-chip button:hover:not(:disabled) { background:color-mix(in srgb,var(--condition-color) 24%,transparent); }
+.current-condition-chip button:disabled { opacity:.45; cursor:wait; }
+.current-conditions-empty,.current-conditions-help { color:var(--text-secondary); font-size:11px; }
+.current-conditions-help { white-space:nowrap; }
+.condition-error { flex:0 0 auto; margin:5px 0 0; color:var(--danger); font-size:12px; }
 .panel-top { flex: 1 1 auto; min-height: 0; padding-right: 4px; padding-bottom: 16px; overflow-y: auto; }
 .panel-top { scrollbar-color: var(--accent) var(--accent-surface); }
 .panel-top::-webkit-scrollbar { width: 10px; }
