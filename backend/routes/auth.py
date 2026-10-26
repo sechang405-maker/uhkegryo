@@ -13,6 +13,7 @@ from backend.services.demo_account_repository import DemoAccountRepository
 from backend.services.google_oidc import GoogleOIDCClient, OIDCVerificationError
 from backend.services.invite_code_repository import (
     InviteCodeInvalid, InviteCodeRepository, InviteCodeUnavailable, InviteRateLimited,
+    TransferUnavailable,
 )
 from backend.shared.config import get_settings
 
@@ -74,11 +75,22 @@ async def google_start():
 
 
 @router.get("/google/callback")
-async def google_callback(state: str, code: str):
+async def google_callback(request: Request, state: str, code: str):
     _require_google_mode()
     accounts, sessions, _, oidc = await get_auth_services()
+    current_account = None
+    current_token = request.cookies.get(APP_COOKIE)
+    if current_token:
+        try:
+            current_account = await sessions.resolve_app_session(current_token)
+        except AuthSessionUnavailable:
+            pass
     try:
         identity = await oidc.verify_callback(state=state, code=code)
+        existing = await accounts.get_by_google_subject(identity.google_subject)
+        if current_account is not None and existing is not None:
+            if current_account.account_id != existing.account_id:
+                return RedirectResponse(auth_frontend_origin() + "/transfer?error=already-bound")
         account = await accounts.record_google_login(
             identity.google_subject,
             verified_email=identity.verified_email,
@@ -99,7 +111,9 @@ async def google_callback(state: str, code: str):
         verified_email=identity.verified_email,
         display_name=identity.display_name,
     )
-    response = RedirectResponse(auth_frontend_origin() + "/invite")
+    response = RedirectResponse(
+        auth_frontend_origin() + ("/transfer" if current_account is not None else "/invite")
+    )
     _set_cookie(response, REGISTRATION_COOKIE, token, max_age=10 * 60)
     return response
 
@@ -135,6 +149,47 @@ async def redeem_invite(payload: InviteRedemption, request: Request):
     _set_cookie(response, APP_COOKIE, app_token, max_age=30 * 86400)
     response.delete_cookie(REGISTRATION_COOKIE, path="/", samesite="lax")
     return response
+
+
+@router.get("/identity-transfer/status")
+async def identity_transfer_status(request: Request):
+    _require_google_mode()
+    accounts, sessions, _, _ = await get_auth_services()
+    app_token = request.cookies.get(APP_COOKIE)
+    registration_token = request.cookies.get(REGISTRATION_COOKIE)
+    if not app_token or not registration_token:
+        raise HTTPException(401, "기존 계정과 새 Google 로그인이 모두 필요합니다.")
+    try:
+        source = await sessions.resolve_app_session(app_token)
+        target = await sessions.resolve_registration_session(registration_token)
+        source_account = await accounts.get_account(source.account_id)
+    except AuthSessionUnavailable:
+        raise HTTPException(401, "계정 이전 확인 시간이 만료되었습니다.") from None
+    return {
+        "source_email": source_account.email_normalized,
+        "source_display_name": source_account.display_name,
+        "target_email": target.verified_email,
+        "target_display_name": target.display_name,
+    }
+
+
+@router.post("/identity-transfer/request")
+async def request_identity_transfer(request: Request):
+    _require_google_mode()
+    _require_action(request, "request-transfer")
+    _, sessions, invites, _ = await get_auth_services()
+    app_token = request.cookies.get(APP_COOKIE)
+    registration_token = request.cookies.get(REGISTRATION_COOKIE)
+    if not app_token or not registration_token:
+        raise HTTPException(401, "기존 계정과 새 Google 로그인이 모두 필요합니다.")
+    try:
+        source = await sessions.resolve_app_session(app_token)
+        transfer = await invites.request_identity_transfer(
+            source.account_id, target_registration_token=registration_token,
+        )
+    except (AuthSessionUnavailable, TransferUnavailable):
+        raise HTTPException(409, "이 Google 계정으로 이전 요청을 만들 수 없습니다.") from None
+    return {"transfer_id": transfer.transfer_id, "status": transfer.status}
 
 
 @router.get("/me")

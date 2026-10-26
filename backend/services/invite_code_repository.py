@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from backend.schemas.demo_accounts import DemoAccountRecord, InviteRecord
+from backend.schemas.demo_accounts import AdminIdentityTransferSummary, DemoAccountRecord, InviteRecord
 from backend.services.demo_account_repository import AdminPermissionDenied, _account, _active_admin, _audit, _invite
 from backend.shared.auth import hash_session_token
 
@@ -180,29 +180,79 @@ class InviteCodeRepository:
         self, account_id: str, *, target_registration_token: str,
         ttl: timedelta = timedelta(minutes=15),
     ) -> IdentityTransfer:
-        registration = await self._pool.fetchrow(
-            """SELECT * FROM registration_sessions
-               WHERE session_token_hash=$1 AND consumed_at IS NULL AND expires_at>now()""",
-            hash_session_token(target_registration_token),
-        )
-        if registration is None:
-            raise TransferUnavailable
-        if await self._pool.fetchval(
-            "SELECT 1 FROM accounts WHERE google_subject=$1 OR email_normalized=$2",
-            registration["google_subject"], registration["email_normalized"],
-        ):
-            raise TransferUnavailable
-        row = await self._pool.fetchrow(
-            """INSERT INTO identity_transfer_requests(
-                   transfer_id,account_id,target_registration_session_id,
-                   target_google_subject,target_email_normalized,expires_at)
-               VALUES($1,$2,$3,$4,$5,now()+$6::interval) RETURNING *""",
-            uuid.uuid4(), uuid.UUID(account_id), registration["registration_session_id"],
-            registration["google_subject"], registration["email_normalized"], ttl,
-        )
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                account = await connection.fetchrow(
+                    "SELECT * FROM accounts WHERE account_id=$1 FOR UPDATE", uuid.UUID(account_id),
+                )
+                registration = await connection.fetchrow(
+                    """SELECT * FROM registration_sessions
+                       WHERE session_token_hash=$1 AND consumed_at IS NULL AND expires_at>now()
+                       FOR UPDATE""",
+                    hash_session_token(target_registration_token),
+                )
+                if account is None or account["status"] != "active" or registration is None:
+                    raise TransferUnavailable
+                if await connection.fetchval(
+                    "SELECT 1 FROM accounts WHERE google_subject=$1 OR email_normalized=$2",
+                    registration["google_subject"], registration["email_normalized"],
+                ):
+                    raise TransferUnavailable
+                await connection.execute(
+                    """UPDATE identity_transfer_requests SET status='expired'
+                       WHERE status='pending' AND expires_at<=now()
+                         AND (account_id=$1 OR target_google_subject=$2)""",
+                    account["account_id"], registration["google_subject"],
+                )
+                existing = await connection.fetchrow(
+                    """SELECT * FROM identity_transfer_requests
+                       WHERE account_id=$1 AND status='pending' AND expires_at>now()
+                       FOR UPDATE""", account["account_id"],
+                )
+                if existing is not None:
+                    if existing["target_registration_session_id"] == registration["registration_session_id"]:
+                        return IdentityTransfer(
+                            str(existing["transfer_id"]), str(existing["account_id"]), existing["status"],
+                        )
+                    raise TransferUnavailable
+                row = await connection.fetchrow(
+                    """INSERT INTO identity_transfer_requests(
+                           transfer_id,account_id,target_registration_session_id,
+                           target_google_subject,target_email_normalized,expires_at)
+                       VALUES($1,$2,$3,$4,$5,now()+$6::interval) RETURNING *""",
+                    uuid.uuid4(), account["account_id"], registration["registration_session_id"],
+                    registration["google_subject"], registration["email_normalized"], ttl,
+                )
         return IdentityTransfer(str(row["transfer_id"]), str(row["account_id"]), row["status"])
 
-    async def approve_identity_transfer(self, actor_account_id: str, transfer_id: str) -> DemoAccountRecord:
+    async def list_identity_transfers_for_admin(
+        self, actor_account_id: str,
+    ) -> list[AdminIdentityTransferSummary]:
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                await _active_admin(connection, actor_account_id)
+                rows = await connection.fetch(
+                    """SELECT t.transfer_id,t.account_id AS source_account_id,
+                              a.email_normalized AS source_email,a.display_name AS source_display_name,
+                              r.email_normalized AS target_email,r.display_name AS target_display_name,
+                              t.status,t.expires_at,t.created_at
+                       FROM identity_transfer_requests t
+                       JOIN accounts a ON a.account_id=t.account_id
+                       JOIN registration_sessions r
+                         ON r.registration_session_id=t.target_registration_session_id
+                       WHERE t.status='pending' AND t.expires_at>now()
+                         AND r.consumed_at IS NULL AND r.expires_at>now()
+                       ORDER BY t.created_at,t.transfer_id""",
+                )
+        return [AdminIdentityTransferSummary(**{
+            **dict(row),
+            "transfer_id": str(row["transfer_id"]),
+            "source_account_id": str(row["source_account_id"]),
+        }) for row in rows]
+
+    async def approve_identity_transfer(
+        self, actor_account_id: str, transfer_id: str, *, reason: str = "",
+    ) -> DemoAccountRecord:
         async with self._pool.acquire() as connection:
             async with connection.transaction():
                 actor = await _active_admin(connection, actor_account_id)
@@ -210,9 +260,11 @@ class InviteCodeRepository:
                     """SELECT t.* FROM identity_transfer_requests t
                        JOIN registration_sessions r
                          ON r.registration_session_id=t.target_registration_session_id
+                       JOIN accounts a ON a.account_id=t.account_id
                        WHERE t.transfer_id=$1 AND t.status='pending' AND t.expires_at>now()
                          AND r.consumed_at IS NULL AND r.expires_at>now()
-                       FOR UPDATE OF t,r""",
+                         AND a.status='active'
+                       FOR UPDATE OF t,r,a""",
                     uuid.UUID(transfer_id),
                 )
                 if transfer is None:
@@ -242,8 +294,30 @@ class InviteCodeRepository:
                     transfer["target_registration_session_id"],
                 )
                 await _audit(connection, actor["account_id"], transfer["account_id"],
-                             "account_identity_transferred", {"transfer_id": str(transfer["transfer_id"])})
+                             "account_identity_transferred", {
+                                 "transfer_id": str(transfer["transfer_id"]), "reason": reason,
+                             })
                 return _account(row)
+
+    async def reject_identity_transfer(
+        self, actor_account_id: str, transfer_id: str, *, reason: str,
+    ) -> IdentityTransfer:
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                actor = await _active_admin(connection, actor_account_id)
+                row = await connection.fetchrow(
+                    """UPDATE identity_transfer_requests SET status='rejected'
+                       WHERE transfer_id=$1 AND status='pending' AND expires_at>now()
+                       RETURNING *""", uuid.UUID(transfer_id),
+                )
+                if row is None:
+                    raise TransferUnavailable
+                await _audit(
+                    connection, actor["account_id"], row["account_id"],
+                    "account_identity_transfer_rejected",
+                    {"transfer_id": str(row["transfer_id"]), "reason": reason},
+                )
+        return IdentityTransfer(str(row["transfer_id"]), str(row["account_id"]), row["status"])
 
     def _hash(self, raw: str) -> str:
         return hmac.new(self._pepper, raw.encode(), hashlib.sha256).hexdigest()

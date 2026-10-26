@@ -46,6 +46,7 @@ export default function AccountQuota() {
     <strong className={usage.remaining === 0 ? "quota-exhausted" : ""}>이용 가능 {usage.remaining}회</strong>
     <span>누적 지급 {usage.limit} · 사용 완료 {usage.charged} · 처리 중 {usage.reserved}</span>
     <small>새 대화에서도 총량은 유지되며, 고정 안내와 이미지 재검색은 차감되지 않습니다.</small>
+    <a href="/api/auth/google/start">Google 계정 변경</a>
     {role === "admin" && <a href="/admin">초대·사용량 관리</a>}
   </aside>;
 }

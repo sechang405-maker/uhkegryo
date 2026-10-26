@@ -178,3 +178,74 @@ def test_identity_transfer_requires_a_live_oidc_verified_registration_session():
             )
 
     asyncio.run(database_case(case))
+
+
+def test_admin_lists_only_verified_pending_transfers_and_can_reject_one():
+    async def case(pool):
+        admin = await _admin(pool)
+        repo = InviteCodeRepository(pool, pepper="test-pepper")
+        issued = await repo.issue(admin, beneficiary_label="transfer source", initial_limit=9)
+        account = await repo.redeem(
+            issued.raw_code, google_subject="google-old", verified_email="old@example.com",
+            display_name="Old identity",
+        )
+        registration_token = await AuthSessionRepository(pool).create_registration_session(
+            google_subject="google-target",
+            verified_email="target@example.com",
+            display_name="Verified target",
+        )
+        transfer = await repo.request_identity_transfer(
+            account.account_id, target_registration_token=registration_token,
+        )
+
+        pending = await repo.list_identity_transfers_for_admin(admin)
+        assert [item.transfer_id for item in pending] == [transfer.transfer_id]
+        assert pending[0].source_account_id == account.account_id
+        assert pending[0].target_email == "target@example.com"
+        assert pending[0].target_display_name == "Verified target"
+        assert not hasattr(pending[0], "target_google_subject")
+
+        rejected = await repo.reject_identity_transfer(admin, transfer.transfer_id, reason="identity mismatch")
+        assert rejected.status == "rejected"
+        assert await repo.list_identity_transfers_for_admin(admin) == []
+        assert await pool.fetchval(
+            "SELECT google_subject FROM accounts WHERE account_id=$1", uuid.UUID(account.account_id),
+        ) == "google-old"
+
+    asyncio.run(database_case(case))
+
+
+def test_identity_transfer_request_is_single_pending_and_approval_is_idempotency_safe():
+    async def case(pool):
+        admin = await _admin(pool)
+        repo = InviteCodeRepository(pool, pepper="test-pepper")
+        issued = await repo.issue(admin, beneficiary_label="transfer source", initial_limit=5)
+        account = await repo.redeem(
+            issued.raw_code, google_subject="google-old", verified_email="old@example.com",
+        )
+        registration_token = await AuthSessionRepository(pool).create_registration_session(
+            google_subject="google-target", verified_email="target@example.com", display_name=None,
+        )
+        first = await repo.request_identity_transfer(
+            account.account_id, target_registration_token=registration_token,
+        )
+        repeated = await repo.request_identity_transfer(
+            account.account_id, target_registration_token=registration_token,
+        )
+        assert repeated.transfer_id == first.transfer_id
+
+        outcomes = await asyncio.gather(
+            repo.approve_identity_transfer(admin, first.transfer_id, reason="approved"),
+            repo.approve_identity_transfer(admin, first.transfer_id, reason="approved"),
+            return_exceptions=True,
+        )
+        assert len([item for item in outcomes if not isinstance(item, Exception)]) == 1
+        assert len([item for item in outcomes if isinstance(item, TransferUnavailable)]) == 1
+        assert await pool.fetchval(
+            "SELECT ai_request_limit FROM accounts WHERE account_id=$1", uuid.UUID(account.account_id),
+        ) == 5
+        assert await pool.fetchval(
+            "SELECT count(*) FROM anonymous_owners WHERE account_id=$1", uuid.UUID(account.account_id),
+        ) == 1
+
+    asyncio.run(database_case(case))

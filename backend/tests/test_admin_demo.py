@@ -90,3 +90,29 @@ def test_invite_issue_returns_raw_code_once(monkeypatch):
     ), request))
     assert response.raw_code == "one-time-secret"
     assert "raw_code" not in response.invite.model_dump()
+
+
+def test_transfer_approval_requires_admin_action_and_uses_verified_request(monkeypatch):
+    from backend.routes import admin_demo
+
+    class Invites:
+        async def approve_identity_transfer(self, actor, transfer_id, *, reason):
+            assert actor.endswith("1")
+            assert transfer_id == "00000000-0000-0000-0000-000000000099"
+            assert reason == "verified by operator"
+
+    async def services():
+        return SimpleNamespace(), Invites(), SimpleNamespace()
+
+    monkeypatch.setattr(admin_demo, "get_admin_services", services)
+    payload = admin_demo.ReasonRequest(reason="verified by operator")
+    with pytest.raises(HTTPException) as denied:
+        asyncio.run(admin_demo.approve_identity_transfer("00000000-0000-0000-0000-000000000099", payload, _request(role="user")))
+    assert denied.value.status_code == 403
+
+    response = asyncio.run(admin_demo.approve_identity_transfer(
+        "00000000-0000-0000-0000-000000000099",
+        payload,
+        _request(headers={"x-admin-action": "approve-transfer", "origin": "http://testserver"}),
+    ))
+    assert response.status_code == 204

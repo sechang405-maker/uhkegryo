@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from backend.schemas.demo_accounts import (
     AccountUsage,
     AdminAccountSummary,
+    AdminIdentityTransferSummary,
     InviteRecord,
 )
 from backend.services.demo_account_repository import (
@@ -17,7 +18,11 @@ from backend.services.demo_account_repository import (
     AccountStateConflict,
     DemoAccountRepository,
 )
-from backend.services.invite_code_repository import InviteCodeRepository, InviteCodeUnavailable
+from backend.services.invite_code_repository import (
+    InviteCodeRepository,
+    InviteCodeUnavailable,
+    TransferUnavailable,
+)
 from backend.services.quota_repository import AccountUnavailable, QuotaRepository
 from backend.shared.config import get_settings
 
@@ -41,6 +46,7 @@ class IssuedInviteResponse(BaseModel):
 class AdminOverviewResponse(BaseModel):
     accounts: list[AdminAccountSummary]
     invites: list[InviteRecord]
+    transfers: list[AdminIdentityTransferSummary]
 
 
 class ReasonRequest(BaseModel):
@@ -93,6 +99,7 @@ async def admin_overview(request: Request):
     return AdminOverviewResponse(
         accounts=await accounts.list_accounts_for_admin(actor.account_id),
         invites=await invites.list_for_admin(actor.account_id),
+        transfers=await invites.list_identity_transfers_for_admin(actor.account_id),
     )
 
 
@@ -157,6 +164,30 @@ async def update_account_status(account_id: str, payload: StatusUpdateRequest, r
         raise HTTPException(409, "다른 변경이 먼저 반영되었습니다. 목록을 새로 불러오세요.") from None
 
 
+    return Response(status_code=204)
+
+
+@router.post("/api/admin/demo/transfers/{transfer_id}/approve", status_code=204)
+async def approve_identity_transfer(transfer_id: str, payload: ReasonRequest, request: Request):
+    actor = _require_admin(request)
+    _require_action(request, "approve-transfer")
+    _, invites, _ = await get_admin_services()
+    try:
+        await invites.approve_identity_transfer(actor.account_id, transfer_id, reason=payload.reason)
+    except (TransferUnavailable, ValueError):
+        raise HTTPException(409, "승인할 수 없는 계정 이전 요청입니다.") from None
+    return Response(status_code=204)
+
+
+@router.post("/api/admin/demo/transfers/{transfer_id}/reject", status_code=204)
+async def reject_identity_transfer(transfer_id: str, payload: ReasonRequest, request: Request):
+    actor = _require_admin(request)
+    _require_action(request, "reject-transfer")
+    _, invites, _ = await get_admin_services()
+    try:
+        await invites.reject_identity_transfer(actor.account_id, transfer_id, reason=payload.reason)
+    except (TransferUnavailable, ValueError):
+        raise HTTPException(409, "처리할 수 없는 계정 이전 요청입니다.") from None
     return Response(status_code=204)
 
 

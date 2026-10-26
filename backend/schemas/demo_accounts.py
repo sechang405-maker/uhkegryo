@@ -76,3 +76,17 @@ class AdminAccountSummary(BaseModel):
     status: Literal["active", "disabled"]
     identity_bound: bool
     usage: AccountUsage
+
+
+class AdminIdentityTransferSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transfer_id: str
+    source_account_id: str
+    source_email: str
+    source_display_name: str | None = None
+    target_email: str
+    target_display_name: str | None = None
+    status: Literal["pending", "approved", "rejected", "expired"]
+    expires_at: datetime
+    created_at: datetime

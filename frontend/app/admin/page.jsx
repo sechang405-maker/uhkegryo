@@ -10,7 +10,7 @@ async function api(path, options = {}) {
 }
 
 export default function AdminDemoPage() {
-  const [overview, setOverview] = useState({ accounts: [], invites: [] });
+  const [overview, setOverview] = useState({ accounts: [], invites: [], transfers: [] });
   const [state, setState] = useState("loading");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -29,7 +29,7 @@ export default function AdminDemoPage() {
     setBusy(key); setError("");
     try {
       await api(path, {
-        method: path.endsWith("/invites") ? "POST" : path.includes("/revoke") ? "POST" : "PATCH",
+        method: path.endsWith("/invites") ? "POST" : path.includes("/transfers/") ? "POST" : path.includes("/revoke") ? "POST" : "PATCH",
         headers: { "content-type": "application/json", "x-admin-action": action },
         body: JSON.stringify(body),
       });
@@ -81,6 +81,20 @@ export default function AdminDemoPage() {
     });
   }
 
+  function decideTransfer(transfer, decision) {
+    const action = decision === "approve" ? "approve-transfer" : "reject-transfer";
+    const label = decision === "approve" ? "승인" : "거절";
+    if (!window.confirm(
+      `계정 이전을 ${label}할까요?\n기존: ${transfer.source_email}\n대상: ${transfer.target_email}`
+    )) return;
+    mutate(
+      transfer.transfer_id,
+      `/api/admin/demo/transfers/${transfer.transfer_id}/${decision}`,
+      action,
+      { reason: `관리자 화면에서 계정 이전 ${label}` },
+    );
+  }
+
   return <main className="admin-demo-page">
     <header><div><a href="/">← 어케그려</a><h1>초대·사용량 관리</h1></div><button type="button" onClick={load} disabled={state === "loading"}>새로고침</button></header>
     <p>성공한 AI 대화와 새 용어 초안만 1회 차감됩니다. 고정 안내와 이미지 재검색은 차감되지 않습니다.</p>
@@ -103,6 +117,10 @@ export default function AdminDemoPage() {
     </section>
     <section className="admin-card" aria-labelledby="invites-title"><h2 id="invites-title">초대 내역</h2>
       <ul className="admin-invite-list">{overview.invites.map(invite => <li key={invite.invite_id}><div><strong>{invite.beneficiary_label}</strong><span>{invite.admin_note || "메모 없음"}</span><small>상태 {invite.status} · 코드 끝 {invite.code_hint} · 최초 한도 {invite.initial_ai_request_limit}</small></div>{invite.status === "pending" && <button disabled={Boolean(busy)} onClick={() => revoke(invite)}>미사용 초대 폐기</button>}</li>)}</ul>
+    </section>
+    <section className="admin-card" aria-labelledby="transfers-title"><h2 id="transfers-title">Google 계정 이전 요청</h2>
+      <p>사용자가 새 Google 로그인을 완료해 검증된 요청만 표시됩니다. 승인하면 데이터와 누적 사용량은 유지되고 이전 로그인 세션은 종료됩니다.</p>
+      {overview.transfers.length === 0 ? <p>대기 중인 요청이 없습니다.</p> : <ul className="admin-invite-list">{overview.transfers.map(transfer => <li key={transfer.transfer_id}><div><strong>{transfer.source_display_name || transfer.source_email}</strong><span>{transfer.source_email} → {transfer.target_display_name || transfer.target_email} ({transfer.target_email})</span><small>만료 {new Date(transfer.expires_at).toLocaleString()}</small></div><div><button disabled={Boolean(busy)} onClick={() => decideTransfer(transfer, "approve")}>이전 승인</button><button disabled={Boolean(busy)} onClick={() => decideTransfer(transfer, "reject")}>거절</button></div></li>)}</ul>}
     </section>
   </main>;
 }

@@ -183,3 +183,62 @@ def test_disabled_account_is_rejected_without_updating_login_metadata(monkeypatc
             settings.auth_mode = previous_mode
 
     asyncio.run(database_case(case))
+
+
+def test_signed_in_account_requests_transfer_only_after_second_google_identity_is_verified(monkeypatch):
+    from backend.main import app, settings
+    from backend.routes import auth
+    from backend.services.auth_session_repository import AuthSessionRepository
+    from backend.services.demo_account_repository import DemoAccountRepository
+    from backend.services.invite_code_repository import InviteCodeRepository
+
+    async def case(pool):
+        account_id = await pool.fetchval(
+            """INSERT INTO accounts(account_id,google_subject,email_normalized,ai_request_limit)
+               VALUES(gen_random_uuid(),'google-old','old@example.com',11) RETURNING account_id"""
+        )
+        await pool.execute(
+            "INSERT INTO anonymous_owners(owner_id,account_id) VALUES(gen_random_uuid(),$1)", account_id,
+        )
+        accounts = DemoAccountRepository(pool)
+        sessions = AuthSessionRepository(pool)
+        invites = InviteCodeRepository(pool, pepper="test-pepper")
+
+        async def services():
+            return accounts, sessions, invites, FakeOIDC()
+
+        monkeypatch.setattr(auth, "get_auth_services", services)
+        monkeypatch.setattr(auth, "auth_frontend_origin", lambda: "http://frontend.test")
+        previous_mode = settings.auth_mode
+        settings.auth_mode = "google_invite"
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://test", follow_redirects=False,
+            ) as client:
+                app_token = await sessions.create_app_session(str(account_id))
+                client.cookies.set("session_id", app_token, domain="test.local", path="/")
+                callback = await client.get("/api/auth/google/callback?state=state&code=code")
+                assert callback.headers["location"] == "http://frontend.test/transfer"
+                assert client.cookies.get("session_id") == app_token
+                assert client.cookies.get("registration_session")
+
+                status = await client.get("/api/auth/identity-transfer/status")
+                assert status.status_code == 200
+                assert status.json()["source_email"] == "old@example.com"
+                assert status.json()["target_email"] == "new@example.com"
+
+                assert (await client.post("/api/auth/identity-transfer/request")).status_code == 403
+                requested = await client.post(
+                    "/api/auth/identity-transfer/request",
+                    headers={"origin": "http://test", "x-auth-action": "request-transfer"},
+                )
+                assert requested.status_code == 200
+                assert requested.json()["status"] == "pending"
+            assert await pool.fetchval(
+                "SELECT count(*) FROM identity_transfer_requests WHERE account_id=$1 AND status='pending'",
+                account_id,
+            ) == 1
+        finally:
+            settings.auth_mode = previous_mode
+
+    asyncio.run(database_case(case))
