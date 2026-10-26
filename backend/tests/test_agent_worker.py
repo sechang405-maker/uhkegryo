@@ -501,7 +501,7 @@ def test_personal_term_creation_request_never_returns_a_catalog_card(monkeypatch
     assert "익명 로컬 프로필" in result.user_message
     assert "초안만" in result.user_message
     assert "다음 단계" not in result.user_message
-    assert len(adapter.calls) == 1
+    assert len(adapter.calls) == 0
     assert recovery.failures == []
 
 

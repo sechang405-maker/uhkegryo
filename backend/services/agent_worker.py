@@ -139,6 +139,36 @@ class AgentJobWorker:
                 else:
                     trace.stale()
                 return
+            snapshot = self._snapshot
+            if self._personal_terms is not None:
+                snapshot = with_personal_terms(
+                    snapshot,
+                    await self._personal_terms.list_active_terms_for_session(str(job["session_id"])),
+                )
+            if requests_personal_term_creation(job["request_text"]):
+                with trace.stage("memory-context"):
+                    context = await conversation_context.prepare(self._memory, job, None, trace)
+                    recommendations.reset_context(job, context)
+                result = AgentResult(
+                    agent_status=AgentStatus.REFERENCE_GUIDANCE,
+                    reason_codes=[ReasonCode.CATALOG_LIMITATION],
+                    reference_plan=None,
+                    clarifying_question=None,
+                    user_message=PERSONAL_TERM_CREATION_GUIDANCE,
+                )
+                with trace.stage("rendering"):
+                    if not await self._update(job_id, attempt, JobStatus.RENDERING):
+                        trace.stale()
+                        return
+                    with self._tracer.phase("conversation-state-update") as metrics:
+                        state = conversation_context.next_state(
+                            context, job, None, result, snapshot=snapshot
+                        )
+                        state = recommendations.next_state(state, job, None)
+                        await self._memory.complete(job, result, state)
+                        metrics.update(state_saved=True)
+                trace.completed(result)
+                return
             if self._adapter is None:
                 from backend.shared.config import get_settings
                 if get_settings().llm_backend == 'codex-cli':
@@ -146,12 +176,6 @@ class AgentJobWorker:
                     self._adapter = CodexInterpretationAdapter()
                 else:
                     self._adapter = LLMInterpretationAdapter()
-            snapshot = self._snapshot
-            if self._personal_terms is not None:
-                snapshot = with_personal_terms(
-                    snapshot,
-                    await self._personal_terms.list_active_terms_for_session(str(job["session_id"])),
-                )
             with trace.stage("memory-context"):
                 context = await conversation_context.prepare(self._memory, job, self._adapter, trace)
                 recommendations.reset_context(job, context)
