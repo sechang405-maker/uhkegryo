@@ -138,6 +138,40 @@ def submit(client: TestClient, text: str, key: str | None = None) -> dict:
     return {"status": response.status_code, "body": response.json(), "headers": response.headers}
 
 
+def test_login_test_mode_rejects_ai_before_job_or_quota_admission(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        agent_route,
+        "get_settings",
+        lambda: SimpleNamespace(environment="development", login_test_mode=True),
+    )
+
+    result = submit(client, "캐릭터가 달리는 자세를 추천해줘")
+
+    assert result["status"] == 503
+    assert result["body"]["failure_code"] == "ai_service_not_configured"
+    assert client.repositories.jobs.jobs == {}
+
+
+def test_login_test_mode_keeps_deterministic_term_creation_guidance(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = agent_route.get_settings()
+    monkeypatch.setattr(
+        agent_route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            **(current.model_dump() | {"login_test_mode": True}),
+        ),
+    )
+
+    result = submit(client, "발레 동작을 새 용어로 추가하고 싶어")
+
+    assert result["status"] == 202
+    assert len(client.repositories.jobs.jobs) == 1
+
+
 # --- AC-01 · 비동기 제출 ---------------------------------------------------
 
 

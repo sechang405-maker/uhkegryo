@@ -23,7 +23,10 @@ OBSERVABILITY_SERVICES = {
 }
 
 
-def compose_config(*, database_url: str | None = None, observability: bool = False) -> dict:
+def compose_config(
+    *, database_url: str | None = None, observability: bool = False,
+    login_test_mode: bool = False,
+) -> dict:
     cli = shutil.which("docker")
     if not cli:
         pytest.skip("Docker CLI required for Compose interpolation")
@@ -41,12 +44,11 @@ def compose_config(*, database_url: str | None = None, observability: bool = Fal
             "LANGFUSE_SECRET_KEY",
         }
     }
-    env.update(
-        {
-            "COMPOSE_PROJECT_NAME": "uhkegryo-compose-contract",
-            "OPENROUTER_API_KEY": "test-openrouter-key",
-        }
-    )
+    env["COMPOSE_PROJECT_NAME"] = "uhkegryo-compose-contract"
+    if login_test_mode:
+        env.update({"LOGIN_TEST_MODE": "1", "AUTH_MODE": "google_invite"})
+    else:
+        env["OPENROUTER_API_KEY"] = "test-openrouter-key"
     if database_url:
         env["DATABASE_URL"] = database_url
 
@@ -109,4 +111,11 @@ def test_observability_profile_is_opt_in_and_has_no_default_api_dependency():
     for name in OBSERVABILITY_SERVICES:
         assert services[name]["profiles"] == ["observability"]
     assert "langfuse-web" not in services["api"]["depends_on"]
+
+
+def test_login_test_mode_compose_parses_without_openrouter_key():
+    services = compose_config(login_test_mode=True)["services"]
+
+    assert services["api"]["environment"]["LOGIN_TEST_MODE"] == "1"
+    assert services["api"]["environment"]["OPENROUTER_API_KEY"] == ""
 

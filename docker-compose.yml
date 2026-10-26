@@ -1,6 +1,7 @@
 x-app-environment: &app-environment
   DATABASE_URL: ${DATABASE_URL:-postgresql://uhkegryo:uhkegryo-local-only@app-db:5432/uhkegryo}
-  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?Set your own OPENROUTER_API_KEY in .env}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  LOGIN_TEST_MODE: ${LOGIN_TEST_MODE:-0}
   OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
   LLM_MODEL: ${LLM_MODEL:-openai/gpt-4.1-mini}
   LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-180}
@@ -115,6 +116,9 @@ services:
         import sys
         path = os.environ.get("COMPOSE_PROMPT_PATH", "")
         version = os.environ.get("COMPOSE_PROMPT_VERSION", "")
+        login_test = os.environ.get("LOGIN_TEST_MODE", "0").lower() in ("1", "true", "yes")
+        if not login_test and not os.environ.get("OPENROUTER_API_KEY") and os.environ.get("LLM_BACKEND", "openrouter") == "openrouter":
+            sys.exit("Set OPENROUTER_API_KEY, or enable LOGIN_TEST_MODE only for local Google sign-in validation")
         if bool(path) != bool(version):
             sys.exit("Set both INTERPRETER_PROMPT_PATH and INTERPRETER_PROMPT_VERSION in .env")
         if path.startswith("./prompts/"):

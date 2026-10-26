@@ -48,6 +48,9 @@ class Settings(BaseSettings):
 
     # Invitation-only Google login. `local` preserves the existing private runtime.
     auth_mode: Literal['local', 'google_invite'] = 'local'
+    # Explicit, development-only mode for validating Google sign-in without
+    # enabling model-backed features or supplying an OpenRouter credential.
+    login_test_mode: bool = False
     google_client_id: str = ''
     google_client_secret: str = Field(default='', repr=False)
     google_redirect_uri: str = ''
@@ -74,6 +77,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode='after')
     def local_codex_boundary(self):
+        if self.login_test_mode and (
+            self.auth_mode != 'google_invite' or self.environment != 'development'
+        ):
+            raise ValueError(
+                'LOGIN_TEST_MODE requires Google invite auth in development'
+            )
         if self.auth_mode == 'google_invite':
             required = (self.google_client_id, self.google_client_secret,
                         self.google_redirect_uri, self.invite_code_pepper)

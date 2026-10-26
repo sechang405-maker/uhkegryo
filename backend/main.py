@@ -117,7 +117,10 @@ async def handle_unexpected_error(request, exc: Exception) -> JSONResponse:
 @app.get("/health")
 def health() -> dict:
     """채점자와 배포 환경이 서비스 상태를 확인하는 곳."""
-    return {"status": "ok"}
+    result = {"status": "ok"}
+    if settings.login_test_mode:
+        result["ai_status"] = "disabled_for_login_test"
+    return result
 
 
 # 실제 Job worker가 LLM adapter → resolver → response assembler를 실행한다.

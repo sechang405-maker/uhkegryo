@@ -85,6 +85,24 @@ def test_generate_returns_owner_scoped_editable_proposal(services):
     assert generator.calls == [("owner-a", "발레 동작을 용어로 만들고 싶어", "draft-1", False)]
 
 
+def test_login_test_mode_rejects_proposal_before_generator_or_quota(services, monkeypatch):
+    _, generator = services
+    monkeypatch.setattr(
+        routes,
+        "get_settings",
+        lambda: SimpleNamespace(login_test_mode=True),
+    )
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(routes.generate_proposal(
+            routes.ProposalRequest(source_input="발레 포즈를 새 용어로 만들고 싶어"),
+            request(action="personal-term-generate"), Response(), "draft-keyless",
+        ))
+
+    assert raised.value.status_code == 503
+    assert generator.calls == []
+
+
 def test_edit_then_explicit_confirm_and_list(services):
     repository, _ = services; term_id = repository.item.term_id
     edited = asyncio.run(routes.update_personal_term(term_id,

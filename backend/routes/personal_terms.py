@@ -49,8 +49,11 @@ async def resolve_services(request: Request):
     sessions, _ = await _database_call(get_repositories())
     pool = sessions._pool
     repository = PersonalTermRepository(pool)
-    quota = QuotaRepository(pool) if get_settings().auth_mode == "google_invite" else None
-    generator = PersonalTermGenerator(repository, request.app.state.catalog, quota=quota)
+    settings = get_settings()
+    quota = QuotaRepository(pool) if settings.auth_mode == "google_invite" else None
+    generator = None if settings.login_test_mode else PersonalTermGenerator(
+        repository, request.app.state.catalog, quota=quota
+    )
     return sessions, repository, generator
 
 
@@ -66,6 +69,11 @@ async def generate_proposal(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
     require_conversation_action(request, "personal-term-generate")
+    if get_settings().login_test_mode:
+        raise HTTPException(
+            503,
+            "로그인 확인 모드에서는 AI 용어 초안을 만들 수 없습니다.",
+        )
     if not idempotency_key or not idempotency_key.strip() or len(idempotency_key) > 200:
         raise HTTPException(422, "요청 식별자가 필요합니다.")
     sessions, repository, generator = await resolve_services(request)
