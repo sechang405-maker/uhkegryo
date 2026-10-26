@@ -51,8 +51,19 @@ def test_public_failure_has_only_stable_code_and_fixed_message(error, code):
 def test_persisted_failure_and_trace_use_same_code_without_exception_text(error, code):
     class Connection:
         async def fetchrow(self, query, *args):
+            if "UPDATE ai_usage_operations" in query:
+                return None
             self.payload = json.loads(args[3])
             return {"job_id": "job-1"}
+
+        def transaction(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
 
     class Pool:
         def acquire(self):

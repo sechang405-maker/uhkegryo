@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from contextlib import asynccontextmanager
 from typing import Any
 from typing import get_args
 
@@ -28,16 +27,6 @@ _RETRYABLE_FAILURE_CODES = {
     FailureCode.LLM_INVALID_STRUCTURED_OUTPUT,
 }
 _FAILURE_MESSAGE = FAILURE_MESSAGE
-
-
-@asynccontextmanager
-async def _transaction(connection):
-    """Keep simple repository fakes compatible while real DB writes stay atomic."""
-    if hasattr(connection, "transaction"):
-        async with connection.transaction():
-            yield
-    else:
-        yield
 
 
 def retry_delay_ms(attempt: int, error: Exception) -> int:
@@ -120,8 +109,7 @@ class JobRetryRecovery:
             raise ValueError("attempt must be between 1 and max_attempts")
 
         async with self._pool.acquire() as connection:
-            quota_persistence_available = hasattr(connection, "transaction")
-            async with _transaction(connection):
+            async with connection.transaction():
                 if should_retry(attempt, max_attempts, error):
                     row = await connection.fetchrow(
                         """
@@ -170,7 +158,7 @@ class JobRetryRecovery:
                         json.dumps(failure.model_dump(mode="json")),
                         _ACTIVE_STATUSES, diagnostics, diagnostics,
                     )
-                    if row is not None and quota_persistence_available:
+                    if row is not None:
                         await QuotaRepository.finalize_resource_on(
                             connection, operation_kind="conversation",
                             resource_id=job_id, target="released",

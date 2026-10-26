@@ -8,8 +8,13 @@ from backend.services.llm import LLMInvalidStructuredOutput, LLMTimeout
 
 class Connection:
     async def fetchrow(self, sql, *args):
+        if "UPDATE ai_usage_operations" in sql:
+            return None
         self.sql, self.args = sql, args
         return {"job_id": "test"}
+
+    def transaction(self):
+        return self
 
     async def __aenter__(self):
         return self
