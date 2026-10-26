@@ -27,6 +27,9 @@ def test_compose_prompt_pair(tmp_path, path, version, ok):
     )
     env = {k: v for k, v in os.environ.items() if k not in ("INTERPRETER_PROMPT_PATH", "INTERPRETER_PROMPT_VERSION")}
     env.update({key: "test-value" for key in re.findall(r"\$\{([A-Z_]+):\?", compose)})
+    # This test exercises the prompt-pair startup contract, not the explicit
+    # keyless login-only mode.
+    env["OPENROUTER_API_KEY"] = "test-openrouter-key"
     result = subprocess.run([cli, "compose", "config", "--format", "json"], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
     api = json.loads(result.stdout)["services"]["api"]
