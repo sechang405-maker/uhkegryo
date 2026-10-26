@@ -136,5 +136,6 @@ test("image availability notice distinguishes partial, total, empty, and provide
   assert.match(view.imageAvailabilityNotice({ pins: [available] }, { "term:ok": true }, "term"), /\ubaa8\ub4e0/);
   assert.equal(view.imageAvailabilityNotice({ pins: [], reason_codes: ["PIN_RESULTS_EMPTY"] }), null);
   assert.equal(view.imageAvailabilityNotice({ pins: [], reason_codes: ["PIN_SEARCH_UNAVAILABLE"] }), null);
+  assert.equal(view.imageAvailabilityNotice({ pins: [unavailable], reason_codes: ["PIN_SEARCH_UNAVAILABLE"] }), null);
   assert.equal(view.imageAvailabilityNotice({ pins: [available] }), null);
 });

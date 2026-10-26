@@ -63,6 +63,7 @@ export function showThumbnail(pin) {
 
 export function imageAvailabilityNotice(term, failed = {}, termId = term?.term_id || '') {
   const pins = term?.pins || [];
+  if (term?.reason_codes?.some((code) => ["PIN_RESULTS_EMPTY", "PIN_SEARCH_UNAVAILABLE"].includes(code))) return null;
   if (!pins.length) return null;
   const available = pins.filter((pin) => pin.status === "available" && pin.thumbnail_url
     && !failed[`${termId}:${pin.pin_id}`]).length;
