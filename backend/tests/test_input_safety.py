@@ -36,6 +36,22 @@ def test_negation_does_not_allow_separate_unsupported_action(request_text):
     assert is_out_of_scope_input(request_text)
 
 
+def test_marks_clear_meal_recommendation_as_out_of_scope():
+    assert is_out_of_scope_input("오늘 저녁 메뉴를 추천해줘")
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "햄버거를 들고 있는 캐릭터 포즈 레퍼런스를 찾아줘",
+        "저녁 식탁 장면을 그릴 때 쓸 구도 레퍼런스를 추천해줘",
+        "음식을 먹는 인물의 손동작과 포즈를 찾고 싶어",
+    ],
+)
+def test_meal_words_do_not_block_illustration_requests(request_text):
+    assert not is_out_of_scope_input(request_text)
+
+
 def _fixture_inputs(path: Path, ids: set[str]) -> list[str]:
     return [
         row["input"]

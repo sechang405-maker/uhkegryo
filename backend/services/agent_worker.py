@@ -132,7 +132,10 @@ class AgentJobWorker:
                     reason_codes=[ReasonCode.OUT_OF_SCOPE_REQUEST],
                     reference_plan=None,
                     clarifying_question=None,
-                    user_message="이 서비스는 텍스트로 설명한 캐릭터 레퍼런스 탐색을 지원합니다.",
+                    user_message=(
+                        "어케그려는 캐릭터 그림을 위한 용어·포즈·구도·레퍼런스 탐색을 도와드려요. "
+                        "그리고 싶은 캐릭터나 장면을 설명해 주세요."
+                    ),
                 )
                 if await self._update(job_id, attempt, JobStatus.COMPLETED, result=result):
                     trace.completed(result)

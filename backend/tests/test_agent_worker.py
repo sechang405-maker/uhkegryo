@@ -332,6 +332,36 @@ def test_worker_completes_unsafe_input_without_creating_or_calling_adapter(
     assert scoped.writes[-1][1].agent_status is AgentStatus.OUT_OF_SCOPE
 
 
+def test_worker_completes_clear_non_illustration_request_without_retry_or_adapter(
+    monkeypatch, snapshot_factory
+):
+    request_text = "오늘 저녁 메뉴를 추천해줘"
+    jobs, recovery = FakeJobs({**JOB, "request_text": request_text}), FakeRecovery()
+    adapter = FakeAdapter(error=AssertionError("out-of-scope input reached LLM"))
+
+    worker = _worker(monkeypatch, jobs, recovery, snapshot_factory([]), adapter)
+
+    async def process_claimed():
+        with JobTracer().attempt(jobs.job) as trace:
+            await worker._process_claimed(jobs.job, None, trace)
+
+    _run(process_claimed())
+
+    assert [status for status, _, _ in jobs.writes] == [
+        JobStatus.VALIDATING,
+        JobStatus.COMPLETED,
+    ]
+    result = jobs.writes[-1][1]
+    assert result.agent_status is AgentStatus.OUT_OF_SCOPE
+    assert result.reason_codes == [ReasonCode.OUT_OF_SCOPE_REQUEST]
+    assert result.reference_plan is None
+    assert result.clarifying_question is None
+    assert "캐릭터" in result.user_message
+    assert "레퍼런스" in result.user_message
+    assert adapter.calls == []
+    assert recovery.failures == []
+
+
 def test_worker_records_structured_validation_failure(monkeypatch, snapshot_factory):
     error = LLMInvalidStructuredOutput("private model output")
     jobs, recovery = FakeJobs(), FakeRecovery()

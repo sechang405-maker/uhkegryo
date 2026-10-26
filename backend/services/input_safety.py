@@ -91,6 +91,23 @@ _NEGATED_SCOPE_ACTION = re.compile(
     r"안\s*(?:해도|하고|할|하는|함)|지\s*(?:말고|않고|않)|필요\s*없|원하지\s*않|(?:말고|없이)(?=\s|$))"
 )
 
+# Keep this gate deliberately narrower than a generic topic deny-list. Words such
+# as "음식" are valid visual subjects, so a request is classified here only when
+# it contains an explicit everyday meal-selection intent and no illustration
+# context at all.
+_ILLUSTRATION_SCOPE_SIGNAL = re.compile(
+    r"캐릭터|인물|포즈|그림|일러스트|레퍼런스|구도|시점|체형|드로잉|스케치|장면|"
+    r"character|figure|pose|illustration|drawing|reference|composition|anatomy|perspective|sketch"
+)
+_MEAL_SELECTION_REQUEST = re.compile(
+    r"(?:오늘\s*)?(?:아침|점심|저녁|야식|식사|메뉴|음식).{0,18}"
+    r"(?:추천|골라|정해|뭐\s*먹|무엇을\s*먹)|"
+    r"(?:추천|골라|정해|뭐\s*먹|무엇을\s*먹).{0,18}"
+    r"(?:아침|점심|저녁|야식|식사|메뉴|음식)|"
+    r"(?:recommend|choose|pick|suggest).{0,24}(?:breakfast|lunch|dinner|meal|menu)|"
+    r"(?:breakfast|lunch|dinner|meal|menu).{0,24}(?:recommend|choose|pick|suggest)"
+)
+
 
 def normalize_input_text(request_text: str) -> str:
     """Normalize user text for deterministic safety and evidence checks."""
@@ -159,8 +176,14 @@ def is_unsafe_input(request_text: str) -> bool:
 
 def is_out_of_scope_input(request_text: str) -> bool:
     """Return whether a request asks for a deterministic unsupported operation."""
-    clauses = _SCOPE_CLAUSE_SEPARATOR.split(normalize_input_text(request_text))
-    return any(
+    text = normalize_input_text(request_text)
+    clauses = _SCOPE_CLAUSE_SEPARATOR.split(text)
+    unsupported_operation = any(
         not _NEGATED_SCOPE_ACTION.match(clause[match.end():])
         for clause in clauses for match in _OUT_OF_SCOPE_INPUT.finditer(clause)
     )
+    clear_non_illustration_request = bool(
+        _MEAL_SELECTION_REQUEST.search(text)
+        and not _ILLUSTRATION_SCOPE_SIGNAL.search(text)
+    )
+    return unsupported_operation or clear_non_illustration_request
