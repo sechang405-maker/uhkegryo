@@ -58,7 +58,7 @@ class InviteCodeRepository:
 
     async def issue(
         self, actor_account_id: str, *, beneficiary_label: str, initial_limit: int = 0,
-        expires_at: datetime | None = None,
+        expires_at: datetime | None = None, admin_note: str | None = None,
     ) -> IssuedInvite:
         label = beneficiary_label.strip()
         if not label or initial_limit < 0:
@@ -70,14 +70,25 @@ class InviteCodeRepository:
                 row = await connection.fetchrow(
                     """INSERT INTO invites(
                            invite_id,email_normalized,status,created_by_account_id,beneficiary_label,
-                           code_hash,code_hint,initial_ai_request_limit,expires_at)
-                       VALUES($1,NULL,'pending',$2,$3,$4,$5,$6,$7) RETURNING *""",
-                    uuid.uuid4(), actor["account_id"], label, self._hash(raw), raw[-6:], initial_limit, expires_at,
+                           code_hash,code_hint,initial_ai_request_limit,expires_at,admin_note)
+                       VALUES($1,NULL,'pending',$2,$3,$4,$5,$6,$7,$8) RETURNING *""",
+                    uuid.uuid4(), actor["account_id"], label, self._hash(raw), raw[-6:],
+                    initial_limit, expires_at, (admin_note or "").strip() or None,
                 )
                 await _audit(connection, actor["account_id"], None, "invite_created", {
                     "invite_id": str(row["invite_id"]), "beneficiary_label": label,
                 })
                 return IssuedInvite(raw, _invite(row))
+
+    async def list_for_admin(self, actor_account_id: str) -> list[InviteRecord]:
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                await _active_admin(connection, actor_account_id)
+                rows = await connection.fetch(
+                    """SELECT * FROM invites
+                       ORDER BY created_at DESC,invite_id DESC"""
+                )
+        return [_invite(row) for row in rows]
 
     async def redeem(
         self, raw_code: str, *, google_subject: str, verified_email: str,

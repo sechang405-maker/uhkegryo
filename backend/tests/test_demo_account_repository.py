@@ -6,8 +6,14 @@ import uuid
 import asyncpg
 import pytest
 
-from backend.services.demo_account_repository import AdminPermissionDenied, DemoAccountRepository
+from backend.services.demo_account_repository import (
+    AccountStateConflict,
+    AdminPermissionDenied,
+    DemoAccountRepository,
+)
+from backend.services.auth_session_repository import AuthSessionRepository, AuthSessionUnavailable
 from backend.services.invite_code_repository import InviteCodeRepository
+from backend.services.quota_repository import QuotaRepository
 from backend.services.session_repository import SessionRepository
 from backend.tests.test_conversation_sessions import database_case
 
@@ -111,5 +117,42 @@ def test_only_active_admin_can_invite_disable_and_adjust_limit_with_audit():
         await pool.execute("UPDATE accounts SET status='disabled' WHERE account_id=$1", uuid.UUID(admin_id))
         with pytest.raises(AdminPermissionDenied):
             await accounts.set_ai_request_limit(admin_id, target_id, 8, reason="disabled admin")
+
+    asyncio.run(database_case(case))
+
+
+def test_admin_overview_is_sanitized_and_stale_mutations_fail_closed():
+    async def case(pool):
+        admin_id = await _seed_account(pool, role="admin", email="admin@example.com")
+        user_id = await _seed_account(pool, limit=3, email="user@example.com")
+        accounts = DemoAccountRepository(pool)
+        invites = InviteCodeRepository(pool, pepper="test-pepper")
+        issued = await invites.issue(
+            admin_id, beneficiary_label="Tester 1", admin_note="drawing beginner",
+            initial_limit=8,
+        )
+        operation = await QuotaRepository(pool).reserve(
+            user_id, "conversation", "overview-key", "overview-input",
+        )
+        await QuotaRepository(pool).charge(user_id, operation.operation_id)
+
+        overview = await accounts.list_accounts_for_admin(admin_id)
+        user = next(item for item in overview if item.account_id == user_id)
+        assert user.identity_bound is True
+        assert user.usage.model_dump() == {"limit": 3, "charged": 1, "reserved": 0, "remaining": 2}
+        listed = await invites.list_for_admin(admin_id)
+        assert listed[0].admin_note == "drawing beginner"
+        assert issued.raw_code not in str(listed)
+
+        with pytest.raises(AccountStateConflict):
+            await accounts.set_ai_request_limit(
+                admin_id, user_id, 9, expected_current_limit=2, reason="stale screen",
+            )
+        token = await AuthSessionRepository(pool).create_app_session(user_id)
+        await accounts.set_account_status(
+            admin_id, user_id, "disabled", expected_current_status="active", reason="pause",
+        )
+        with pytest.raises(AuthSessionUnavailable):
+            await AuthSessionRepository(pool).resolve_app_session(token)
 
     asyncio.run(database_case(case))

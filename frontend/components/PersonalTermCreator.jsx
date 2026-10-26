@@ -37,6 +37,7 @@ export default function PersonalTermCreator({ open, onClose, onItemsChange }) {
     setRequestId(key); setBusy(true); setError("");
     try {
       const result = await client.generate(sourceInput, key, retryFailed);
+      window.dispatchEvent(new Event("account-quota-refresh"));
       setDraft(editablePersonalTerm(result.term));
       setDraft((current) => ({ ...current, term_id: result.term.term_id, status: result.term.status }));
       setWarnings(result.duplicate_warnings || []);

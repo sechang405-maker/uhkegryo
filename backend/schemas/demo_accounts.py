@@ -29,6 +29,7 @@ class InviteRecord(BaseModel):
     invite_id: str
     email_normalized: str | None = None
     beneficiary_label: str | None = None
+    admin_note: str | None = None
     code_hint: str | None = None
     initial_ai_request_limit: int = 0
     status: Literal["pending", "redeemed", "revoked", "expired"]
@@ -63,3 +64,15 @@ class AccountUsage(BaseModel):
     charged: int
     reserved: int
     remaining: int
+
+
+class AdminAccountSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_id: str
+    email_normalized: str
+    display_name: str | None = None
+    role: Literal["user", "admin"]
+    status: Literal["active", "disabled"]
+    identity_bound: bool
+    usage: AccountUsage

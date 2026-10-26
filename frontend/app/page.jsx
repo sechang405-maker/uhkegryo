@@ -32,6 +32,7 @@ import { ImageSearchLoading, LoadingImage, LoadingIndicator } from "../component
 import { createMobileResultOrigin, resolveMobileResult } from "../lib/mobile-result-flow.mjs";
 import PersonalTermCreator from "../components/PersonalTermCreator";
 import AuthAccessControl from "../components/AuthAccessControl";
+import AccountQuota from "../components/AccountQuota";
 import { createPersonalTermClient, reconcilePersonalTermState } from "../lib/personal-terms.mjs";
 import { personalGraphTerms } from "../lib/term-graph-personal-layout.mjs";
 import { createConditionRemovalController, readCurrentConditions, removeCurrentCondition } from "../lib/current-conditions.mjs";
@@ -493,7 +494,12 @@ export default function HomePage() {
     const poller = resumeConversation(turns, { onUpdate: (turn) => {
       if (sessionIdRef.current !== activeSessionId || activeSessionId !== turn.job?.session_id) return;
       setTurns((entries) => upsertTurn(entries, turn));
-      if (turn.job?.job_status === "completed") refreshSessions();
+      if (turn.job?.job_status === "completed") {
+        refreshSessions();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("account-quota-refresh"));
+        }
+      }
       if (turn.job?.job_status === "completed") refreshCurrentConditions(activeSessionId);
       const mobileDecision = resolveMobileResult(mobileOrigin, {
         requestId: turn.id,
@@ -1181,6 +1187,7 @@ export default function HomePage() {
   return (
     <main className="workspace" data-mobile-panel={mobilePanel}>
       <AuthAccessControl />
+      <AccountQuota />
       <nav className="mobile-workspace-nav" aria-label="작업 화면">
         <HistoryLogo open={menuOpen} onClick={toggleMenu} />
         <button type="button" aria-pressed={mobilePanel === "reference"} aria-controls="reference-panel"

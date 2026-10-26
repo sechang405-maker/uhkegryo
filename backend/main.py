@@ -15,6 +15,7 @@ from backend.routes.agent import ApiContractError, close_result_tracer, close_wi
 from backend.routes.term_search import router as term_search_router
 from backend.routes.personal_terms import router as personal_terms_router
 from backend.routes.auth import close_auth_http, router as auth_router
+from backend.routes.admin_demo import router as admin_demo_router
 from backend.services.auth_session_repository import AuthSessionUnavailable
 from backend.shared.auth import set_session_cookie
 from backend.services.catalog_repository import CatalogLoadError, load_catalog
@@ -103,6 +104,7 @@ app.include_router(agent_router)
 app.include_router(term_search_router)
 app.include_router(personal_terms_router)
 app.include_router(auth_router)
+app.include_router(admin_demo_router)
 
 
 @app.exception_handler(Exception)
