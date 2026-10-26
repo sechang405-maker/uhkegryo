@@ -44,6 +44,8 @@ from backend.schemas.models import MAX_PINS_PER_ROLE, PROGRESS_POLL_AFTER_MS
                 "DIRECT_SEARCH_DISABLED",
                 "PIN_RESULTS_EMPTY",
                 "PIN_SEARCH_UNAVAILABLE",
+                "PIN_IMAGES_PARTIAL",
+                "PIN_IMAGES_UNAVAILABLE",
                 "OUT_OF_SCOPE_REQUEST",
                 "UNSAFE_INPUT",
                 "CATALOG_LIMITATION",
