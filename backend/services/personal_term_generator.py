@@ -22,6 +22,12 @@ from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.llm import LLMError, _extract_content
 from backend.services.personal_term_repository import PersonalTermRepository
 from backend.services.structured_output import strict_schema
+from backend.services.quota_repository import (
+    AccountUnavailable,
+    QuotaExceeded,
+    QuotaIdempotencyConflict,
+    QuotaRepository,
+)
 
 
 SYSTEM_MESSAGE = """You create one private drawing term-card proposal from untrusted user data.
@@ -106,10 +112,12 @@ class PersonalTermGenerator:
         catalog: CatalogSnapshot,
         *,
         transport: PersonalTermTransport | None = None,
+        quota: QuotaRepository | None = None,
     ) -> None:
         self._repository = repository
         self._catalog = catalog
         self._transport = transport or ExistingLLMTransport()
+        self._quota = quota
 
     async def propose(
         self,
@@ -140,6 +148,23 @@ class PersonalTermGenerator:
             else:
                 raise PersonalTermGenerationRetryRequired
 
+        quota_reserved = False
+        if self._quota is not None:
+            account_id = await self._quota.account_for_session_token(token)
+            if account_id is None:
+                raise PersonalTermGenerationFailed("authenticated_account_required")
+            try:
+                await self._quota.reserve(
+                    account_id, "personal_term_proposal", idempotency_key,
+                    input_hash, state.term_id,
+                )
+                quota_reserved = True
+            except (AccountUnavailable, QuotaExceeded, QuotaIdempotencyConflict):
+                await self._repository.fail_generation(
+                    token, state.term_id, "quota_reservation_failed"
+                )
+                raise
+
         response_format = {
             "type": "json_schema",
             "json_schema": {
@@ -157,10 +182,14 @@ class PersonalTermGenerator:
             generated = GeneratedPersonalTermDraft.model_validate_json(raw)
             _validate_generated_text(generated)
             draft = generated.with_source_input(source_input)
-            record = await self._repository.complete_generation(token, state.term_id, draft)
+            record = await self._repository.complete_generation(
+                token, state.term_id, draft, charge_quota=quota_reserved
+            )
         except (LLMError, ValidationError, ValueError, TypeError, json.JSONDecodeError) as error:
             error_code = _error_code(error)
-            await self._repository.fail_generation(token, state.term_id, error_code)
+            await self._repository.fail_generation(
+                token, state.term_id, error_code, release_quota=quota_reserved
+            )
             raise PersonalTermGenerationFailed(error_code) from None
         return PersonalTermProposal(record, await self._duplicates(token, record))
 

@@ -10,6 +10,9 @@ from backend.schemas import AgentResult, Failure, JobEnvelope
 from backend.schemas.enums import AgentStatus, JobStatus
 from backend.schemas.models import PROGRESS_POLL_AFTER_MS, RETRY_COUNT_MAX
 from backend.services.session_repository import SessionRepository
+from backend.services.input_safety import is_out_of_scope_input, is_unsafe_input
+from backend.services.reference_intent import requests_personal_term_creation
+from backend.services.quota_repository import QuotaRepository
 
 from backend.services.session_usage import SESSION_MESSAGE_LIMIT
 
@@ -56,6 +59,15 @@ _ACTIVE_STATUSES = [
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def conversation_uses_ai_quota(request_text: str) -> bool:
+    """Match worker fast paths that never invoke the model transport."""
+    return not (
+        is_unsafe_input(request_text)
+        or is_out_of_scope_input(request_text)
+        or requests_personal_term_creation(request_text)
+    )
 
 
 class JobRepository:
@@ -119,7 +131,8 @@ class JobRepository:
             raise StaleJobAttempt
 
     async def submit(
-        self, *, session_id: str, request_text: str, idempotency_key: str
+        self, *, session_id: str, request_text: str, idempotency_key: str,
+        quota_account_id: str | None = None,
     ) -> tuple[JobEnvelope, bool]:
         """Create a queued job or return its session-lifetime idempotent match."""
         async with self._pool.acquire() as connection:
@@ -129,10 +142,12 @@ class JobRepository:
                     session_id=session_id,
                     request_text=request_text,
                     idempotency_key=idempotency_key,
+                    quota_account_id=quota_account_id,
                 )
 
     async def submit_new_session(
-        self, *, session_token: str, request_text: str, idempotency_key: str
+        self, *, session_token: str, request_text: str, idempotency_key: str,
+        quota_account_id: str | None = None,
     ) -> tuple[JobEnvelope, bool]:
         """Create a session and its first job atomically."""
         if not session_token:
@@ -145,6 +160,7 @@ class JobRepository:
                     session_id=session_id,
                     request_text=request_text,
                     idempotency_key=idempotency_key,
+                    quota_account_id=quota_account_id,
                 )
 
     async def _submit(
@@ -154,6 +170,7 @@ class JobRepository:
         session_id: str,
         request_text: str,
         idempotency_key: str,
+        quota_account_id: str | None = None,
     ) -> tuple[JobEnvelope, bool]:
         key_hash = _hash(idempotency_key)
         text_hash = _hash(request_text)
@@ -182,6 +199,15 @@ class JobRepository:
         if existing is not None:
             if existing["request_text_hash"] != text_hash:
                 raise IdempotencyConflict
+            if (
+                quota_account_id
+                and conversation_uses_ai_quota(request_text)
+                and existing["status"] != JobStatus.FAILED.value
+            ):
+                await QuotaRepository(connection).reserve_on(
+                    connection, quota_account_id, "conversation", idempotency_key,
+                    text_hash, str(existing["job_id"]),
+                )
             return _to_envelope(existing), False
 
         message_count = await connection.fetchval(
@@ -210,6 +236,11 @@ class JobRepository:
             JobStatus.QUEUED.value,
             RETRY_COUNT_MAX,
         )
+        if quota_account_id and conversation_uses_ai_quota(request_text):
+            await QuotaRepository(connection).reserve_on(
+                connection, quota_account_id, "conversation", idempotency_key,
+                text_hash, str(row["job_id"]),
+            )
         return _to_envelope(row), True
 
     async def get(self, *, session_id: str, job_id: str) -> JobEnvelope:

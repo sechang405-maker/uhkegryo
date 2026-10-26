@@ -5,6 +5,7 @@ import asyncio
 from copy import deepcopy
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
 from backend.schemas.enums import AgentStatus, FailureCode, JobStatus, ReasonCode, Role
@@ -34,6 +35,7 @@ from backend.services.mcp_tool_gateway import McpToolGateway
 from backend.services.pinterest_widget import PinterestWidgetClient
 from backend.services.personal_catalog import with_personal_terms
 from backend.services.personal_term_repository import PersonalTermRepository
+from backend.services.quota_repository import QuotaRepository
 from backend.services.searxng_pinterest_search import SearXNGPinterestSearchProvider
 from backend.services.resolver import ResolutionResult
 from backend.services.response_assembler import OUT_OF_SCOPE_MESSAGE, RoleSearchOutcome, assemble
@@ -622,6 +624,9 @@ class AgentJobWorker:
             while True:
                 try:
                     await self._recovery.recover_expired_leases()
+                    await QuotaRepository(self._pool).recover_stale_reservations(
+                        before=datetime.now(timezone.utc) - timedelta(minutes=15)
+                    )
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:

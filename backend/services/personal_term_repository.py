@@ -14,6 +14,7 @@ from backend.schemas.personal_terms import (
     PersonalTermUpdate,
 )
 from backend.shared.auth import hash_session_token
+from backend.services.quota_repository import QuotaRepository, QuotaStateConflict
 
 
 class PersonalTermNotFound(Exception):
@@ -182,11 +183,13 @@ class PersonalTermRepository:
         return _generation_record(row)
 
     async def complete_generation(
-        self, token: str, term_id: str, draft: PersonalTermDraft
+        self, token: str, term_id: str, draft: PersonalTermDraft, *, charge_quota: bool = False
     ) -> PersonalTermRecord:
         payload = draft.model_dump(mode="json")
-        row = await self._pool.fetchrow(
-            """UPDATE personal_terms p SET
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                row = await connection.fetchrow(
+                    """UPDATE personal_terms p SET
                    status='proposed', role=$3, label_ko=$4, label_en=$5,
                    plain_meaning_ko=$6, reference_checkpoints_ko=$7::jsonb,
                    cautions_ko=$8::jsonb, aliases_ko=$9::jsonb,
@@ -196,37 +199,53 @@ class PersonalTermRepository:
                WHERE o.owner_id=p.owner_id AND o.session_token_hash=$1
                  AND p.term_id=$2 AND p.status='generating'
                RETURNING p.*""",
-            hash_session_token(token),
-            term_id,
-            payload["role"],
-            payload["label_ko"],
-            payload["label_en"],
-            payload["plain_meaning_ko"],
-            json.dumps(payload["reference_checkpoints_ko"], ensure_ascii=False),
-            json.dumps(payload["cautions_ko"], ensure_ascii=False),
-            json.dumps(payload["aliases_ko"], ensure_ascii=False),
-            json.dumps(payload["query_fragments_en"], ensure_ascii=False),
-            payload["proposal_kind"],
-            payload["uncertainty_ko"],
-        )
+                    hash_session_token(token),
+                    term_id,
+                    payload["role"],
+                    payload["label_ko"],
+                    payload["label_en"],
+                    payload["plain_meaning_ko"],
+                    json.dumps(payload["reference_checkpoints_ko"], ensure_ascii=False),
+                    json.dumps(payload["cautions_ko"], ensure_ascii=False),
+                    json.dumps(payload["aliases_ko"], ensure_ascii=False),
+                    json.dumps(payload["query_fragments_en"], ensure_ascii=False),
+                    payload["proposal_kind"],
+                    payload["uncertainty_ko"],
+                )
+                if row is not None and charge_quota:
+                    charged = await QuotaRepository.finalize_resource_on(
+                        connection, operation_kind="personal_term_proposal",
+                        resource_id=term_id, target="charged",
+                    )
+                    if not charged:
+                        raise QuotaStateConflict("missing personal-term quota reservation")
         if row is None:
             raise PersonalTermStateConflict
         return _record(row)
 
     async def fail_generation(
-        self, token: str, term_id: str, error_code: str
+        self, token: str, term_id: str, error_code: str, *, release_quota: bool = False
     ) -> PersonalTermGenerationRecord:
-        row = await self._pool.fetchrow(
-            """UPDATE personal_terms p
+        async with self._pool.acquire() as connection:
+            async with connection.transaction():
+                row = await connection.fetchrow(
+                    """UPDATE personal_terms p
                SET status='failed', generation_error_code=$3, updated_at=now()
                FROM owner_session_tokens o
                WHERE o.owner_id=p.owner_id AND o.session_token_hash=$1
                  AND p.term_id=$2 AND p.status='generating'
                RETURNING p.*""",
-            hash_session_token(token),
-            term_id,
-            error_code,
-        )
+                    hash_session_token(token),
+                    term_id,
+                    error_code,
+                )
+                if row is not None and release_quota:
+                    released = await QuotaRepository.finalize_resource_on(
+                        connection, operation_kind="personal_term_proposal",
+                        resource_id=term_id, target="released", reason=error_code,
+                    )
+                    if not released:
+                        raise QuotaStateConflict("missing personal-term quota reservation")
         if row is None:
             raise PersonalTermStateConflict
         return _generation_record(row)

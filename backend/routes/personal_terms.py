@@ -21,6 +21,8 @@ from backend.services.personal_term_repository import (
     PersonalTermRepository,
     PersonalTermStateConflict,
 )
+from backend.services.quota_repository import QuotaExceeded, QuotaRepository
+from backend.shared.config import get_settings
 
 router = APIRouter(prefix="/api/personal-terms", tags=["personal-terms"])
 
@@ -47,7 +49,8 @@ async def resolve_services(request: Request):
     sessions, _ = await _database_call(get_repositories())
     pool = sessions._pool
     repository = PersonalTermRepository(pool)
-    generator = PersonalTermGenerator(repository, request.app.state.catalog)
+    quota = QuotaRepository(pool) if get_settings().auth_mode == "google_invite" else None
+    generator = PersonalTermGenerator(repository, request.app.state.catalog, quota=quota)
     return sessions, repository, generator
 
 
@@ -82,6 +85,8 @@ async def generate_proposal(
         raise HTTPException(502, "AI 초안을 만들지 못했습니다. 입력을 확인하고 다시 시도해 주세요.") from None
     except PersonalTermNotFound:
         raise HTTPException(404, "개인 용어를 찾을 수 없습니다.") from None
+    except QuotaExceeded:
+        raise HTTPException(429, "\uacc4\uc815\uc758 AI \uc694\uccad \ud69f\uc218\ub97c \ubaa8\ub450 \uc0ac\uc6a9\ud588\uc2b5\ub2c8\ub2e4.") from None
     return ProposalResponse(
         term=proposal.record,
         duplicate_warnings=[DuplicateWarningResponse(**warning.__dict__) for warning in proposal.duplicate_warnings],

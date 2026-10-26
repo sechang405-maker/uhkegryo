@@ -3,9 +3,14 @@ import json
 from uuid import UUID
 
 from backend.schemas.enums import JobStatus, Role
-from backend.services.job_repository import JobRepository, StaleJobAttempt
+from backend.services.job_repository import (
+    JobRepository,
+    StaleJobAttempt,
+    conversation_uses_ai_quota,
+)
 from backend.services.llm import LLMInvalidStructuredOutput
 from backend.services.session_memory import STATE_KEYS, source_ids
+from backend.services.quota_repository import QuotaRepository, QuotaStateConflict
 
 RECENT_LIMIT = 6
 RECORD_LIMIT = 4000
@@ -154,5 +159,18 @@ class ConversationMemory:
                     job_id=str(job["job_id"]), attempt=job["attempt"],
                     status=JobStatus.COMPLETED, result=result,
                 )
+                if hasattr(connection, "fetchrow"):
+                    account_id = await connection.fetchval(
+                        """SELECT o.account_id FROM sessions s
+                           JOIN anonymous_owners o USING(owner_id)
+                           WHERE s.session_id=$1""",
+                        job["session_id"],
+                    )
+                    charged = await QuotaRepository.finalize_resource_on(
+                        connection, operation_kind="conversation",
+                        resource_id=str(job["job_id"]), target="charged",
+                    )
+                    if account_id is not None and conversation_uses_ai_quota(job["request_text"]) and not charged:
+                        raise QuotaStateConflict("missing conversation quota reservation")
                 await connection.execute("UPDATE sessions SET memory_json=memory_json || $2::jsonb WHERE session_id=$1",
                                          job["session_id"], json.dumps(state, ensure_ascii=False))

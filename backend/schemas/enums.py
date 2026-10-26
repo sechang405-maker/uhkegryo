@@ -106,6 +106,7 @@ class ApiErrorCode(StrEnum):
     JOB_NOT_FOUND = "job_not_found"
     SESSION_NOT_FOUND = "session_not_found"
     SESSION_MESSAGE_LIMIT_REACHED = "session_message_limit_reached"
+    ACCOUNT_AI_QUOTA_EXCEEDED = "account_ai_quota_exceeded"
 
 
 class PinStatus(StrEnum):

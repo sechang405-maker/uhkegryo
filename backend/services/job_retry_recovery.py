@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from typing import Any
 from typing import get_args
 
@@ -12,6 +13,7 @@ from backend.schemas.enums import FailureCode, JobStatus
 from backend.services.llm import LLMError, LLMInvalidStructuredOutput
 from backend.services.failure_mapping import FAILURE_MESSAGE, public_failure
 from backend.services.structured_output import response_format
+from backend.services.quota_repository import QuotaRepository
 
 _ACTIVE_STATUSES = [
     JobStatus.RUNNING.value,
@@ -26,6 +28,16 @@ _RETRYABLE_FAILURE_CODES = {
     FailureCode.LLM_INVALID_STRUCTURED_OUTPUT,
 }
 _FAILURE_MESSAGE = FAILURE_MESSAGE
+
+
+@asynccontextmanager
+async def _transaction(connection):
+    """Keep simple repository fakes compatible while real DB writes stay atomic."""
+    if hasattr(connection, "transaction"):
+        async with connection.transaction():
+            yield
+    else:
+        yield
 
 
 def retry_delay_ms(attempt: int, error: Exception) -> int:
@@ -108,66 +120,62 @@ class JobRetryRecovery:
             raise ValueError("attempt must be between 1 and max_attempts")
 
         async with self._pool.acquire() as connection:
-            if should_retry(attempt, max_attempts, error):
-                row = await connection.fetchrow(
-                    """
-                    UPDATE jobs
-                    SET status = 'queued',
-                        next_retry_at = now() + ($4::int * interval '1 millisecond'),
-                        lease_expires_at = NULL,
-                        succeeded = NULL,
-                        final_payload_json = NULL,
-                        validation_feedback_json = $6::jsonb,
-                        validation_failure_history_json = CASE WHEN $7::jsonb IS NULL
-                            THEN validation_failure_history_json
-                            ELSE validation_failure_history_json || jsonb_build_object(($2::int)::text, $7::jsonb) END,
-                        completed_at = NULL,
-                        updated_at = now()
-                    WHERE job_id = $1::uuid
-                      AND status = ANY($5::text[])
-                      AND attempt = $2
-                      AND max_attempts = $3
-                      AND attempt < max_attempts
-                    RETURNING job_id
-                    """,
-                    job_id,
-                    attempt,
-                    max_attempts,
-                    retry_delay_ms(attempt, error),
-                    _ACTIVE_STATUSES,
-                    json.dumps(error.feedback) if isinstance(error, LLMInvalidStructuredOutput) else None,
-                    validation_diagnostics(error),
-                )
-            else:
-                failure = _failure(error)
-                row = await connection.fetchrow(
-                    """
-                    UPDATE jobs
-                    SET status = 'failed',
-                        next_retry_at = NULL,
-                        lease_expires_at = NULL,
-                        succeeded = FALSE,
-                        final_payload_json = $4::jsonb,
-                        validation_feedback_json = $6::jsonb,
-                        validation_failure_history_json = CASE WHEN $7::jsonb IS NULL
-                            THEN validation_failure_history_json
-                            ELSE validation_failure_history_json || jsonb_build_object(($2::int)::text, $7::jsonb) END,
-                        completed_at = now(),
-                        updated_at = now()
-                    WHERE job_id = $1::uuid
-                      AND status = ANY($5::text[])
-                      AND attempt = $2
-                      AND max_attempts = $3
-                    RETURNING job_id
-                    """,
-                    job_id,
-                    attempt,
-                    max_attempts,
-                    json.dumps(failure.model_dump(mode="json")),
-                    _ACTIVE_STATUSES,
-                    validation_diagnostics(error),
-                    validation_diagnostics(error),
-                )
+            quota_persistence_available = hasattr(connection, "transaction")
+            async with _transaction(connection):
+                if should_retry(attempt, max_attempts, error):
+                    row = await connection.fetchrow(
+                        """
+                        UPDATE jobs
+                        SET status = 'queued',
+                            next_retry_at = now() + ($4::int * interval '1 millisecond'),
+                            lease_expires_at = NULL,
+                            succeeded = NULL,
+                            final_payload_json = NULL,
+                            validation_feedback_json = $6::jsonb,
+                            validation_failure_history_json = CASE WHEN $7::jsonb IS NULL
+                                THEN validation_failure_history_json
+                                ELSE validation_failure_history_json || jsonb_build_object(($2::int)::text, $7::jsonb) END,
+                            completed_at = NULL,
+                            updated_at = now()
+                        WHERE job_id = $1::uuid
+                          AND status = ANY($5::text[])
+                          AND attempt = $2
+                          AND max_attempts = $3
+                          AND attempt < max_attempts
+                        RETURNING job_id
+                        """,
+                        job_id, attempt, max_attempts, retry_delay_ms(attempt, error),
+                        _ACTIVE_STATUSES,
+                        json.dumps(error.feedback) if isinstance(error, LLMInvalidStructuredOutput) else None,
+                        validation_diagnostics(error),
+                    )
+                else:
+                    failure = _failure(error)
+                    diagnostics = validation_diagnostics(error)
+                    row = await connection.fetchrow(
+                        """
+                        UPDATE jobs
+                        SET status = 'failed', next_retry_at = NULL, lease_expires_at = NULL,
+                            succeeded = FALSE, final_payload_json = $4::jsonb,
+                            validation_feedback_json = $6::jsonb,
+                            validation_failure_history_json = CASE WHEN $7::jsonb IS NULL
+                                THEN validation_failure_history_json
+                                ELSE validation_failure_history_json || jsonb_build_object(($2::int)::text, $7::jsonb) END,
+                            completed_at = now(), updated_at = now()
+                        WHERE job_id = $1::uuid AND status = ANY($5::text[])
+                          AND attempt = $2 AND max_attempts = $3
+                        RETURNING job_id
+                        """,
+                        job_id, attempt, max_attempts,
+                        json.dumps(failure.model_dump(mode="json")),
+                        _ACTIVE_STATUSES, diagnostics, diagnostics,
+                    )
+                    if row is not None and quota_persistence_available:
+                        await QuotaRepository.finalize_resource_on(
+                            connection, operation_kind="conversation",
+                            resource_id=job_id, target="released",
+                            reason="terminal_job_failure",
+                        )
         return row is not None
 
     async def recover_expired_leases(self) -> dict[str, int]:
@@ -196,6 +204,14 @@ class JobRetryRecovery:
                     json.dumps(interrupted.model_dump(mode="json")),
                     _ACTIVE_STATUSES,
                 )
+                for row in failed:
+                    await QuotaRepository.finalize_resource_on(
+                        connection,
+                        operation_kind="conversation",
+                        resource_id=str(row["job_id"]),
+                        target="released",
+                        reason="expired_final_worker_lease",
+                    )
                 requeued = await connection.fetch(
                     """
                     UPDATE jobs

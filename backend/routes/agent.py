@@ -40,6 +40,7 @@ from backend.services.personal_catalog import with_personal_terms
 from backend.services.failure_mapping import DATABASE_ERRORS, FAILURE_MESSAGE, classify_failure
 from backend.services.pinterest_widget import PinterestWidgetClient
 from backend.services.job_trace import JobTracer
+from backend.services.quota_repository import QuotaExceeded
 
 router = APIRouter(tags=["agent"])
 _pool: Any | None = None
@@ -143,6 +144,7 @@ MESSAGES = {
     ApiErrorCode.SESSION_REQUIRED: "이 브라우저에서 시작한 요청의 세션이 없습니다. 처음부터 다시 시도해 주세요.",
     ApiErrorCode.JOB_NOT_FOUND: "요청한 작업을 찾을 수 없습니다.",
     ApiErrorCode.SESSION_NOT_FOUND: "대화를 찾을 수 없거나 만료되었습니다.",
+    ApiErrorCode.ACCOUNT_AI_QUOTA_EXCEEDED: "\uacc4\uc815\uc758 AI \uc694\uccad \ud69f\uc218\ub97c \ubaa8\ub450 \uc0ac\uc6a9\ud588\uc2b5\ub2c8\ub2e4.",
 }
 
 STATUS_CODES = {
@@ -152,6 +154,7 @@ STATUS_CODES = {
     ApiErrorCode.SESSION_REQUIRED: 401,
     ApiErrorCode.JOB_NOT_FOUND: 404,
     ApiErrorCode.SESSION_NOT_FOUND: 404,
+    ApiErrorCode.ACCOUNT_AI_QUOTA_EXCEEDED: 429,
 }
 
 DATABASE_ERROR_STATUS = 503
@@ -254,6 +257,8 @@ async def submit_agent(
     key = _parse_idempotency_key(idempotency_key)
 
     sessions, jobs = await _database_call(get_repositories())
+    account = getattr(request.state, "account", None)
+    quota_account_id = str(account.account_id) if account is not None else None
     raw_cookie = request.cookies.get(SESSION_COOKIE_NAME)
     known = raw_cookie and await _database_call(sessions.has_owner(raw_cookie))
     token = raw_cookie if known else create_session_token()
@@ -276,6 +281,7 @@ async def submit_agent(
                     session_token=token,
                     request_text=payload.request_text,
                     idempotency_key=key,
+                    **({"quota_account_id": quota_account_id} if quota_account_id else {}),
                 )
             )
         else:
@@ -284,6 +290,7 @@ async def submit_agent(
                     session_id=session_id,
                     request_text=payload.request_text,
                     idempotency_key=key,
+                    **({"quota_account_id": quota_account_id} if quota_account_id else {}),
                 )
             )
     except SessionMessageLimitReached:
@@ -294,6 +301,8 @@ async def submit_agent(
         ) from None
     except JobNotFound:
         raise ApiContractError(ApiErrorCode.SESSION_NOT_FOUND, token) from None
+    except QuotaExceeded:
+        raise ApiContractError(ApiErrorCode.ACCOUNT_AI_QUOTA_EXCEEDED, token) from None
 
     # 신규 발급이든 재사용이든 세션 활동이므로 달력 기준 3개월로 갱신한다. 재사용할 때는
     # 토큰을 그대로 내보내 식별자가 바뀌지 않는다(`session-job-persistence.md:25`).

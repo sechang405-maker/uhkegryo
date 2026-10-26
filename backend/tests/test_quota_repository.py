@@ -38,7 +38,12 @@ def test_zero_limit_and_concurrent_last_unit_are_enforced_atomically():
         account_id = await _seed_account(pool, limit=1)
         outcomes = await asyncio.gather(
             quota.reserve(account_id, "conversation", "key-a", "request-a"),
-            quota.reserve(account_id, "conversation", "key-b", "request-b"),
+            quota.reserve(
+                account_id,
+                "personal_term_proposal",
+                "key-b",
+                "request-b",
+            ),
             return_exceptions=True,
         )
         reservations = [value for value in outcomes if not isinstance(value, Exception)]
@@ -130,5 +135,48 @@ def test_stale_reservations_require_explicit_recovery_decision():
         await quota.release(account_id, stale.operation_id, reason="authoritative job failed")
         assert (await quota.usage(account_id)).reserved == 1
         assert recent.state == "reserved"
+
+    asyncio.run(database_case(case))
+
+
+def test_stale_recovery_releases_interrupted_proposal_but_retains_queued_job():
+    async def case(pool):
+        from backend.services.personal_term_repository import PersonalTermRepository
+        from backend.services.session_repository import SessionRepository
+        from backend.services.job_repository import JobRepository
+
+        quota = QuotaRepository(pool)
+        account_id = await _seed_account(pool, limit=2)
+        sessions = SessionRepository(pool)
+        session_id = await sessions.create_session("recovery-owner")
+        job, _ = await JobRepository(pool).submit(
+            session_id=session_id, request_text="포즈 추천", idempotency_key="job-recovery",
+        )
+        await quota.reserve(
+            account_id, "conversation", "job-recovery", "job-fingerprint", job.job_id,
+        )
+
+        repository = PersonalTermRepository(pool)
+        await sessions.create_session("proposal-owner")
+        proposal, _ = await repository.begin_generation(
+            "proposal-owner", "발레 점프", idempotency_key="proposal-recovery",
+            input_hash="proposal-fingerprint",
+        )
+        await quota.reserve(
+            account_id, "personal_term_proposal", "proposal-recovery",
+            "proposal-fingerprint", proposal.term_id,
+        )
+        await pool.execute(
+            "UPDATE ai_usage_operations SET reserved_at=now()-interval '1 hour' WHERE account_id=$1",
+            uuid.UUID(account_id),
+        )
+
+        result = await quota.recover_stale_reservations(
+            before=datetime.now(timezone.utc) - timedelta(minutes=15)
+        )
+        assert result == {"charged": 0, "released": 1, "retained": 1}
+        assert (await repository.get_generation("proposal-owner", "proposal-recovery")).status == "failed"
+        usage = await quota.usage(account_id)
+        assert (usage.reserved, usage.remaining) == (1, 1)
 
     asyncio.run(database_case(case))
