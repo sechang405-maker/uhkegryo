@@ -10,11 +10,13 @@ It never mounts or reads the private environment file.
 2. Fill only separately approved values. The model and every allowlist entry
    must use an explicit `:free` ID. The public origin must be the exact temporary
    HTTPS origin, and the evaluation end must include a timezone.
-3. After API/network use is approved, obtain the current OpenRouter `/models`
-   catalog and pass its response to
-   `backend.services.openrouter_free_models.verify_free_model_catalog`. Do not
-   start unless every allowlisted model is present and every published pricing
-   field is numeric zero. This repository does not fetch that catalog yet.
+3. After API/network use is approved, obtain the current authenticated
+   OpenRouter `/models` response and set `PORTFOLIO_MODEL_CATALOG_FILE` to that
+   file. The API container mounts it read-only. Startup fails unless the selected
+   allowlisted model is present and `prompt`, `completion`, `request`, and every
+   other published pricing field are numeric zero. The file must also be newer
+   than `PORTFOLIO_MODEL_CATALOG_MAX_AGE_SECONDS` (one hour by default). The
+   application never substitutes a mock or stale catalog.
 
 Start in the foreground:
 

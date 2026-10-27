@@ -34,6 +34,7 @@ BASE = {
     "portfolio_evaluation_ends_at": "2099-01-01T00:00:00Z",
     "portfolio_free_model_allowlist": "example/model:free",
     "portfolio_daily_llm_call_limit": 40,
+    "portfolio_model_catalog_path": "C:/synthetic/openrouter-models.json",
 }
 
 
@@ -63,6 +64,7 @@ def test_portfolio_settings_accept_only_explicit_free_runtime():
         ({"portfolio_public_origin": "http://demo.test"}, "HTTPS"),
         ({"allowed_origins": PUBLIC_ORIGIN + ",https://other.test"}, "origin"),
         ({"portfolio_evaluation_ends_at": None}, "end time"),
+        ({"portfolio_model_catalog_path": ""}, "catalog path"),
         ({"portfolio_evaluation_ends_at": "2020-01-01T00:00:00Z"}, "future"),
         ({"portfolio_daily_llm_call_limit": 41}, "less than or equal to 40"),
     ],
@@ -147,6 +149,7 @@ def test_portfolio_app_omits_auth_admin_and_api_documentation():
         "PORTFOLIO_EVALUATION_ENDS_AT": "2099-01-01T00:00:00Z",
         "PORTFOLIO_FREE_MODEL_ALLOWLIST": "example/model:free",
         "PORTFOLIO_DAILY_LLM_CALL_LIMIT": "40",
+        "PORTFOLIO_MODEL_CATALOG_PATH": BASE["portfolio_model_catalog_path"],
         "LANGFUSE_PUBLIC_KEY": "",
         "LANGFUSE_SECRET_KEY": "",
         "MCP_ENABLED": "false",
@@ -194,3 +197,53 @@ def test_portfolio_runtime_closes_after_approved_end_time():
     assert settings.portfolio_is_expired(
         now=datetime(2099, 1, 1, tzinfo=timezone.utc)
     )
+
+
+def test_portfolio_lifespan_runs_free_price_preflight_before_worker(tmp_path):
+    catalog_path = tmp_path / "openrouter-models.json"
+    catalog_path.write_text('{"data":[]}', encoding="utf-8")
+    env = os.environ.copy()
+    env.update({
+        "DATABASE_URL": BASE["database_url"],
+        "RUNTIME_MODE": "anonymous_portfolio",
+        "ENVIRONMENT": "production",
+        "AUTH_MODE": "local",
+        "LLM_BACKEND": "openrouter",
+        "OPENROUTER_API_KEY": "synthetic-key",
+        "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+        "LLM_MODEL": "example/model:free",
+        "WORKER_CONCURRENCY": "1",
+        "ALLOWED_ORIGINS": PUBLIC_ORIGIN,
+        "PORTFOLIO_PUBLIC_ORIGIN": PUBLIC_ORIGIN,
+        "PORTFOLIO_EVALUATION_ENDS_AT": "2099-01-01T00:00:00Z",
+        "PORTFOLIO_FREE_MODEL_ALLOWLIST": "example/model:free",
+        "PORTFOLIO_DAILY_LLM_CALL_LIMIT": "40",
+        "PORTFOLIO_MODEL_CATALOG_PATH": str(catalog_path),
+        "LANGFUSE_PUBLIC_KEY": "",
+        "LANGFUSE_SECRET_KEY": "",
+        "MCP_ENABLED": "false",
+        "MCP_BASE_URL": "",
+    })
+    code = """
+import asyncio
+import backend.main as main
+events = []
+def verify(settings):
+    events.append('preflight')
+async def worker(snapshot):
+    events.append('worker')
+    await asyncio.Event().wait()
+main.verify_selected_free_model = verify
+main.run_worker = worker
+async def run():
+    async with main.lifespan(main.app):
+        await asyncio.sleep(0)
+    print(','.join(events))
+asyncio.run(run())
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[2], env=env,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "preflight,worker"

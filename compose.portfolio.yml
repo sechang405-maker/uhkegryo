@@ -57,6 +57,8 @@ services:
       LLM_MODEL: ${PORTFOLIO_MODEL:?Set one approved explicit free model ID}
       PORTFOLIO_FREE_MODEL_ALLOWLIST: ${PORTFOLIO_FREE_MODEL_ALLOWLIST:?Set approved explicit free model IDs}
       PORTFOLIO_DAILY_LLM_CALL_LIMIT: "40"
+      PORTFOLIO_MODEL_CATALOG_PATH: /run/portfolio/openrouter-models.json
+      PORTFOLIO_MODEL_CATALOG_MAX_AGE_SECONDS: ${PORTFOLIO_MODEL_CATALOG_MAX_AGE_SECONDS:-3600}
       WORKER_CONCURRENCY: "1"
       LLM_TIMEOUT_SECONDS: ${PORTFOLIO_LLM_TIMEOUT_SECONDS:-180}
       PORTFOLIO_PUBLIC_ORIGIN: ${PORTFOLIO_PUBLIC_ORIGIN:?Set the exact temporary HTTPS origin}
@@ -71,6 +73,11 @@ services:
       MCP_BASE_URL: ""
       LANGFUSE_PUBLIC_KEY: ""
       LANGFUSE_SECRET_KEY: ""
+    volumes:
+      - type: bind
+        source: ${PORTFOLIO_MODEL_CATALOG_FILE:?Set the approved fresh OpenRouter models response file}
+        target: /run/portfolio/openrouter-models.json
+        read_only: true
     depends_on:
       db-migrate:
         condition: service_completed_successfully

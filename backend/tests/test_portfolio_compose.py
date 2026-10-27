@@ -22,6 +22,18 @@ def test_portfolio_compose_is_standalone_loopback_only_and_never_restarts():
     assert services["api"]["environment"]["LANGFUSE_PUBLIC_KEY"] == ""
     assert services["api"]["environment"]["LANGFUSE_SECRET_KEY"] == ""
     assert services["api"]["environment"]["SEARXNG_BASE_URL"] == "http://searxng:8080"
+    assert services["api"]["environment"]["PORTFOLIO_MODEL_CATALOG_PATH"] == (
+        "/run/portfolio/openrouter-models.json"
+    )
+    assert services["api"]["volumes"] == [{
+        "type": "bind",
+        "source": (
+            "${PORTFOLIO_MODEL_CATALOG_FILE:?Set the approved fresh "
+            "OpenRouter models response file}"
+        ),
+        "target": "/run/portfolio/openrouter-models.json",
+        "read_only": True,
+    }]
     assert "--no-access-log" in services["api"]["command"]
 
 
@@ -37,4 +49,5 @@ def test_portfolio_lifecycle_is_explicit_and_stop_preserves_database_volume():
     assert "PORTFOLIO_PUBLIC_ORIGIN=" in sample
     assert "PORTFOLIO_OPENROUTER_API_KEY=" in sample
     assert "PORTFOLIO_FREE_MODEL_ALLOWLIST=" in sample
+    assert "PORTFOLIO_MODEL_CATALOG_FILE=" in sample
     assert "PORTFOLIO_OPENROUTER_API_KEY:?" in (ROOT / "compose.portfolio.yml").read_text(encoding="utf-8")

@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     portfolio_evaluation_ends_at: datetime | None = None
     portfolio_free_model_allowlist: str = ''
     portfolio_daily_llm_call_limit: int = Field(default=40, ge=1, le=40)
+    portfolio_model_catalog_path: str = ''
+    portfolio_model_catalog_max_age_seconds: int = Field(default=3600, ge=60, le=86400)
 
     # Invitation-only Google login. `local` preserves the existing private runtime.
     auth_mode: Literal['local', 'google_invite'] = 'local'
@@ -135,6 +137,8 @@ class Settings(BaseSettings):
                 raise ValueError('Portfolio mode forbids remote MCP configuration')
             if not self.portfolio_public_origin:
                 raise ValueError('Portfolio mode requires an explicit public origin')
+            if not self.portfolio_model_catalog_path:
+                raise ValueError('Portfolio mode requires an approved model catalog path')
             public = urlsplit(self.portfolio_public_origin)
             if (
                 public.scheme != 'https' or not public.netloc

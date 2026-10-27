@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+import json
+import os
 from types import SimpleNamespace
 
 import httpx
@@ -16,6 +18,7 @@ from backend.services.portfolio_budget import (
 from backend.services.openrouter_free_models import (
     OpenRouterFreeModelVerificationError,
     verify_free_model_catalog,
+    verify_selected_free_model,
 )
 
 
@@ -259,6 +262,75 @@ def test_openrouter_catalog_accepts_only_zero_priced_allowlisted_models():
     payload["data"][0]["pricing"]["completion"] = "0.000001"
     with pytest.raises(OpenRouterFreeModelVerificationError):
         verify_free_model_catalog(payload, ("example/model:free",))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("request", "0.01"),
+    ("image", "0.0001"),
+    ("web_search", "0.1"),
+    ("internal_reasoning", "unknown"),
+    ("input_cache_read", None),
+])
+def test_openrouter_catalog_rejects_any_positive_or_unknown_price(field, value):
+    payload = {"data": [{
+        "id": "example/model:free",
+        "pricing": {"prompt": "0", "completion": "0", "request": "0", field: value},
+    }]}
+    with pytest.raises(OpenRouterFreeModelVerificationError):
+        verify_free_model_catalog(payload, ("example/model:free",))
+
+
+def test_openrouter_catalog_requires_explicit_request_pricing():
+    payload = {"data": [{
+        "id": "example/model:free",
+        "pricing": {"prompt": "0", "completion": "0"},
+    }]}
+    with pytest.raises(OpenRouterFreeModelVerificationError):
+        verify_free_model_catalog(payload, ("example/model:free",))
+
+
+def test_selected_model_preflight_reads_fresh_catalog_and_exact_model(tmp_path):
+    payload = {"data": [{
+        "id": "example/model:free",
+        "pricing": {"prompt": "0", "completion": "0", "request": "0"},
+    }]}
+    catalog_path = tmp_path / "openrouter-models.json"
+    catalog_path.write_text(json.dumps(payload), encoding="utf-8")
+    settings = SimpleNamespace(
+        llm_model="example/model:free",
+        portfolio_free_models=("example/model:free", "other/model:free"),
+        portfolio_model_catalog_path=str(catalog_path),
+        portfolio_model_catalog_max_age_seconds=3600,
+    )
+    verify_selected_free_model(settings)
+
+
+def test_selected_model_preflight_rejects_model_outside_allowlist_without_file():
+    settings = SimpleNamespace(
+        llm_model="paid/model",
+        portfolio_free_models=("example/model:free",),
+        portfolio_model_catalog_path="missing.json",
+        portfolio_model_catalog_max_age_seconds=3600,
+    )
+    with pytest.raises(OpenRouterFreeModelVerificationError):
+        verify_selected_free_model(settings)
+
+
+def test_selected_model_preflight_rejects_stale_catalog(tmp_path):
+    catalog_path = tmp_path / "openrouter-models.json"
+    catalog_path.write_text(json.dumps({"data": [{
+        "id": "example/model:free",
+        "pricing": {"prompt": "0", "completion": "0", "request": "0"},
+    }]}), encoding="utf-8")
+    os.utime(catalog_path, (1, 1))
+    settings = SimpleNamespace(
+        llm_model="example/model:free",
+        portfolio_free_models=("example/model:free",),
+        portfolio_model_catalog_path=str(catalog_path),
+        portfolio_model_catalog_max_age_seconds=3600,
+    )
+    with pytest.raises(OpenRouterFreeModelVerificationError, match="stale"):
+        verify_selected_free_model(settings)
 
 
 @pytest.mark.parametrize("payload", [

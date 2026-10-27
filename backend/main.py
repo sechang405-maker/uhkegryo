@@ -22,6 +22,7 @@ from backend.services.catalog_repository import CatalogLoadError, load_catalog
 from backend.shared.config import get_settings, resolve_term_cards_dir
 from backend.services.agent_worker import run_worker
 from backend.services.public_http import PublicHttpResources, install_resources, remove_resources
+from backend.services.openrouter_free_models import verify_selected_free_model
 from backend.services.failure_mapping import public_failure
 from backend.schemas.enums import FailureCode
 
@@ -34,6 +35,8 @@ async def lifespan(app: FastAPI):
         app.state.catalog = load_catalog(resolve_term_cards_dir(settings))
     except CatalogLoadError as error:
         raise RuntimeError(f"CATALOG_INVALID_AT_STARTUP: {error}") from error
+    if settings.is_portfolio:
+        verify_selected_free_model(settings)
     app.state.term_search_slots = asyncio.Semaphore(2)
     resources = PublicHttpResources()
     install_resources(resources)
