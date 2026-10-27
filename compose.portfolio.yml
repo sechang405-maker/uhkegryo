@@ -1,0 +1,112 @@
+name: uhkegryo-portfolio
+
+services:
+  db:
+    image: docker.io/postgres:17
+    restart: "no"
+    environment:
+      POSTGRES_USER: portfolio
+      POSTGRES_PASSWORD: ${PORTFOLIO_POSTGRES_PASSWORD:?Set an isolated portfolio database password}
+      POSTGRES_DB: portfolio
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - portfolio_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portfolio -d portfolio"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  db-migrate:
+    build: .
+    command: ["python", "-m", "backend.db.run_migrations"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://portfolio:${PORTFOLIO_POSTGRES_PASSWORD:?Set an isolated portfolio database password}@db:5432/portfolio
+    depends_on:
+      db:
+        condition: service_healthy
+
+  searxng:
+    image: uhkegryo-portfolio-searxng:local
+    build: ./searxng
+    restart: "no"
+    environment:
+      SEARXNG_SECRET: ${PORTFOLIO_SEARXNG_SECRET:?Set an isolated portfolio search secret}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://portfolio:${PORTFOLIO_POSTGRES_PASSWORD:?Set an isolated portfolio database password}@db:5432/portfolio
+      RUNTIME_MODE: anonymous_portfolio
+      ENVIRONMENT: production
+      AUTH_MODE: local
+      LLM_BACKEND: openrouter
+      OPENROUTER_API_KEY: ${PORTFOLIO_OPENROUTER_API_KEY:?Set the separately approved portfolio OpenRouter key}
+      OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+      LLM_MODEL: ${PORTFOLIO_MODEL:?Set one approved explicit free model ID}
+      PORTFOLIO_FREE_MODEL_ALLOWLIST: ${PORTFOLIO_FREE_MODEL_ALLOWLIST:?Set approved explicit free model IDs}
+      PORTFOLIO_DAILY_LLM_CALL_LIMIT: "40"
+      WORKER_CONCURRENCY: "1"
+      LLM_TIMEOUT_SECONDS: ${PORTFOLIO_LLM_TIMEOUT_SECONDS:-180}
+      PORTFOLIO_PUBLIC_ORIGIN: ${PORTFOLIO_PUBLIC_ORIGIN:?Set the exact temporary HTTPS origin}
+      PORTFOLIO_EVALUATION_ENDS_AT: ${PORTFOLIO_EVALUATION_ENDS_AT:?Set an approved timezone-aware end time}
+      ALLOWED_ORIGINS: ${PORTFOLIO_PUBLIC_ORIGIN:?Set the exact temporary HTTPS origin}
+      TERM_CARDS_PATH: /app/term-cards
+      STRUCTURED_OUTPUT_SKILL_PATH: /app/skills/structured-output/SKILL.md
+      INTERPRETER_PROMPT_PATH: /app/prompts/uhkegryo-interpreter-v4.md
+      INTERPRETER_PROMPT_VERSION: uhkegryo-interpreter-v4
+      SEARXNG_BASE_URL: http://searxng:8080
+      MCP_ENABLED: "false"
+      MCP_BASE_URL: ""
+      LANGFUSE_PUBLIC_KEY: ""
+      LANGFUSE_SECRET_KEY: ""
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      searxng:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        AGENT_API_ORIGIN: http://api:8000
+        NEXT_PUBLIC_API_BASE_URL: /api
+        NEXT_PUBLIC_UI_DEMO: "0"
+        PORTFOLIO_MODE: "1"
+    restart: "no"
+    ports:
+      - "127.0.0.1:${PORTFOLIO_FRONTEND_PORT:-3120}:3000"
+    environment:
+      AGENT_API_ORIGIN: http://api:8000
+      NEXT_PUBLIC_API_BASE_URL: /api
+      NEXT_PUBLIC_UI_DEMO: "0"
+      PORTFOLIO_MODE: "1"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/service-health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  portfolio_postgres_data:
