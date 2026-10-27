@@ -18,3 +18,8 @@ test("invite code is shown only from the issuance response", () => {
   assert.match(page, /미사용 초대 폐기/);
   assert.doesNotMatch(page, /client_secret|google_subject/);
 });
+
+test("admin account table distinguishes unlimited from finite limits", () => {
+  assert.match(page, /account\.usage\.unlimited/);
+  assert.match(page, /무제한/);
+});

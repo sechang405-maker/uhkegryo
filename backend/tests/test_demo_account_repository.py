@@ -139,7 +139,9 @@ def test_admin_overview_is_sanitized_and_stale_mutations_fail_closed():
         overview = await accounts.list_accounts_for_admin(admin_id)
         user = next(item for item in overview if item.account_id == user_id)
         assert user.identity_bound is True
-        assert user.usage.model_dump() == {"limit": 3, "charged": 1, "reserved": 0, "remaining": 2}
+        assert user.usage.model_dump() == {
+            "unlimited": False, "limit": 3, "charged": 1, "reserved": 0, "remaining": 2,
+        }
         listed = await invites.list_for_admin(admin_id)
         assert listed[0].admin_note == "drawing beginner"
         assert issued.raw_code not in str(listed)

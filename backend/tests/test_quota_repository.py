@@ -17,13 +17,15 @@ from backend.services.quota_repository import (
 from backend.tests.test_conversation_sessions import database_case
 
 
-async def _seed_account(pool, *, limit=0, status="active"):
+async def _seed_account(pool, *, limit=0, status="active", unlimited=False):
     account_id = uuid.uuid4()
     await pool.execute(
         """INSERT INTO accounts(
-               account_id, google_subject, email_normalized, status, ai_request_limit)
-           VALUES($1,$2,$3,$4,$5)""",
-        account_id, f"google-{account_id}", f"{account_id.hex}@example.com", status, limit,
+               account_id, google_subject, email_normalized, status,
+               ai_request_limit, ai_quota_unlimited)
+           VALUES($1,$2,$3,$4,$5,$6)""",
+        account_id, f"google-{account_id}", f"{account_id.hex}@example.com",
+        status, limit, unlimited,
     )
     return str(account_id)
 
@@ -52,6 +54,30 @@ def test_zero_limit_and_concurrent_last_unit_are_enforced_atomically():
         assert len(failures) == 1 and isinstance(failures[0], QuotaExceeded)
         usage = await quota.usage(account_id)
         assert (usage.limit, usage.charged, usage.reserved, usage.remaining) == (1, 0, 1, 0)
+
+    asyncio.run(database_case(case))
+
+
+def test_explicit_unlimited_account_keeps_usage_ledger_without_enforcing_limit():
+    async def case(pool):
+        quota = QuotaRepository(pool)
+        account_id = await _seed_account(pool, limit=0, unlimited=True)
+
+        first = await quota.reserve(account_id, "conversation", "unlimited-a", "request-a")
+        second = await quota.reserve(
+            account_id, "personal_term_proposal", "unlimited-b", "request-b",
+        )
+        await quota.charge(account_id, first.operation_id)
+
+        usage = await quota.usage(account_id)
+        assert usage.model_dump() == {
+            "unlimited": True,
+            "limit": None,
+            "charged": 1,
+            "reserved": 1,
+            "remaining": None,
+        }
+        assert second.state == "reserved"
 
     asyncio.run(database_case(case))
 

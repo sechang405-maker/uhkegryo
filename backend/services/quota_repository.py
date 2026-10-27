@@ -86,7 +86,7 @@ class QuotaRepository:
             """SELECT COALESCE(sum(units),0) FROM ai_usage_operations
                WHERE account_id=$1 AND state IN ('reserved','charged')""", account_uuid,
         )
-        if used >= account["ai_request_limit"]:
+        if not account["ai_quota_unlimited"] and used >= account["ai_request_limit"]:
             raise QuotaExceeded
         if existing is not None:
             row = await connection.fetchrow(
@@ -172,7 +172,7 @@ class QuotaRepository:
 
     async def usage(self, account_id: str) -> AccountUsage:
         row = await self._pool.fetchrow(
-            """SELECT a.ai_request_limit,
+            """SELECT a.ai_request_limit,a.ai_quota_unlimited,
                       COALESCE(sum(o.units) FILTER (WHERE o.state='charged'),0) AS charged,
                       COALESCE(sum(o.units) FILTER (WHERE o.state='reserved'),0) AS reserved
                FROM accounts a LEFT JOIN ai_usage_operations o USING(account_id)
@@ -180,10 +180,13 @@ class QuotaRepository:
         )
         if row is None:
             raise AccountUnavailable
-        limit = int(row["ai_request_limit"])
+        unlimited = bool(row["ai_quota_unlimited"])
+        limit = None if unlimited else int(row["ai_request_limit"])
         charged, reserved = int(row["charged"]), int(row["reserved"])
-        return AccountUsage(limit=limit, charged=charged, reserved=reserved,
-                            remaining=max(0, limit - charged - reserved))
+        return AccountUsage(
+            unlimited=unlimited, limit=limit, charged=charged, reserved=reserved,
+            remaining=None if unlimited else max(0, limit - charged - reserved),
+        )
 
     async def list_recovery_candidates(
         self, *, before: datetime, limit: int = 100,

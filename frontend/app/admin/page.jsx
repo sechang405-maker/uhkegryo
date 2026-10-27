@@ -112,7 +112,7 @@ export default function AdminDemoPage() {
     </section>
     <section className="admin-card" aria-labelledby="accounts-title"><h2 id="accounts-title">계정별 누적 사용량</h2>
       {state === "loading" ? <p role="status">불러오는 중…</p> : <div className="admin-table-wrap"><table><thead><tr><th>계정</th><th>상태</th><th>누적 지급</th><th>사용 완료</th><th>처리 중</th><th>이용 가능</th><th>관리</th></tr></thead><tbody>
-        {overview.accounts.map(account => <tr key={account.account_id}><td><strong>{account.display_name || account.email_normalized}</strong><small>{account.email_normalized}</small></td><td>{account.status}</td><td>{account.usage.limit}</td><td>{account.usage.charged}</td><td>{account.usage.reserved}</td><td>{account.usage.remaining}</td><td><button disabled={Boolean(busy)} onClick={() => changeLimit(account)}>한도 변경</button><button disabled={Boolean(busy)} onClick={() => changeStatus(account)}>{account.status === "active" ? "차단" : "차단 해제"}</button></td></tr>)}
+        {overview.accounts.map(account => <tr key={account.account_id}><td><strong>{account.display_name || account.email_normalized}</strong><small>{account.email_normalized}</small></td><td>{account.status}</td><td>{account.usage.unlimited ? "무제한" : account.usage.limit}</td><td>{account.usage.charged}</td><td>{account.usage.reserved}</td><td>{account.usage.unlimited ? "무제한" : account.usage.remaining}</td><td><button disabled={Boolean(busy)} onClick={() => changeLimit(account)}>한도 변경</button><button disabled={Boolean(busy)} onClick={() => changeStatus(account)}>{account.status === "active" ? "차단" : "차단 해제"}</button></td></tr>)}
       </tbody></table></div>}
     </section>
     <section className="admin-card" aria-labelledby="invites-title"><h2 id="invites-title">초대 내역</h2>

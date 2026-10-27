@@ -26,7 +26,9 @@ def test_usage_contract_distinguishes_limit_charged_reserved_and_remaining(monke
     class Quota:
         async def usage(self, account_id):
             assert account_id.endswith("1")
-            return AccountUsage(limit=12, charged=7, reserved=2, remaining=3)
+            return AccountUsage(
+                unlimited=False, limit=12, charged=7, reserved=2, remaining=3,
+            )
 
     async def services():
         return SimpleNamespace(), SimpleNamespace(), Quota()
@@ -34,10 +36,35 @@ def test_usage_contract_distinguishes_limit_charged_reserved_and_remaining(monke
     monkeypatch.setattr(admin_demo, "get_admin_services", services)
     response = asyncio.run(admin_demo.account_usage(_request(role="user")))
     assert response.model_dump() == {
+        "unlimited": False,
         "limit": 12,
         "charged": 7,
         "reserved": 2,
         "remaining": 3,
+    }
+
+
+def test_usage_contract_represents_unlimited_without_a_fake_large_number(monkeypatch):
+    from backend.routes import admin_demo
+    from backend.schemas.demo_accounts import AccountUsage
+
+    class Quota:
+        async def usage(self, account_id):
+            return AccountUsage(
+                unlimited=True, limit=None, charged=23, reserved=1, remaining=None,
+            )
+
+    async def services():
+        return SimpleNamespace(), SimpleNamespace(), Quota()
+
+    monkeypatch.setattr(admin_demo, "get_admin_services", services)
+    response = asyncio.run(admin_demo.account_usage(_request(role="admin")))
+    assert response.model_dump() == {
+        "unlimited": True,
+        "limit": None,
+        "charged": 23,
+        "reserved": 1,
+        "remaining": None,
     }
 
 

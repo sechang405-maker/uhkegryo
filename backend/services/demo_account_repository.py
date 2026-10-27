@@ -43,7 +43,8 @@ class DemoAccountRepository:
                 await _active_admin(connection, actor_account_id)
                 rows = await connection.fetch(
                     """SELECT a.account_id,a.email_normalized,a.display_name,a.role,a.status,
-                              (a.google_subject IS NOT NULL) AS identity_bound,a.ai_request_limit,
+                              (a.google_subject IS NOT NULL) AS identity_bound,
+                              a.ai_request_limit,a.ai_quota_unlimited,
                               COALESCE(sum(o.units) FILTER (WHERE o.state='charged'),0) AS charged,
                               COALESCE(sum(o.units) FILTER (WHERE o.state='reserved'),0) AS reserved
                        FROM accounts a LEFT JOIN ai_usage_operations o USING(account_id)
@@ -54,9 +55,19 @@ class DemoAccountRepository:
             display_name=row["display_name"], role=row["role"], status=row["status"],
             identity_bound=bool(row["identity_bound"]),
             usage=AccountUsage(
-                limit=int(row["ai_request_limit"]), charged=int(row["charged"]),
+                unlimited=bool(row["ai_quota_unlimited"]),
+                limit=None if row["ai_quota_unlimited"] else int(row["ai_request_limit"]),
+                charged=int(row["charged"]),
                 reserved=int(row["reserved"]),
-                remaining=max(0, int(row["ai_request_limit"]) - int(row["charged"]) - int(row["reserved"])),
+                remaining=(
+                    None if row["ai_quota_unlimited"]
+                    else max(
+                        0,
+                        int(row["ai_request_limit"])
+                        - int(row["charged"])
+                        - int(row["reserved"]),
+                    )
+                ),
             ),
         ) for row in rows]
 

@@ -15,6 +15,11 @@ test("account quota distinguishes cumulative, charged, reserved, and available u
   assert.match(source, /고정 안내와 이미지 재검색은 차감되지 않습니다/);
 });
 
+test("account quota renders an explicit unlimited policy without a fake number", () => {
+  assert.match(source, /usage\.unlimited/);
+  assert.match(source, /무제한/);
+});
+
 test("successful AI paths refresh account quota without resetting conversations", () => {
   assert.match(page, /account-quota-refresh/);
   assert.match(creator, /account-quota-refresh/);

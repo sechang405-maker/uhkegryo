@@ -18,6 +18,7 @@ class DemoAccountRecord(BaseModel):
     role: Literal["user", "admin"]
     status: Literal["active", "disabled"]
     ai_request_limit: int
+    ai_quota_unlimited: bool
     created_at: datetime
     updated_at: datetime
     last_login_at: datetime | None = None
@@ -60,10 +61,11 @@ class QuotaOperation(BaseModel):
 class AccountUsage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    limit: int
+    unlimited: bool
+    limit: int | None
     charged: int
     reserved: int
-    remaining: int
+    remaining: int | None
 
 
 class AdminAccountSummary(BaseModel):
