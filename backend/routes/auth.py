@@ -16,6 +16,7 @@ from backend.services.invite_code_repository import (
     TransferUnavailable,
 )
 from backend.shared.config import get_settings
+from backend.services.personal_remote_access import owner_account_allowed
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -98,6 +99,9 @@ async def google_callback(request: Request, state: str, code: str):
         )
     except OIDCVerificationError:
         raise HTTPException(401, "Google 로그인을 확인할 수 없습니다.") from None
+    settings = get_settings()
+    if settings.is_personal_remote_test and not personal_callback_account_allowed(settings, account):
+        raise HTTPException(403, "등록된 소유자 계정만 사용할 수 있습니다.")
     if account is not None:
         if account.status != "active":
             raise HTTPException(403, "비활성화된 계정입니다.")
@@ -230,6 +234,12 @@ async def logout(request: Request):
 def _require_google_mode() -> None:
     if get_settings().auth_mode != "google_invite":
         raise HTTPException(404, "Not found")
+
+
+def personal_callback_account_allowed(settings, account) -> bool:
+    if not getattr(settings, 'is_personal_remote_test', False):
+        return True
+    return owner_account_allowed(settings, account)
 
 
 def _require_action(request: Request, action: str) -> None:

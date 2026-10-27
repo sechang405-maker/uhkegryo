@@ -14,8 +14,19 @@ from backend.schemas.enums import Role
 from backend.schemas.personal_terms import PersonalTermRecord
 from backend.services.personal_term_repository import PersonalTermNotFound
 
-if hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+@pytest.fixture(autouse=True, scope="module")
+def _windows_selector_event_loop_policy():
+    """Keep this module's Windows loop workaround from leaking to later tests."""
+    if not hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+        yield
+        return
+
+    previous_policy = asyncio.get_event_loop_policy()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    try:
+        yield
+    finally:
+        asyncio.set_event_loop_policy(previous_policy)
 
 
 def active_record() -> PersonalTermRecord:

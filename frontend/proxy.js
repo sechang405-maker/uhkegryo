@@ -32,7 +32,7 @@ function secretMatches(actual, expected) {
 
 export function proxy(request) {
   const pathname = new URL(request.url).pathname;
-  if (process.env.PORTFOLIO_MODE === "1"
+  if ((process.env.PORTFOLIO_MODE === "1" || process.env.PERSONAL_REMOTE_TEST === "1")
       && PRIVATE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return notFound();
   }

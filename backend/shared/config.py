@@ -11,9 +11,6 @@ from urllib.parse import urlsplit
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-APPROVED_LOCAL_CODEX_OWNER_ACCOUNT_ID = UUID('eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c')
-
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -49,7 +46,7 @@ class Settings(BaseSettings):
     database_url: str
 
     # 앱
-    runtime_mode: Literal['standard', 'anonymous_portfolio'] = 'standard'
+    runtime_mode: Literal['standard', 'anonymous_portfolio', 'personal_remote_test'] = 'standard'
     allowed_origins: str = "http://localhost:3000"
     environment: str = "development"
 
@@ -60,6 +57,11 @@ class Settings(BaseSettings):
     portfolio_daily_llm_call_limit: int = Field(default=40, ge=1, le=40)
     portfolio_model_catalog_path: str = ''
     portfolio_model_catalog_max_age_seconds: int = Field(default=3600, ge=60, le=86400)
+
+    # Owner-only, separately authenticated Vercel-to-loopback gateway test.
+    personal_remote_public_origin: str = ''
+    personal_remote_gateway_origin: str = ''
+    personal_remote_gateway_secret: str = Field(default='', repr=False)
 
     # Invitation-only Google login. `local` preserves the existing private runtime.
     auth_mode: Literal['local', 'google_invite'] = 'local'
@@ -93,6 +95,10 @@ class Settings(BaseSettings):
     @property
     def is_portfolio(self) -> bool:
         return self.runtime_mode == 'anonymous_portfolio'
+
+    @property
+    def is_personal_remote_test(self) -> bool:
+        return self.runtime_mode == 'personal_remote_test'
 
     @property
     def portfolio_free_models(self) -> tuple[str, ...]:
@@ -160,6 +166,59 @@ class Settings(BaseSettings):
             if end_time <= datetime.now(timezone.utc):
                 raise ValueError('Portfolio evaluation end time must be in the future')
             return self
+        if self.is_personal_remote_test:
+            if self.llm_backend != 'codex-cli':
+                raise ValueError('Personal remote test requires Codex CLI')
+            if self.auth_mode != 'google_invite':
+                raise ValueError('Personal remote test requires Google authentication')
+            if (
+                not self.google_client_id or not self.google_client_secret
+                or not self.google_redirect_uri or len(self.invite_code_pepper) < 16
+            ):
+                raise ValueError('Personal remote test requires complete Google OIDC settings')
+            if self.codex_owner_account_id is None:
+                raise ValueError('Personal remote test requires an explicit owner account ID')
+            if self.environment != 'production' or self.worker_concurrency != 1:
+                raise ValueError('Personal remote test requires production cookies and one worker')
+            if self.login_test_mode:
+                raise ValueError('Personal remote test forbids login test mode')
+            if self.langfuse_public_key or self.langfuse_secret_key or self.mcp_enabled or self.mcp_base_url:
+                raise ValueError('Personal remote test forbids Langfuse and remote MCP')
+            public = _https_origin(self.personal_remote_public_origin, 'public')
+            gateway = _https_origin(self.personal_remote_gateway_origin, 'gateway')
+            if public == gateway:
+                raise ValueError('Personal remote public and gateway origins must be separate')
+            if (len(self.personal_remote_gateway_secret) < 32 or any(
+                ord(character) < 0x21 or ord(character) > 0x7e
+                for character in self.personal_remote_gateway_secret
+            )):
+                raise ValueError('Personal remote gateway secret must be at least 32 visible ASCII characters')
+            origins = tuple(
+                value.strip().rstrip('/') for value in self.allowed_origins.split(',') if value.strip()
+            )
+            if origins != (public,):
+                raise ValueError('Personal remote CORS origin must exactly match the public origin')
+            if self.auth_frontend_origin.rstrip('/') != public:
+                raise ValueError('Personal remote auth frontend must exactly match the public origin')
+            if self.google_redirect_uri != public + '/api/auth/google/callback':
+                raise ValueError('Personal remote Google callback must use the exact public callback')
+            db = urlsplit(self.database_url)
+            if (db.scheme not in ('postgresql', 'postgres')
+                    or db.hostname not in ('127.0.0.1', '::1', 'localhost')
+                    or db.query or db.fragment):
+                raise ValueError('Personal remote Codex mode requires loopback PostgreSQL')
+            if self.searxng_base_url:
+                search = urlsplit(self.searxng_base_url)
+                if (search.scheme != 'http'
+                        or search.hostname not in ('127.0.0.1', '::1', 'localhost')
+                        or search.username is not None or search.password is not None
+                        or search.path not in ('', '/') or search.query or search.fragment):
+                    raise ValueError('Personal remote search requires a loopback SearXNG origin')
+                _ = search.port
+            if self.interpreter_prompt_version != 'uhkegryo-interpreter-v4':
+                raise ValueError('Personal remote Codex mode requires the v4 interpreter')
+            self.llm_model = 'gpt-5.6-luna'
+            return self
         if self.login_test_mode and (
             self.auth_mode != 'google_invite' or self.environment != 'development'
         ):
@@ -181,9 +240,9 @@ class Settings(BaseSettings):
             return self
         if (
             self.auth_mode == 'google_invite'
-            and self.codex_owner_account_id != APPROVED_LOCAL_CODEX_OWNER_ACCOUNT_ID
+            and self.codex_owner_account_id is None
         ):
-            raise ValueError('Google invite Codex mode requires the approved owner account ID')
+            raise ValueError('Google invite Codex mode requires an explicit owner account ID')
         if self.auth_mode == 'google_invite' and (
             frontend.scheme != 'http'
             or frontend.hostname not in ('127.0.0.1', '::1', 'localhost')
@@ -219,6 +278,21 @@ class Settings(BaseSettings):
             raise ValueError('Codex mode requires the v4 structured interpreter prompt')
         self.llm_model = 'gpt-5.6-luna'
         return self
+
+
+def _https_origin(value: str, label: str) -> str:
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme != 'https' or not parsed.netloc
+        or parsed.path not in ('', '/') or parsed.query or parsed.fragment
+        or parsed.username is not None or parsed.password is not None
+    ):
+        raise ValueError(f'Personal remote {label} origin must be an HTTPS origin')
+    try:
+        _ = parsed.port
+    except ValueError as error:
+        raise ValueError(f'Personal remote {label} origin has an invalid port') from error
+    return value.rstrip('/')
 
 
 @lru_cache

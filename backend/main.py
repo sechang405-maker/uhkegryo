@@ -8,7 +8,7 @@ MCP는 별도 서비스(backend/mcp/main.py)로 분리되어 배포됩니다.
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from backend.routes.agent import ApiContractError, close_result_tracer, close_widget_client, router as agent_router
@@ -24,6 +24,11 @@ from backend.services.agent_worker import run_worker
 from backend.services.public_http import PublicHttpResources, install_resources, remove_resources
 from backend.services.openrouter_free_models import verify_selected_free_model
 from backend.services.failure_mapping import public_failure
+from backend.services.personal_remote_access import (
+    gateway_request_allowed,
+    is_login_exception,
+    owner_account_allowed,
+)
 from backend.schemas.enums import FailureCode
 
 settings = get_settings()
@@ -56,7 +61,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="2차 프로젝트 API", lifespan=lifespan)
 
 
-if settings.is_portfolio:
+if settings.is_portfolio or settings.is_personal_remote_test:
     app.routes[:] = [
         route for route in app.routes
         if not (
@@ -78,7 +83,7 @@ async def portfolio_evaluation_window(request, call_next):
 
 @app.middleware('http')
 async def local_codex_guard(request, call_next):
-    if settings.llm_backend == 'codex-cli':
+    if settings.llm_backend == 'codex-cli' and not settings.is_personal_remote_test:
         from backend.local_codex import local_request_allowed
         if not local_request_allowed(request.client.host if request.client else '',
                                      request.headers.get('host', ''), request.headers.get('origin')):
@@ -88,7 +93,8 @@ async def local_codex_guard(request, call_next):
 
 @app.middleware('http')
 async def invite_auth_guard(request, call_next):
-    if (settings.auth_mode == 'google_invite' and request.url.path.startswith('/api/')
+    if (settings.auth_mode == 'google_invite' and not settings.is_personal_remote_test
+            and request.url.path.startswith('/api/')
             and not request.url.path.startswith('/api/auth/')):
         token = request.cookies.get('session_id')
         if not token:
@@ -99,6 +105,28 @@ async def invite_auth_guard(request, call_next):
             request.state.account = await auth_sessions.resolve_app_session(token)
         except AuthSessionUnavailable:
             return JSONResponse(status_code=401, content={'detail': '로그인 세션이 만료되었습니다.'})
+    return await call_next(request)
+
+
+@app.middleware('http')
+async def personal_remote_guard(request, call_next):
+    if not settings.is_personal_remote_test:
+        return await call_next(request)
+    if not gateway_request_allowed(settings, request):
+        return JSONResponse(status_code=404, content={'detail': 'Not found'})
+    if request.url.path.startswith('/api/') and not is_login_exception(request.url.path):
+        token = request.cookies.get('session_id')
+        if not token:
+            return JSONResponse(status_code=401, content={'detail': 'Owner login required.'})
+        try:
+            from backend.routes.auth import get_auth_services
+            _, auth_sessions, _, _ = await get_auth_services()
+            account = await auth_sessions.resolve_app_session(token)
+        except AuthSessionUnavailable:
+            return JSONResponse(status_code=401, content={'detail': 'Owner session expired.'})
+        if not owner_account_allowed(settings, account):
+            return JSONResponse(status_code=403, content={'detail': 'Owner account required.'})
+        request.state.account = account
     return await call_next(request)
 
 app.add_middleware(
@@ -126,9 +154,23 @@ async def handle_api_contract_error(request: FastAPI, exc: ApiContractError) -> 
 app.include_router(agent_router)
 app.include_router(term_search_router)
 app.include_router(personal_terms_router)
+personal_auth_router = None
 if not settings.is_portfolio:
-    app.include_router(auth_router)
-    app.include_router(admin_demo_router)
+    if settings.is_personal_remote_test:
+        allowed_personal_auth_paths = {
+            '/api/auth/google/start', '/api/auth/google/callback',
+            '/api/auth/me', '/api/auth/logout',
+        }
+        personal_auth_router = APIRouter()
+        personal_auth_router.routes.extend(
+            route for route in auth_router.routes
+            if getattr(route, 'path', None) in allowed_personal_auth_paths
+        )
+        app.include_router(personal_auth_router)
+    else:
+        app.include_router(auth_router)
+    if not settings.is_personal_remote_test:
+        app.include_router(admin_demo_router)
 
 
 @app.exception_handler(Exception)

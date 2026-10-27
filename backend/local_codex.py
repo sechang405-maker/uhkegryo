@@ -72,7 +72,6 @@ def local_request_allowed(peer, host, origin):
 
 def local_codex_account_allowed(settings, account):
     """Keep a personal host Codex login confined to its configured account."""
-    from backend.shared.config import APPROVED_LOCAL_CODEX_OWNER_ACCOUNT_ID
     if (
         getattr(settings, 'llm_backend', 'openrouter') != 'codex-cli'
         or getattr(settings, 'auth_mode', 'local') != 'google_invite'
@@ -80,7 +79,7 @@ def local_codex_account_allowed(settings, account):
         return True
     owner_account_id = getattr(settings, 'codex_owner_account_id', None)
     return bool(
-        str(owner_account_id) == str(APPROVED_LOCAL_CODEX_OWNER_ACCOUNT_ID)
+        owner_account_id is not None
         and account is not None
         and str(getattr(account, 'account_id', '')) == str(owner_account_id)
         and getattr(account, 'role', None) == 'admin'

@@ -10,6 +10,7 @@ from backend.shared.config import Settings
 
 
 def test_google_invite_codex_settings_require_an_explicit_owner_account_id():
+    configured_owner = '11111111-1111-1111-1111-111111111111'
     base = dict(
         _env_file=None, database_url='postgresql://u:p@127.0.0.1:55433/uh',
         llm_backend='codex-cli', worker_concurrency=1,
@@ -21,17 +22,13 @@ def test_google_invite_codex_settings_require_an_explicit_owner_account_id():
     )
     with pytest.raises(ValueError):
         Settings(**base)
-    with pytest.raises(ValueError):
-        Settings(
-            **base, codex_owner_account_id='11111111-1111-1111-1111-111111111111'
-        )
 
     configured = Settings(
-        **base, codex_owner_account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c'
+        **base, codex_owner_account_id=configured_owner
     )
-    assert str(configured.codex_owner_account_id) == 'eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c'
+    assert str(configured.codex_owner_account_id) == configured_owner
     approved = base | {
-        'codex_owner_account_id': 'eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c'
+        'codex_owner_account_id': configured_owner
     }
     for change in (
         {'google_redirect_uri': 'http://localhost:8000/api/auth/google/callback'},
@@ -77,18 +74,18 @@ def test_google_invite_codex_allows_only_the_configured_active_admin():
     from backend.local_codex import local_codex_account_allowed
     settings = SimpleNamespace(
         llm_backend='codex-cli', auth_mode='google_invite',
-        codex_owner_account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c',
+        codex_owner_account_id='11111111-1111-1111-1111-111111111111',
     )
 
     assert local_codex_account_allowed(settings, SimpleNamespace(
-        account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c', role='admin', status='active',
+        account_id='11111111-1111-1111-1111-111111111111', role='admin', status='active',
     ))
     for account in (
         None,
         SimpleNamespace(role='admin', status='active'),
         SimpleNamespace(account_id='22222222-2222-2222-2222-222222222222', role='admin', status='active'),
-        SimpleNamespace(account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c', role='user', status='active'),
-        SimpleNamespace(account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c', role='admin', status='disabled'),
+        SimpleNamespace(account_id='11111111-1111-1111-1111-111111111111', role='user', status='active'),
+        SimpleNamespace(account_id='11111111-1111-1111-1111-111111111111', role='admin', status='disabled'),
     ):
         assert not local_codex_account_allowed(settings, account)
 
@@ -96,7 +93,7 @@ def test_google_invite_codex_allows_only_the_configured_active_admin():
         llm_backend='codex-cli', auth_mode='google_invite',
         codex_owner_account_id='22222222-2222-2222-2222-222222222222',
     )
-    assert not local_codex_account_allowed(wrong_settings, SimpleNamespace(
+    assert local_codex_account_allowed(wrong_settings, SimpleNamespace(
         account_id='22222222-2222-2222-2222-222222222222', role='admin', status='active',
     ))
 
@@ -124,7 +121,7 @@ def test_oauth_settings_retarget_only_the_existing_database_to_loopback(tmp_path
         'INVITE_CODE_PEPPER=synthetic-pepper-long-enough\n'
         'INVITE_REDEEM_ATTEMPT_LIMIT=5\n'
         'INVITE_REDEEM_WINDOW_SECONDS=900\n'
-        'CODEX_OWNER_ACCOUNT_ID=eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c\n'
+        'CODEX_OWNER_ACCOUNT_ID=11111111-1111-1111-1111-111111111111\n'
         'OPENROUTER_API_KEY=must-not-be-imported\n'
         'LOGIN_TEST_MODE=1\n',
         encoding='utf-8',
@@ -136,7 +133,7 @@ def test_oauth_settings_retarget_only_the_existing_database_to_loopback(tmp_path
     assert os.environ['DATABASE_URL'] == 'postgresql://uhkegryo:secret@127.0.0.1:55433/uhkegryo'
     assert os.environ['AUTH_MODE'] == 'google_invite'
     assert os.environ['LOGIN_TEST_MODE'] == 'false'
-    assert os.environ['CODEX_OWNER_ACCOUNT_ID'] == 'eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c'
+    assert os.environ['CODEX_OWNER_ACCOUNT_ID'] == '11111111-1111-1111-1111-111111111111'
     assert 'OPENROUTER_API_KEY' not in os.environ
 
 
