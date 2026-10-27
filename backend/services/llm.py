@@ -27,7 +27,7 @@ from functools import wraps
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 import httpx
 import openai
@@ -36,6 +36,7 @@ from pydantic import ValidationError
 from backend.schemas.enums import FailureCode
 from backend.schemas.models import InterpretationOutput
 from backend.services.catalog_repository import CatalogSnapshot
+from backend.services.portfolio_budget import PortfolioBudgetExceeded
 from backend.services.structured_output import load_skill, response_format, validation_feedback
 
 logger = logging.getLogger("backend.services.llm")
@@ -94,6 +95,18 @@ class LLMRateLimited(LLMError):
     def __init__(self, message: str, *, retry_after_ms: int | None = None) -> None:
         super().__init__(message)
         self.retry_after_ms = retry_after_ms
+
+
+class PortfolioDailyLimitReached(LLMRateLimited):
+    """Portfolio call budget is exhausted; never retry or change providers."""
+
+    retryable = False
+
+
+class PortfolioFreeTierUnavailable(LLMRateLimited):
+    """The configured free route refused service; never use a paid fallback."""
+
+    retryable = False
 
 
 class LLMUpstreamUnavailable(LLMError):
@@ -181,6 +194,7 @@ class LLMInterpretationAdapter:
         prompt_path: Path | None = None,
         system_message: str | None = None,
         user_template: str | None = None,
+        call_reserver: Callable[[], Awaitable[int]] | None = None,
     ) -> None:
         from backend.shared.config import get_settings
 
@@ -242,6 +256,7 @@ class LLMInterpretationAdapter:
         self._system_message += "\n\n" + load_skill(
             Path(__file__).resolve().parents[2] / "skills/drawing-dialogue/SKILL.md")
         self._user_template = user_template
+        self._call_reserver = call_reserver
         if client is None:
             client = openai.AsyncOpenAI(
                 api_key=self.settings.openrouter_api_key,
@@ -383,11 +398,23 @@ class LLMInterpretationAdapter:
                 request["tool_choice"] = tool_choice
             if output_format is not None or tools is not None:
                 request["extra_body"] = {"provider": {"require_parameters": True}}
+            if self._call_reserver is not None:
+                try:
+                    await self._call_reserver()
+                except PortfolioBudgetExceeded:
+                    raise PortfolioDailyLimitReached(
+                        "Portfolio daily external LLM call limit reached"
+                    ) from None
             response = await self._client.chat.completions.create(**request)
             self._update_generation(usage_details=_extract_usage(response))
         except openai.APITimeoutError as exc:
             raise LLMTimeout(f"OpenRouter 요청 시간 초과: {exc}") from exc
         except openai.RateLimitError as exc:
+            if getattr(self.settings, "is_portfolio", False):
+                raise PortfolioFreeTierUnavailable(
+                    "OpenRouter free tier unavailable",
+                    retry_after_ms=_retry_after_ms(exc),
+                ) from None
             raise LLMRateLimited(
                 "OpenRouter rate limit",
                 retry_after_ms=_retry_after_ms(exc),
@@ -398,6 +425,11 @@ class LLMInterpretationAdapter:
             status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
             if status in (401, 403):
                 raise LLMConfigurationError("OpenRouter authentication configuration failed") from None
+            if getattr(self.settings, "is_portfolio", False) and status in (402, 429):
+                raise PortfolioFreeTierUnavailable(
+                    "OpenRouter free tier unavailable",
+                    retry_after_ms=_retry_after_ms(exc),
+                ) from None
             if status and int(status) == 429:
                 raise LLMRateLimited(
                     "OpenRouter rate limit",

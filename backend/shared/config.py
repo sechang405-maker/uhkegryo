@@ -99,6 +99,14 @@ class Settings(BaseSettings):
             if value.strip()
         ))
 
+    def portfolio_is_expired(self, *, now: datetime | None = None) -> bool:
+        if not self.is_portfolio or self.portfolio_evaluation_ends_at is None:
+            return False
+        current = now or datetime.now(timezone.utc)
+        return current.astimezone(timezone.utc) >= self.portfolio_evaluation_ends_at.astimezone(
+            timezone.utc
+        )
+
     @model_validator(mode='after')
     def local_codex_boundary(self):
         if self.is_portfolio:

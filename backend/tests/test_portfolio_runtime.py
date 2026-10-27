@@ -182,3 +182,15 @@ def test_portfolio_local_codex_profile_is_not_found(monkeypatch):
         import asyncio
         asyncio.run(local_profile(request, response))
     assert getattr(error.value, "status_code", None) == 404
+
+
+def test_portfolio_runtime_closes_after_approved_end_time():
+    from datetime import datetime, timezone
+
+    settings = Settings(**BASE)
+    assert not settings.portfolio_is_expired(
+        now=datetime(2098, 12, 31, tzinfo=timezone.utc)
+    )
+    assert settings.portfolio_is_expired(
+        now=datetime(2099, 1, 1, tzinfo=timezone.utc)
+    )

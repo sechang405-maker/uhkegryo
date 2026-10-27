@@ -64,6 +64,16 @@ if settings.is_portfolio:
 
 
 @app.middleware('http')
+async def portfolio_evaluation_window(request, call_next):
+    if settings.portfolio_is_expired():
+        return JSONResponse(
+            status_code=503,
+            content={'detail': 'Portfolio evaluation window is closed.'},
+        )
+    return await call_next(request)
+
+
+@app.middleware('http')
 async def local_codex_guard(request, call_next):
     if settings.llm_backend == 'codex-cli':
         from backend.local_codex import local_request_allowed

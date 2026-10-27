@@ -51,8 +51,16 @@ async def resolve_services(request: Request):
     repository = PersonalTermRepository(pool)
     settings = get_settings()
     quota = QuotaRepository(pool) if settings.auth_mode == "google_invite" else None
+    llm_call_reserver = None
+    if getattr(settings, "is_portfolio", False):
+        from backend.services.portfolio_budget import PortfolioLLMCallBudget
+
+        llm_call_reserver = PortfolioLLMCallBudget(
+            pool, limit=settings.portfolio_daily_llm_call_limit
+        ).reserve
     generator = None if settings.login_test_mode else PersonalTermGenerator(
-        repository, request.app.state.catalog, quota=quota
+        repository, request.app.state.catalog, quota=quota,
+        llm_call_reserver=llm_call_reserver,
     )
     return sessions, repository, generator
 

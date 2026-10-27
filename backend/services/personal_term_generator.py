@@ -8,7 +8,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from pydantic import ValidationError
 
@@ -81,7 +81,12 @@ class PersonalTermProposal:
 class ExistingLLMTransport:
     """Reuse the configured OpenRouter/Codex transport without adding credentials."""
 
-    def __init__(self, adapter: Any | None = None) -> None:
+    def __init__(
+        self,
+        adapter: Any | None = None,
+        *,
+        call_reserver: Callable[[], Awaitable[int]] | None = None,
+    ) -> None:
         if adapter is None:
             from backend.shared.config import get_settings
 
@@ -96,7 +101,8 @@ class ExistingLLMTransport:
                 from backend.services.llm import LLMInterpretationAdapter
 
                 adapter = LLMInterpretationAdapter(
-                    settings=settings, system_message="", user_template=""
+                    settings=settings, system_message="", user_template="",
+                    call_reserver=call_reserver,
                 )
         self._adapter = adapter
 
@@ -113,10 +119,13 @@ class PersonalTermGenerator:
         *,
         transport: PersonalTermTransport | None = None,
         quota: QuotaRepository | None = None,
+        llm_call_reserver: Callable[[], Awaitable[int]] | None = None,
     ) -> None:
         self._repository = repository
         self._catalog = catalog
-        self._transport = transport or ExistingLLMTransport()
+        self._transport = transport or ExistingLLMTransport(
+            call_reserver=llm_call_reserver
+        )
         self._quota = quota
 
     async def propose(

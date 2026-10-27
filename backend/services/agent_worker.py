@@ -6,7 +6,7 @@ from copy import deepcopy
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping
+from typing import Any, Awaitable, Callable, Mapping
 
 from backend.schemas.enums import AgentStatus, FailureCode, JobStatus, ReasonCode, Role
 from backend.schemas.models import AgentResult, InterpretationOutput
@@ -70,6 +70,7 @@ class AgentJobWorker:
         heartbeat_interval: float = 10,
         tracer: JobTracer | None = None,
         personal_terms: PersonalTermRepository | None = None,
+        llm_call_reserver: Callable[[], Awaitable[int]] | None = None,
     ) -> None:
         self._pool = pool
         self._jobs = JobRepository(pool)
@@ -85,6 +86,7 @@ class AgentJobWorker:
         self._heartbeat_interval = heartbeat_interval
         self._tracer = tracer if tracer is not None else JobTracer.from_settings()
         self._personal_terms = personal_terms
+        self._llm_call_reserver = llm_call_reserver
 
     async def run_once(
         self,
@@ -177,7 +179,9 @@ class AgentJobWorker:
                     from backend.services.codex_llm import CodexInterpretationAdapter
                     self._adapter = CodexInterpretationAdapter()
                 else:
-                    self._adapter = LLMInterpretationAdapter()
+                    self._adapter = LLMInterpretationAdapter(
+                        call_reserver=self._llm_call_reserver
+                    )
             with trace.stage("memory-context"):
                 context = await conversation_context.prepare(self._memory, job, self._adapter, trace)
                 recommendations.reset_context(job, context)
@@ -710,13 +714,29 @@ async def run_worker(snapshot: CatalogSnapshot, *, http_resources=None) -> None:
                 return
             pool = await create_pool(settings)
             local_codex = settings.llm_backend == 'codex-cli'
-            mcp_gateway = None if local_codex else McpToolGateway(mcp_url=settings.mcp_base_url)
+            portfolio_budget = None
+            if settings.is_portfolio:
+                from backend.services.portfolio_budget import PortfolioLLMCallBudget
+
+                portfolio_budget = PortfolioLLMCallBudget(
+                    pool, limit=settings.portfolio_daily_llm_call_limit
+                )
+            mcp_gateway = (
+                None if local_codex or settings.is_portfolio
+                else McpToolGateway(mcp_url=settings.mcp_base_url)
+            )
             widget_client = http_resources.worker_widget if not local_codex or settings.searxng_base_url else None
             await AgentJobWorker(
                 pool, snapshot, mcp_gateway=mcp_gateway, widget_client=widget_client,
                 search_json_loader=http_resources.search_json,
-                local_search_url=settings.searxng_base_url if local_codex else '',
+                local_search_url=(
+                    settings.searxng_base_url
+                    if local_codex or settings.is_portfolio else ''
+                ),
                 personal_terms=PersonalTermRepository(pool),
+                llm_call_reserver=(
+                    portfolio_budget.reserve if portfolio_budget is not None else None
+                ),
             ).run_forever(
                 concurrency=settings.worker_concurrency
             )
