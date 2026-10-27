@@ -1,11 +1,46 @@
 import asyncio
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from backend.shared.config import Settings
+
+
+def test_google_invite_codex_settings_require_an_explicit_owner_account_id():
+    base = dict(
+        _env_file=None, database_url='postgresql://u:p@127.0.0.1:55433/uh',
+        llm_backend='codex-cli', worker_concurrency=1,
+        interpreter_prompt_version='uhkegryo-interpreter-v4', auth_mode='google_invite',
+        google_client_id='client', google_client_secret='secret',
+        google_redirect_uri='http://localhost:8010/api/auth/google/callback',
+        auth_frontend_origin='http://localhost:3110',
+        invite_code_pepper='synthetic-pepper-long-enough',
+    )
+    with pytest.raises(ValueError):
+        Settings(**base)
+    with pytest.raises(ValueError):
+        Settings(
+            **base, codex_owner_account_id='11111111-1111-1111-1111-111111111111'
+        )
+
+    configured = Settings(
+        **base, codex_owner_account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c'
+    )
+    assert str(configured.codex_owner_account_id) == 'eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c'
+    approved = base | {
+        'codex_owner_account_id': 'eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c'
+    }
+    for change in (
+        {'google_redirect_uri': 'http://localhost:8000/api/auth/google/callback'},
+        {'google_redirect_uri': 'https://example.test/api/auth/google/callback'},
+        {'auth_frontend_origin': 'http://localhost:3100'},
+        {'auth_frontend_origin': 'https://example.test'},
+    ):
+        with pytest.raises(ValueError):
+            Settings(**(approved | change))
 
 
 def test_local_backend_requires_loopback_db_and_single_worker():
@@ -36,6 +71,73 @@ def test_local_request_guard_rejects_remote_host_and_origin():
     for peer, host, origin in [('8.8.8.8','localhost:8000',None), ('127.0.0.1','evil.test',None),
                                ('127.0.0.1','localhost','https://evil.test')]:
         assert not local_request_allowed(peer, host, origin)
+
+
+def test_google_invite_codex_allows_only_the_configured_active_admin():
+    from backend.local_codex import local_codex_account_allowed
+    settings = SimpleNamespace(
+        llm_backend='codex-cli', auth_mode='google_invite',
+        codex_owner_account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c',
+    )
+
+    assert local_codex_account_allowed(settings, SimpleNamespace(
+        account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c', role='admin', status='active',
+    ))
+    for account in (
+        None,
+        SimpleNamespace(role='admin', status='active'),
+        SimpleNamespace(account_id='22222222-2222-2222-2222-222222222222', role='admin', status='active'),
+        SimpleNamespace(account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c', role='user', status='active'),
+        SimpleNamespace(account_id='eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c', role='admin', status='disabled'),
+    ):
+        assert not local_codex_account_allowed(settings, account)
+
+    wrong_settings = SimpleNamespace(
+        llm_backend='codex-cli', auth_mode='google_invite',
+        codex_owner_account_id='22222222-2222-2222-2222-222222222222',
+    )
+    assert not local_codex_account_allowed(wrong_settings, SimpleNamespace(
+        account_id='22222222-2222-2222-2222-222222222222', role='admin', status='active',
+    ))
+
+
+def test_google_invite_codex_fails_closed_without_configured_owner():
+    from backend.local_codex import local_codex_account_allowed
+    settings = SimpleNamespace(llm_backend='codex-cli', auth_mode='google_invite')
+    account = SimpleNamespace(
+        account_id='11111111-1111-1111-1111-111111111111', role='admin', status='active',
+    )
+
+    assert not local_codex_account_allowed(settings, account)
+
+
+def test_oauth_settings_retarget_only_the_existing_database_to_loopback(tmp_path, monkeypatch):
+    from backend.local_codex import load_oauth_settings
+    settings_file = tmp_path / 'oauth-local.env'
+    settings_file.write_text(
+        'DATABASE_URL=postgresql://uhkegryo:secret@app-db:5432/uhkegryo\n'
+        'AUTH_MODE=google_invite\n'
+        'GOOGLE_CLIENT_ID=synthetic-client\n'
+        'GOOGLE_CLIENT_SECRET=synthetic-secret\n'
+        'GOOGLE_REDIRECT_URI=http://localhost:8010/api/auth/google/callback\n'
+        'AUTH_FRONTEND_ORIGIN=http://localhost:3110\n'
+        'INVITE_CODE_PEPPER=synthetic-pepper-long-enough\n'
+        'INVITE_REDEEM_ATTEMPT_LIMIT=5\n'
+        'INVITE_REDEEM_WINDOW_SECONDS=900\n'
+        'CODEX_OWNER_ACCOUNT_ID=eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c\n'
+        'OPENROUTER_API_KEY=must-not-be-imported\n'
+        'LOGIN_TEST_MODE=1\n',
+        encoding='utf-8',
+    )
+    monkeypatch.delenv('OPENROUTER_API_KEY', raising=False)
+
+    load_oauth_settings(settings_file, database_port=55433)
+
+    assert os.environ['DATABASE_URL'] == 'postgresql://uhkegryo:secret@127.0.0.1:55433/uhkegryo'
+    assert os.environ['AUTH_MODE'] == 'google_invite'
+    assert os.environ['LOGIN_TEST_MODE'] == 'false'
+    assert os.environ['CODEX_OWNER_ACCOUNT_ID'] == 'eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c'
+    assert 'OPENROUTER_API_KEY' not in os.environ
 
 
 def test_codex_adapter_validates_without_constructing_openrouter(monkeypatch):

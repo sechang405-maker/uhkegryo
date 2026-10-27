@@ -2,7 +2,7 @@
 import os
 import io
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 LOOPBACK = {'127.0.0.1', '::1', 'localhost'}
 
@@ -19,6 +19,43 @@ def load_local_settings(path):
         raise SystemExit('Local settings invalid; check .env.local-codex without sharing its contents') from None
 
 
+def load_oauth_settings(path, *, database_port):
+    """Load only the existing local OAuth app settings and retarget its DB to loopback."""
+    from dotenv import dotenv_values
+    allowed = (
+        'AUTH_MODE', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI',
+        'AUTH_FRONTEND_ORIGIN', 'INVITE_CODE_PEPPER', 'INVITE_REDEEM_ATTEMPT_LIMIT',
+        'INVITE_REDEEM_WINDOW_SECONDS', 'CODEX_OWNER_ACCOUNT_ID',
+    )
+    try:
+        values = dotenv_values(
+            stream=io.StringIO(Path(path).read_text(encoding='utf-8')), interpolate=False,
+        )
+        database = urlsplit(values.get('DATABASE_URL') or '')
+        if (
+            values.get('AUTH_MODE') != 'google_invite'
+            or not all(values.get(key) for key in allowed)
+            or database.scheme not in ('postgresql', 'postgres')
+            or database.hostname != 'app-db'
+            or '@' not in database.netloc
+            or database.query
+            or database.fragment
+            or not 1 <= int(database_port) <= 65535
+        ):
+            raise ValueError()
+        credentials = database.netloc.rsplit('@', 1)[0]
+        local_database = urlunsplit((
+            database.scheme, f'{credentials}@127.0.0.1:{int(database_port)}',
+            database.path, '', '',
+        ))
+        for key in allowed:
+            os.environ[key] = values[key]
+        os.environ['DATABASE_URL'] = local_database
+        os.environ['LOGIN_TEST_MODE'] = 'false'
+    except (OSError, TypeError, ValueError):
+        raise SystemExit('OAuth settings invalid; check the selected local settings without sharing contents') from None
+
+
 def local_request_allowed(peer, host, origin):
     try:
         host_url = urlsplit('http://' + host)
@@ -33,23 +70,51 @@ def local_request_allowed(peer, host, origin):
         return False
 
 
+def local_codex_account_allowed(settings, account):
+    """Keep a personal host Codex login confined to its configured account."""
+    from backend.shared.config import APPROVED_LOCAL_CODEX_OWNER_ACCOUNT_ID
+    if (
+        getattr(settings, 'llm_backend', 'openrouter') != 'codex-cli'
+        or getattr(settings, 'auth_mode', 'local') != 'google_invite'
+    ):
+        return True
+    owner_account_id = getattr(settings, 'codex_owner_account_id', None)
+    return bool(
+        str(owner_account_id) == str(APPROVED_LOCAL_CODEX_OWNER_ACCOUNT_ID)
+        and account is not None
+        and str(getattr(account, 'account_id', '')) == str(owner_account_id)
+        and getattr(account, 'role', None) == 'admin'
+        and getattr(account, 'status', None) == 'active'
+    )
+
+
 def main():
     import argparse
     import asyncio
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--init-db', action='store_true', help='Explicitly apply migrations to the selected local DB')
     parser.add_argument('--local-settings', action='store_true', help='Explicitly load the personal .env.local-codex DB settings')
+    parser.add_argument('--oauth-settings', default='', help='Explicit local Google OAuth settings file')
+    parser.add_argument('--database-port', type=int, default=55433, help='Loopback port mapped to the existing app DB')
+    parser.add_argument('--port', type=int, default=8000, help='Loopback API port')
+    parser.add_argument('--frontend-port', type=int, default=3100, help='Loopback frontend port')
     parser.add_argument('--search-url', default='', help='Optional loopback SearXNG origin for catalog-only public image searches')
     args = parser.parse_args()
     from backend.shared.config import Settings, get_settings
     root = Path(__file__).resolve().parents[1]
-    if args.local_settings:
+    if args.local_settings and args.oauth_settings:
+        raise SystemExit('Choose one local settings source')
+    if args.oauth_settings:
+        load_oauth_settings(args.oauth_settings, database_port=args.database_port)
+    elif args.local_settings:
         load_local_settings(root / '.env.local-codex')
     os.environ.update(LLM_BACKEND='codex-cli', WORKER_CONCURRENCY='1', ENVIRONMENT='development',
         LLM_MODEL='gpt-5.6-luna', INTERPRETER_PROMPT_VERSION='uhkegryo-interpreter-v4',
         INTERPRETER_PROMPT_PATH=str(root / 'prompts/uhkegryo-interpreter-v4.md'),
         LANGFUSE_PUBLIC_KEY='', LANGFUSE_SECRET_KEY='', MCP_ENABLED='false', MCP_BASE_URL='',
-        SEARXNG_BASE_URL=args.search_url, ALLOWED_ORIGINS='http://127.0.0.1:3100,http://localhost:3100')
+        OPENROUTER_API_KEY='', OPENAI_API_KEY='', ANTHROPIC_API_KEY='',
+        SEARXNG_BASE_URL=args.search_url,
+        ALLOWED_ORIGINS=(f'http://127.0.0.1:{args.frontend_port},http://localhost:{args.frontend_port}'))
     # Validate process env only; never silently import a copied team's .env/DB URL.
     try:
         settings = Settings(_env_file=None)
@@ -76,7 +141,7 @@ def main():
             raise SystemExit('Local DB initialization failed; check the selected local database and schema') from None
         return
     import uvicorn
-    uvicorn.run('backend.main:app', host='127.0.0.1', port=8000, workers=1,
+    uvicorn.run('backend.main:app', host='127.0.0.1', port=args.port, workers=1,
                 proxy_headers=False, loop='asyncio')
 
 

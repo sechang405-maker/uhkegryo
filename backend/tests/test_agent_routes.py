@@ -7,6 +7,7 @@
 from __future__ import annotations
 from backend.shared.auth import session_cookie_max_age
 
+import asyncio
 import json
 import hashlib
 import uuid
@@ -14,6 +15,7 @@ from types import SimpleNamespace
 
 import asyncpg
 import pytest
+from fastapi import HTTPException, Request, Response
 from fastapi.testclient import TestClient
 
 from backend.main import app
@@ -170,6 +172,42 @@ def test_login_test_mode_keeps_deterministic_term_creation_guidance(
 
     assert result["status"] == 202
     assert len(client.repositories.jobs.jobs) == 1
+
+
+def test_google_invite_codex_rejects_non_admin_before_job_admission(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = SimpleNamespace(
+        llm_backend="codex-cli", auth_mode="google_invite",
+        login_test_mode=False, environment="development",
+    )
+    monkeypatch.setattr(agent_route, "get_settings", lambda: settings)
+    scope = {
+        "type": "http", "method": "POST", "path": "/api/agent",
+        "headers": [], "client": ("127.0.0.1", 12345),
+        "server": ("127.0.0.1", 8010), "scheme": "http",
+        "query_string": b"", "root_path": "", "http_version": "1.1",
+    }
+    delivered = False
+
+    async def receive():
+        nonlocal delivered
+        if delivered:
+            return {"type": "http.disconnect"}
+        delivered = True
+        return {
+            "type": "http.request", "more_body": False,
+            "body": json.dumps({"request_text": "캐릭터 포즈를 추천해줘"}).encode(),
+        }
+
+    request = Request(scope, receive)
+    request.state.account = SimpleNamespace(role="user", status="active")
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(agent_route.submit_agent(request, Response(), str(uuid.uuid4())))
+
+    assert raised.value.status_code == 403
+    assert client.repositories.jobs.jobs == {}
 
 
 # --- AC-01 · 비동기 제출 ---------------------------------------------------

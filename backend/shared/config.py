@@ -3,10 +3,14 @@ import os
 import warnings
 from functools import lru_cache
 from pathlib import Path
+from uuid import UUID
 from pydantic import AliasChoices, Field, model_validator
 from typing import Literal
 from urllib.parse import urlsplit
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+APPROVED_LOCAL_CODEX_OWNER_ACCOUNT_ID = UUID('eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c')
 
 
 class Settings(BaseSettings):
@@ -17,6 +21,7 @@ class Settings(BaseSettings):
     codex_timeout_seconds: float = Field(default=180, ge=10, le=300)
     codex_bin_dir: str = ''
     codex_executable: str = ''
+    codex_owner_account_id: UUID | None = None
     local_profile_token: str = Field(default='', repr=False)
     openrouter_api_key: str = ""
     openai_api_key: str = ""
@@ -96,6 +101,27 @@ class Settings(BaseSettings):
                 raise ValueError('GOOGLE_REDIRECT_URI must be an absolute URL')
         if self.llm_backend != 'codex-cli':
             return self
+        if (
+            self.auth_mode == 'google_invite'
+            and self.codex_owner_account_id != APPROVED_LOCAL_CODEX_OWNER_ACCOUNT_ID
+        ):
+            raise ValueError('Google invite Codex mode requires the approved owner account ID')
+        if self.auth_mode == 'google_invite' and (
+            frontend.scheme != 'http'
+            or frontend.hostname not in ('127.0.0.1', '::1', 'localhost')
+            or frontend.port != 3110
+            or frontend.username is not None
+            or frontend.password is not None
+            or redirect.scheme != 'http'
+            or redirect.hostname not in ('127.0.0.1', '::1', 'localhost')
+            or redirect.port != 8010
+            or redirect.username is not None
+            or redirect.password is not None
+            or redirect.path != '/api/auth/google/callback'
+            or redirect.query
+            or redirect.fragment
+        ):
+            raise ValueError('Google invite Codex mode requires loopback OAuth ports 8010/3110')
         db = urlsplit(self.database_url)
         if (db.scheme not in ('postgresql', 'postgres') or db.hostname not in ('127.0.0.1', '::1', 'localhost')
                 or db.query or db.fragment):

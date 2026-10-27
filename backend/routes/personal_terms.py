@@ -69,7 +69,15 @@ async def generate_proposal(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
     require_conversation_action(request, "personal-term-generate")
-    if get_settings().login_test_mode:
+    settings = get_settings()
+    from backend.local_codex import local_codex_account_allowed
+    if not local_codex_account_allowed(
+        settings, getattr(request.state, "account", None)
+    ):
+        raise HTTPException(
+            403, "로컬 Codex AI는 승인된 관리자 계정만 사용할 수 있습니다."
+        )
+    if settings.login_test_mode:
         raise HTTPException(
             503,
             "로그인 확인 모드에서는 AI 용어 초안을 만들 수 없습니다.",

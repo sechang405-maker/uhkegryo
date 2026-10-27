@@ -258,10 +258,20 @@ async def submit_agent(
     """
     payload = await _parse_agent_request(request)
     key = _parse_idempotency_key(idempotency_key)
+    settings = get_settings()
+
+    if conversation_uses_ai_quota(payload.request_text):
+        from backend.local_codex import local_codex_account_allowed
+        if not local_codex_account_allowed(
+            settings, getattr(request.state, "account", None)
+        ):
+            raise HTTPException(
+                403, "로컬 Codex AI는 승인된 관리자 계정만 사용할 수 있습니다."
+            )
 
     # Reject model-backed work before creating a session/job or reserving quota.
     if (
-        getattr(get_settings(), "login_test_mode", False)
+        getattr(settings, "login_test_mode", False)
         and conversation_uses_ai_quota(payload.request_text)
     ):
         raise ApiContractError(ApiErrorCode.AI_SERVICE_NOT_CONFIGURED)

@@ -58,7 +58,7 @@ def request(token="owner-a", action=None):
     return SimpleNamespace(cookies={"session_id": token},
         headers={"x-conversation-action": action, "origin": "http://testserver"},
         base_url="http://testserver/", client=SimpleNamespace(host="testclient"),
-        app=SimpleNamespace(state=SimpleNamespace()))
+        app=SimpleNamespace(state=SimpleNamespace()), state=SimpleNamespace())
 
 
 @pytest.fixture
@@ -100,6 +100,30 @@ def test_login_test_mode_rejects_proposal_before_generator_or_quota(services, mo
         ))
 
     assert raised.value.status_code == 503
+    assert generator.calls == []
+
+
+def test_google_invite_codex_rejects_non_admin_proposal_before_generator(
+    services, monkeypatch,
+):
+    _, generator = services
+    monkeypatch.setattr(
+        routes,
+        "get_settings",
+        lambda: SimpleNamespace(
+            login_test_mode=False, llm_backend="codex-cli", auth_mode="google_invite"
+        ),
+    )
+    attempted = request(action="personal-term-generate")
+    attempted.state.account = SimpleNamespace(role="user", status="active")
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(routes.generate_proposal(
+            routes.ProposalRequest(source_input="발레 용어를 하나 만들어줘"),
+            attempted, Response(), "draft-admin-only",
+        ))
+
+    assert raised.value.status_code == 403
     assert generator.calls == []
 
 
