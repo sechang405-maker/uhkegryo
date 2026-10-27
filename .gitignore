@@ -31,3 +31,4 @@ build/
 .local-run/
 .neon
 .vercel
+.env*
