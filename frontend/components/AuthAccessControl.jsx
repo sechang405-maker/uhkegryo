@@ -8,22 +8,45 @@ export default function AuthAccessControl() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/auth/me", { credentials: "include" })
-      .then(async (response) => {
-        if (response.status === 404) return null;
-        if (!response.ok) throw new Error("auth unavailable");
-        return response.json();
-      })
-      .then((next) => {
-        if (!active || next === null) return;
-        if (next.state === "invite_required") {
-          window.location.replace("/invite");
-          return;
-        }
-        setAuth(next);
-      })
-      .catch(() => active && setAuth({ state: "unavailable" }));
-    return () => { active = false; };
+    let generation = 0;
+
+    function refresh() {
+      const current = ++generation;
+      fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
+        .then(async (response) => {
+          if (response.status === 404) return null;
+          if (!response.ok) throw new Error("auth unavailable");
+          return response.json();
+        })
+        .then((next) => {
+          if (!active || current !== generation || next === null) return;
+          if (next.state === "invite_required") {
+            window.location.replace("/invite");
+            return;
+          }
+          setAuth(next);
+        })
+        .catch(() => {
+          if (active && current === generation) setAuth({ state: "unavailable" });
+        });
+    }
+
+    const onPageShow = () => refresh();
+    const onFocus = () => refresh();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    refresh();
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      active = false;
+      generation += 1;
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   async function logout() {

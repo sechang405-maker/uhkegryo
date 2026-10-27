@@ -16,3 +16,11 @@ test("invite-required state leaves the workspace for the registration screen", (
   assert.match(source, /next\.state === "invite_required"/);
   assert.match(source, /window\.location\.replace\("\/invite"\)/);
 });
+
+test("auth state is refreshed after login navigation restores or reactivates the page", () => {
+  assert.match(source, /cache: "no-store"/);
+  assert.match(source, /window\.addEventListener\("pageshow", onPageShow\)/);
+  assert.match(source, /window\.addEventListener\("focus", onFocus\)/);
+  assert.match(source, /document\.addEventListener\("visibilitychange", onVisible\)/);
+  assert.match(source, /document\.visibilityState === "visible"/);
+});
