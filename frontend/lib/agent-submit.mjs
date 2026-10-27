@@ -36,6 +36,7 @@ export async function submitAgentRequest(requestText, options = {}) {
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": options.idempotencyKey || createId(),
+        "X-Conversation-Action": "agent-submit",
       },
       body: JSON.stringify({ request_text: requestText, ...(options.sessionId ? { session_id: options.sessionId } : {}) }),
       signal: options.signal,

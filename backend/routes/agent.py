@@ -83,6 +83,14 @@ async def close_widget_client() -> None:
 def require_conversation_action(request: Request, action: str) -> None:
     settings = get_settings()
     origin = request.headers.get('origin')
+    if getattr(settings, 'is_portfolio', False):
+        if (
+            request.headers.get('x-conversation-action') != action
+            or request.headers.get('sec-fetch-site') == 'cross-site'
+            or origin != settings.portfolio_public_origin.rstrip('/')
+        ):
+            raise HTTPException(403, '허용되지 않은 포트폴리오 변경 요청입니다.')
+        return
     allowed = {value.strip() for value in settings.allowed_origins.split(',')}
     allowed.add(str(request.base_url).rstrip('/'))
     if (request.headers.get('x-conversation-action') != action
@@ -93,8 +101,10 @@ def require_conversation_action(request: Request, action: str) -> None:
 
 @router.post('/api/local/profile')
 async def local_profile(request: Request, response: Response):
-    require_conversation_action(request, 'profile')
     settings = get_settings()
+    if getattr(settings, 'is_portfolio', False):
+        raise HTTPException(status_code=404, detail='Not found')
+    require_conversation_action(request, 'profile')
     token = settings.local_profile_token
     if settings.llm_backend != 'codex-cli' or not token:
         return {'persistent': False}
@@ -257,6 +267,8 @@ async def submit_agent(
     (`session-job-persistence.md:19`).
     """
     payload = await _parse_agent_request(request)
+    if getattr(get_settings(), 'is_portfolio', False):
+        require_conversation_action(request, 'agent-submit')
     key = _parse_idempotency_key(idempotency_key)
     settings = get_settings()
 
@@ -409,6 +421,8 @@ async def _owner(request: Request, response: Response, sessions: SessionReposito
 
 @router.post("/api/sessions", status_code=201)
 async def create_conversation(request: Request, response: Response):
+    if getattr(get_settings(), 'is_portfolio', False):
+        require_conversation_action(request, 'session-create')
     sessions, _ = await _database_call(get_repositories())
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if not token or not await _database_call(sessions.has_owner(token)):

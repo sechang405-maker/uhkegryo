@@ -34,7 +34,10 @@ export async function searchFixedTerm(term, { fetchImpl = fetch, signal, suffix,
   for (let attempt = 0; attempt <= retries; attempt++) {
   let response;
   try { response = await fetchImpl("/api/term-search", {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST", headers: {
+      "Content-Type": "application/json",
+      "X-Conversation-Action": "term-search",
+    },
     body: JSON.stringify({ term_id: term.term_id, ...(suffix ? { suffix } : {}), ...(exclusions.length ? {exclude_pin_ids: exclusions} : {}) }), signal,
   }); } catch (error) {
     if (signal?.aborted || error.name === 'AbortError') throw error;

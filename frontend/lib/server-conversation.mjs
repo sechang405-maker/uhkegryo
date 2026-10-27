@@ -37,9 +37,9 @@ export async function deleteConversation(id, options = {}) {
   if (response.status === 409) throw new Error("답변 처리 중인 대화는 완료 후 삭제할 수 있습니다.");
   if (response.status !== 204) throw new Error("대화를 삭제하지 못했습니다. 기록을 유지했으니 다시 시도해 주세요.");
 }
-async function read(path, options, method = "GET") {
+async function read(path, options, method = "GET", headers = undefined) {
   const response = await (options.fetchImpl || globalThis.fetch)(path, {
-    method, credentials: "include", cache: "no-store", signal: options.signal,
+    method, credentials: "include", cache: "no-store", signal: options.signal, headers,
   });
   if (!response.ok) throw new Error(RESTORE_ERROR);
   return response.json();
@@ -89,7 +89,9 @@ export async function loadOlderConversation(options = {}) {
     nextBeforeJobId: page.next_before_job_id || null, referenceJob: page.reference_item || null, previousReferenceJob: page.previous_reference_item || null };
 }
 export async function createConversation(options = {}) {
-  const created = await read("/api/sessions", options, "POST");
+  const created = await read("/api/sessions", options, "POST", {
+    "X-Conversation-Action": "session-create",
+  });
   validateSessions([created]);
   return created;
 }

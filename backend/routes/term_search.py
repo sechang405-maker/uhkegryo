@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from backend.schemas.enums import FailureCode, ReasonCode, Role
 from backend.schemas.models import TermResult
-from backend.routes.agent import _database_call, _owner, get_repositories
+from backend.routes.agent import _database_call, _owner, get_repositories, require_conversation_action
 from backend.services.failure_mapping import OperationalFailure
 from backend.services.personal_term_repository import PersonalTermNotFound, PersonalTermRepository
 from backend.services.pinterest_widget import PinterestWidgetClient, PinterestWidgetProvider
@@ -78,6 +78,8 @@ async def resolve_personal_search_card(
 @router.post("/api/term-search", response_model=TermResult)
 async def search_term(payload: TermSearchRequest, request: Request, response: Response) -> TermResult:
     settings = get_settings()
+    if getattr(settings, 'is_portfolio', False):
+        require_conversation_action(request, 'term-search')
     if settings.llm_backend == 'codex-cli' and not settings.searxng_base_url:
         raise HTTPException(503, '로컬 이미지 검색이 연결되지 않았습니다. SearXNG 실행 설정을 확인해 주세요.')
     snapshot = request.app.state.catalog

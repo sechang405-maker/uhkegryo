@@ -1,6 +1,7 @@
 """공통 설정: 환경변수 로드·검증."""
 import os
 import warnings
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
@@ -48,8 +49,15 @@ class Settings(BaseSettings):
     database_url: str
 
     # 앱
+    runtime_mode: Literal['standard', 'anonymous_portfolio'] = 'standard'
     allowed_origins: str = "http://localhost:3000"
     environment: str = "development"
+
+    # Isolated, explicitly started instructor portfolio runtime.
+    portfolio_public_origin: str = ''
+    portfolio_evaluation_ends_at: datetime | None = None
+    portfolio_free_model_allowlist: str = ''
+    portfolio_daily_llm_call_limit: int = Field(default=40, ge=1, le=40)
 
     # Invitation-only Google login. `local` preserves the existing private runtime.
     auth_mode: Literal['local', 'google_invite'] = 'local'
@@ -80,8 +88,66 @@ class Settings(BaseSettings):
     # Self-hosted SearXNG Search API
     searxng_base_url: str = ""
 
+    @property
+    def is_portfolio(self) -> bool:
+        return self.runtime_mode == 'anonymous_portfolio'
+
+    @property
+    def portfolio_free_models(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(
+            value.strip() for value in self.portfolio_free_model_allowlist.split(',')
+            if value.strip()
+        ))
+
     @model_validator(mode='after')
     def local_codex_boundary(self):
+        if self.is_portfolio:
+            if self.llm_backend != 'openrouter':
+                raise ValueError('Portfolio mode requires OpenRouter and forbids Codex fallback')
+            if not self.openrouter_api_key:
+                raise ValueError('Portfolio mode requires a server-only OpenRouter API key')
+            if self.openrouter_base_url.rstrip('/') != 'https://openrouter.ai/api/v1':
+                raise ValueError('Portfolio mode requires the official OpenRouter base URL')
+            models = self.portfolio_free_models
+            if not models or any(not model.endswith(':free') for model in models):
+                raise ValueError('Portfolio allowlist must contain only explicit :free model IDs')
+            if not self.llm_model.endswith(':free'):
+                raise ValueError('Portfolio mode requires an explicit free model')
+            if self.llm_model not in models:
+                raise ValueError('Portfolio model must be present in the approved allowlist')
+            if self.worker_concurrency != 1:
+                raise ValueError('Portfolio mode requires exactly one worker')
+            if self.environment != 'production':
+                raise ValueError('Portfolio mode requires production cookie security')
+            if self.auth_mode != 'local':
+                raise ValueError('Portfolio mode is anonymous and cannot enable Google invite auth')
+            if self.langfuse_public_key or self.langfuse_secret_key:
+                raise ValueError('Portfolio mode forbids Langfuse question tracing')
+            if self.mcp_enabled or self.mcp_base_url:
+                raise ValueError('Portfolio mode forbids remote MCP configuration')
+            if not self.portfolio_public_origin:
+                raise ValueError('Portfolio mode requires an explicit public origin')
+            public = urlsplit(self.portfolio_public_origin)
+            if (
+                public.scheme != 'https' or not public.netloc
+                or public.path not in ('', '/') or public.query or public.fragment
+                or public.username is not None or public.password is not None
+            ):
+                raise ValueError('Portfolio public origin must be an HTTPS origin without credentials or a path')
+            origins = tuple(
+                value.strip().rstrip('/') for value in self.allowed_origins.split(',')
+                if value.strip()
+            )
+            if origins != (self.portfolio_public_origin.rstrip('/'),):
+                raise ValueError('Portfolio CORS origin must exactly match the public origin')
+            if self.portfolio_evaluation_ends_at is None:
+                raise ValueError('Portfolio mode requires an evaluation end time')
+            end_time = self.portfolio_evaluation_ends_at
+            if end_time.tzinfo is None or end_time.utcoffset() is None:
+                raise ValueError('Portfolio evaluation end time must include a timezone')
+            if end_time <= datetime.now(timezone.utc):
+                raise ValueError('Portfolio evaluation end time must be in the future')
+            return self
         if self.login_test_mode and (
             self.auth_mode != 'google_invite' or self.environment != 'development'
         ):
