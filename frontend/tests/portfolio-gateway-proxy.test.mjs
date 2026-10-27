@@ -115,4 +115,3 @@ test("portfolio gateway proxy returns the exact offline response on network fail
     user_message: PORTFOLIO_OFFLINE_MESSAGE,
   });
 });
-
