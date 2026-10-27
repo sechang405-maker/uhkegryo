@@ -42,6 +42,67 @@ tunnel targets. Tunnel software installation, account setup, link creation, and
 external exposure require separate approval. Set the resulting exact HTTPS
 origin before starting so secure cookies, CORS, and mutation-origin checks agree.
 
+## Vercel Hobby frontend + PC backend
+
+This mode keeps the public page at one Vercel production origin while the
+isolated portfolio backend runs only during an evaluation window.
+
+### Public and private paths
+
+- Vercel serves `/` and its static assets. Its Node Route Handlers own
+  `/api/*` and `/service-health` and forward only to the configured
+  `PORTFOLIO_GATEWAY_ORIGIN`.
+- The Quick Tunnel target remains the loopback portfolio frontend at
+  `http://127.0.0.1:3120`. PostgreSQL, FastAPI, and SearXNG retain no host
+  ports and are never tunnel targets.
+- The local frontend accepts API and health traffic only when the server-only
+  `PORTFOLIO_GATEWAY_SECRET` injected by the Vercel proxy matches. A request
+  cannot supply or select an alternate upstream URL.
+- The private Google/Codex frontend and API, admin/auth routes, ports
+  3110/8010/55433, and private environment file are not part of this project.
+
+### Vercel project settings to enter after approval
+
+Use `frontend` as the project root and the existing Next.js build settings.
+Copy the variable names from `frontend/vercel.env.example`; do not upload that
+example as an environment file. Mark `PORTFOLIO_GATEWAY_SECRET` as a Secret.
+Do not add an OpenRouter key, database URL, Google OAuth value, Codex setting,
+or the private local environment to Vercel.
+
+Use exactly one stable production origin for `PORTFOLIO_PUBLIC_ORIGIN` and
+`ALLOWED_ORIGINS` in the local `.env.portfolio`. Preview domains intentionally
+fail the backend origin check rather than broadening CORS or CSRF rules.
+
+### Evaluation start
+
+1. After credential creation is separately approved, place the same random
+   gateway secret in the local ignored `.env.portfolio` and in the Vercel
+   server-only Secret.
+2. Start the isolated stack in the foreground with
+   `./scripts/portfolio-vercel-start.ps1`. This does not install or start a
+   tunnel.
+3. After tunnel execution is separately approved, start a Quick Tunnel whose
+   only target is `http://127.0.0.1:3120`.
+4. Set `PORTFOLIO_GATEWAY_ORIGIN` to that exact HTTPS origin and create a new
+   Vercel production deployment. Environment changes do not alter an existing
+   deployment.
+5. Verify `/service-health`, anonymous session cookie continuity, CSRF rejection
+   for a different Origin, image search, and one approved model call before
+   sharing the stable Vercel production URL.
+
+Quick Tunnel hostnames change on every new tunnel. Each change therefore needs
+an updated `PORTFOLIO_GATEWAY_ORIGIN` and a new Vercel deployment. The gateway
+secret should not change merely because the temporary hostname changed.
+
+### Evaluation stop and offline behavior
+
+Stop the Quick Tunnel first, then run `./scripts/portfolio-vercel-stop.ps1`.
+The Vercel page remains available, but health and API requests return a
+non-cacheable 503 and the UI says that the demo is not currently operating.
+There is no fallback to the private Codex runtime or a paid model. All Compose
+services still use `restart: "no"`, so restarting the PC does not publish the
+demo automatically. The stop helper preserves the isolated database volume.
+
 ## Boundaries
 
 - The evaluator is anonymous and each browser receives a random owner cookie;

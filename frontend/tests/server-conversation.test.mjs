@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { restoreConversation, createConversation, listConversations, resumeConversation, createHistoryLoader } from "../lib/server-conversation.mjs";
+import { restoreConversation, createConversation, listConversations, resumeConversation, createHistoryLoader, ensureServiceAvailable, SERVICE_UNAVAILABLE_ERROR } from "../lib/server-conversation.mjs";
 import { showThumbnail } from "../lib/result-view.mjs";
 import { submitAgentRequest } from "../lib/agent-submit.mjs";
 import { answerForJob, upsertTurn, stopTurnPolling } from "../lib/conversation.mjs";
@@ -9,6 +9,14 @@ const sid2 = "00000000-0000-0000-0000-000000000002";
 const job = (id, status = "completed") => ({ job_id: id, session_id: sid, job_status: status,
   request_text: `요청 ${id}`, result: status === "completed" ? { agent_status: "partial_result", answer_text: "통합 설명", reason_codes: ["PIN_SEARCH_UNAVAILABLE"] } : null });
 const response = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
+
+test("portfolio health failure gives the exact offline-window message", async () => {
+  await assert.rejects(
+    ensureServiceAvailable({ fetchImpl: async () => response({}, 503) }),
+    (error) => error.message === "현재 데모 운영 시간이 아닙니다. 평가 시간에 다시 접속해 주세요."
+      && error.message === SERVICE_UNAVAILABLE_ERROR,
+  );
+});
 
 test("완료 2건 복원 후 이전 기록만 재조회해 정상 썸네일을 표시하고 더미는 즉시 연다", async () => {
   const pin = { status: "available", pin_url: "https://www.pinterest.com/pin/123/" };

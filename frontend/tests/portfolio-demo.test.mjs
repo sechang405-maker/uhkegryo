@@ -4,13 +4,15 @@ import { execFileSync } from 'node:child_process';
 
 test('production demo is opt-in and never creates an API rewrite', () => {
   const script = "const c=(await import('./next.config.mjs')).default; const d=await import('./lib/demo-job.mjs'); console.log(JSON.stringify({demo:d.uiDemoEnabled,rewrites:await c.rewrites()}))";
-  const run = mode => JSON.parse(execFileSync(process.execPath, ['--input-type=module','-e',script], {
-    cwd: new URL('..', import.meta.url), encoding:'utf8', stdio:'pipe', env:{...process.env,NODE_ENV:'production',NEXT_PUBLIC_UI_DEMO:mode,AGENT_API_ORIGIN:'http://127.0.0.1:9999'},
+  const run = (mode, gateway = '0') => JSON.parse(execFileSync(process.execPath, ['--input-type=module','-e',script], {
+    cwd: new URL('..', import.meta.url), encoding:'utf8', stdio:'pipe', env:{...process.env,NODE_ENV:'production',NEXT_PUBLIC_UI_DEMO:mode,PORTFOLIO_GATEWAY_PROXY:gateway,AGENT_API_ORIGIN:'http://127.0.0.1:9999'},
   }));
   assert.deepEqual(run('1'),{demo:true,rewrites:[]});
   assert.equal(run('0').demo,false);
-  assert.equal(run('').rewrites[0].destination,'http://127.0.0.1:9999/api/:path*');
+  assert.equal(run('').rewrites.beforeFiles[0].destination,'http://127.0.0.1:9999/api/:path*');
+  assert.deepEqual(run('0', '1').rewrites, []);
   assert.throws(()=>run('typo'));
+  assert.throws(()=>run('0', 'typo'));
 });
 
 test('portfolio fixtures match exact inputs and never contain remote images', async () => {

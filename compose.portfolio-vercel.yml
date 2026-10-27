@@ -1,0 +1,17 @@
+services:
+  frontend:
+    environment:
+      PORTFOLIO_GATEWAY_REQUIRED: "1"
+      PORTFOLIO_GATEWAY_SECRET: ${PORTFOLIO_GATEWAY_SECRET:?Set a separate Vercel-to-PC gateway secret}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://localhost:3000/service-health', {headers:
+          {'x-portfolio-gateway-secret': process.env.PORTFOLIO_GATEWAY_SECRET}})
+          .then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 20

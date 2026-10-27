@@ -37,7 +37,7 @@ test("AC-02: 유효한 원문을 같은 origin에 UUID 키와 쿠키로 제출�
   assert.equal(call[1].credentials, "include");
   assert.equal(call[1].headers["Idempotency-Key"], key);
   assert.deepEqual(JSON.parse(call[1].body), { request_text: requestText });
-  const rewrites = await nextConfig.rewrites();
+  const { beforeFiles: rewrites } = await nextConfig.rewrites();
   assert.equal(rewrites[0].source, "/api/:path*");
   assert.match(rewrites[0].destination, /^https?:\/\/[^/]+\/api\/:path\*$/);
   assert.deepEqual(rewrites[1],{source:'/service-health',destination:rewrites[0].destination.replace('/api/:path*','/health')});

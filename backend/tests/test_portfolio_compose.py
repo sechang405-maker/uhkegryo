@@ -51,3 +51,40 @@ def test_portfolio_lifecycle_is_explicit_and_stop_preserves_database_volume():
     assert "PORTFOLIO_FREE_MODEL_ALLOWLIST=" in sample
     assert "PORTFOLIO_MODEL_CATALOG_FILE=" in sample
     assert "PORTFOLIO_OPENROUTER_API_KEY:?" in (ROOT / "compose.portfolio.yml").read_text(encoding="utf-8")
+
+
+def test_vercel_hybrid_gateway_keeps_only_the_frontend_port_public():
+    override = yaml.safe_load(
+        (ROOT / "compose.portfolio-vercel.yml").read_text(encoding="utf-8")
+    )
+    assert set(override["services"]) == {"frontend"}
+    frontend = override["services"]["frontend"]
+    assert frontend["environment"]["PORTFOLIO_GATEWAY_REQUIRED"] == "1"
+    assert "PORTFOLIO_GATEWAY_SECRET:?" in frontend["environment"]["PORTFOLIO_GATEWAY_SECRET"]
+    assert "PORTFOLIO_GATEWAY_SECRET" in " ".join(frontend["healthcheck"]["test"])
+
+    start = (ROOT / "scripts/portfolio-vercel-start.ps1").read_text(encoding="utf-8")
+    stop = (ROOT / "scripts/portfolio-vercel-stop.ps1").read_text(encoding="utf-8")
+    for script in (start, stop):
+        assert "compose.portfolio.yml" in script
+        assert "compose.portfolio-vercel.yml" in script
+    assert "up --build" in start
+    assert "down" in stop
+    assert " down -v" not in stop and "--volumes" not in stop
+
+
+def test_vercel_hybrid_examples_are_value_free_and_server_only():
+    local_sample = (ROOT / ".env.portfolio.example").read_text(encoding="utf-8")
+    vercel_sample = (ROOT / "frontend/vercel.env.example").read_text(encoding="utf-8")
+    ignore = (ROOT / "frontend/.vercelignore").read_text(encoding="utf-8")
+
+    assert "PORTFOLIO_GATEWAY_SECRET=" in local_sample
+    assert "PORTFOLIO_GATEWAY_PROXY=1" in vercel_sample
+    assert "PORTFOLIO_MODE=1" in vercel_sample
+    assert "NEXT_PUBLIC_API_BASE_URL=/api" in vercel_sample
+    assert "PORTFOLIO_GATEWAY_ORIGIN=" in vercel_sample
+    assert "PORTFOLIO_GATEWAY_SECRET=" in vercel_sample
+    assert "NEXT_PUBLIC_PORTFOLIO_GATEWAY" not in vercel_sample
+    assert "OPENROUTER" not in vercel_sample
+    assert "DATABASE" not in vercel_sample
+    assert "tests/" in ignore and ".env*" in ignore
