@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import httpx
 import openai
 import pytest
 
-from backend.services.llm import LLMInterpretationAdapter
+from backend.services.llm import LLMInterpretationAdapter, LLMUpstreamUnavailable
 from backend.services.portfolio_budget import (
     PortfolioBudgetExceeded,
     PortfolioLLMCallBudget,
@@ -173,6 +174,74 @@ def test_migration_caps_database_counter_at_forty_under_concurrency():
         assert await pool.fetchval(
             "SELECT used_calls FROM portfolio_llm_daily_usage"
         ) == 40
+
+    asyncio.run(database_case(case))
+
+
+def test_database_counter_has_independent_utc_date_boundaries():
+    from backend.tests.test_conversation_sessions import database_case
+
+    async def case(pool):
+        budget = PortfolioLLMCallBudget(pool, limit=40)
+        before = datetime(2026, 10, 27, 23, 59, 59, tzinfo=timezone.utc)
+        after = datetime(2026, 10, 28, 0, 0, 0, tzinfo=timezone.utc)
+        assert await budget.reserve(now=before) == 1
+        assert await budget.reserve(now=before) == 2
+        assert await budget.reserve(now=after) == 1
+        rows = await pool.fetch(
+            "SELECT usage_date,used_calls FROM portfolio_llm_daily_usage ORDER BY usage_date"
+        )
+        assert [(str(row["usage_date"]), row["used_calls"]) for row in rows] == [
+            ("2026-10-27", 2),
+            ("2026-10-28", 1),
+        ]
+
+    asyncio.run(database_case(case))
+
+
+def test_retry_attempt_and_personal_term_call_share_database_counter():
+    from backend.services.personal_term_generator import ExistingLLMTransport
+    from backend.tests.test_conversation_sessions import database_case
+
+    async def case(pool):
+        budget = PortfolioLLMCallBudget(pool, limit=40)
+        request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+        responses = [
+            openai.InternalServerError(
+                "temporary", response=httpx.Response(500, request=request), body=None
+            ),
+            SimpleNamespace(
+                usage=None,
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok":true}'))],
+            ),
+            SimpleNamespace(
+                usage=None,
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"term":true}'))],
+            ),
+        ]
+
+        class _SequencedCompletions:
+            async def create(self, **kwargs):
+                result = responses.pop(0)
+                if isinstance(result, Exception):
+                    raise result
+                return result
+
+        adapter = LLMInterpretationAdapter(
+            client=_Client(_SequencedCompletions()), settings=_settings(),
+            system_message="system", user_template="{request_text}",
+            call_reserver=budget.reserve,
+        )
+        with pytest.raises(LLMUpstreamUnavailable):
+            await adapter._request([{"role": "user", "content": "attempt one"}])
+        await adapter._request([{"role": "user", "content": "retry"}])
+        transport = ExistingLLMTransport(adapter=adapter)
+        assert await transport.generate(
+            [{"role": "user", "content": "personal term"}], {"type": "json_object"}
+        ) == '{"term":true}'
+        assert await pool.fetchval(
+            "SELECT used_calls FROM portfolio_llm_daily_usage"
+        ) == 3
 
     asyncio.run(database_case(case))
 
