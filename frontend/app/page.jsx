@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { countCharacters, createSubmissionController, validateRequestText, shouldSubmitOnEnter } from "../lib/agent-submit.mjs";
 import { resizeComposerInput, createScrollEndAnchor } from "../lib/composer-autosize.mjs";
 import { createGallerySelection } from "../lib/gallery-selection.mjs";
-import { createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, SERVICE_UNAVAILABLE_ERROR, ensureServiceAvailable, ensureLocalProfile, deleteConversation } from "../lib/server-conversation.mjs";
+import { bootstrapConversation, createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, SERVICE_UNAVAILABLE_ERROR, deleteConversation } from "../lib/server-conversation.mjs";
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
 import { DEMO_SCENARIOS, DEMO_NOTICE, DEMO_INPUT_ERROR, demoTerm } from "../lib/portfolio-demo-fixtures.mjs";
 import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
@@ -37,6 +37,7 @@ import { createPersonalTermClient, reconcilePersonalTermState } from "../lib/per
 import { personalGraphTerms } from "../lib/term-graph-personal-layout.mjs";
 import { createConditionRemovalController, readCurrentConditions, removeCurrentCondition } from "../lib/current-conditions.mjs";
 import { clearLiveReferenceState, filterLiveTerms, readLiveReferenceState, writeLiveReferenceState } from "../lib/live-reference-state.mjs";
+import { bindAuthStateChange } from "../lib/auth-state.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
 
@@ -297,6 +298,10 @@ export default function HomePage() {
     showDemoSession(demoStoreRef.current.current());
   }, []);
 
+  useEffect(() => bindAuthStateChange(window, () => {
+    setRestoreAttempt((value) => value + 1);
+  }), []);
+
   useEffect(() => {
     if (uiDemoEnabled) return;
     const controller = new AbortController();
@@ -307,11 +312,14 @@ export default function HomePage() {
     gallerySelectionRef.current.reset(sessionIdRef.current);
     setRestoreError("");
     setConversationReady(false);
-    ensureServiceAvailable({ signal: controller.signal }).then(() => ensureLocalProfile({ signal: controller.signal })).then((persistent) => {
+    bootstrapConversation({
+      signal: controller.signal,
+      sessionId: sessionIdRef.current || undefined,
+    }).then(({ authenticated, persistent, restored }) => {
       if (controller.signal.aborted) return;
       setPersistentProfile(persistent);
-      refreshSessions();
-      return restoreConversation({ signal: controller.signal, sessionId: sessionIdRef.current || undefined });
+      if (authenticated) refreshSessions();
+      return restored;
     }).then((restored) => {
       if (!restored || controller.signal.aborted || loadId !== sessionLoadRef.current) return;
       setSessionId(restored.sessionId);

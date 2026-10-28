@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  AUTH_STATE_EVENT,
+  createAuthStateTracker,
+  readAuthState,
+} from "../lib/auth-state.mjs";
 
 export default function AuthAccessControl() {
   const [auth, setAuth] = useState(null);
@@ -9,21 +14,20 @@ export default function AuthAccessControl() {
   useEffect(() => {
     let active = true;
     let generation = 0;
+    const trackAuthState = createAuthStateTracker(() => {
+      window.dispatchEvent(new Event(AUTH_STATE_EVENT));
+    });
 
     function refresh() {
       const current = ++generation;
-      fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
-        .then(async (response) => {
-          if (response.status === 404) return null;
-          if (!response.ok) throw new Error("auth unavailable");
-          return response.json();
-        })
+      readAuthState()
         .then((next) => {
           if (!active || current !== generation || next === null) return;
           if (next.state === "invite_required") {
             window.location.replace("/invite");
             return;
           }
+          trackAuthState(next);
           setAuth(next);
         })
         .catch(() => {

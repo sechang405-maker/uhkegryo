@@ -25,8 +25,26 @@ export async function ensureLocalProfile(options = {}) {
     method: "POST", credentials: "include", cache: "no-store", signal: options.signal,
     headers: { "X-Conversation-Action": "profile" },
   });
+  if (response.status === 401) return null;
   if (!response.ok) throw new Error(RESTORE_ERROR);
   return (await response.json()).persistent === true;
+}
+
+export async function bootstrapConversation(options = {}) {
+  await ensureServiceAvailable(options);
+  const persistent = await ensureLocalProfile(options);
+  if (persistent === null) {
+    return {
+      authenticated: false,
+      persistent: false,
+      restored: { sessionId: null, turns: [] },
+    };
+  }
+  return {
+    authenticated: true,
+    persistent,
+    restored: await restoreConversation(options),
+  };
 }
 export async function deleteConversation(id, options = {}) {
   sessionId(id);
