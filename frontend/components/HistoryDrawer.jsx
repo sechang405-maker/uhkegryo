@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 
 export function HistoryLogo({ open, onClick, className = "" }) {
   return <button className={`brand-identity history-logo ${className}`} type="button"
-    aria-label={`UH케그려 기록 ${open ? "닫기" : "열기"}`} aria-expanded={open}
+    aria-label={`UH케그려 메뉴 ${open ? "닫기" : "열기"}`} aria-expanded={open}
     aria-controls="history-sidebar" aria-haspopup="dialog" onClick={onClick}>
     <span className="brand-mark" aria-hidden="true">
       <img className="brand-mark-art" src="/uhkegryo-logo-3.png" alt=""
@@ -50,13 +50,13 @@ export default function HistoryDrawer({ open, onClose, triggerRef, children }) {
     return event.target === dialogRef.current &&
       (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom);
   }
-  return <dialog id="history-sidebar" ref={dialogRef} className="history-drawer" aria-label="대화 기록"
+  return <dialog id="history-sidebar" ref={dialogRef} className="history-drawer" aria-label="UH케그려 메뉴"
     onCancel={event => { event.preventDefault(); closeRef.current(); }}
     onKeyDown={trapFocus} onPointerDown={event => { outsideDown.current = outside(event); }}
     onClick={event => { if (outsideDown.current && outside(event)) closeRef.current(); }}>
     <header className="history-drawer-header">
       <HistoryLogo open onClick={onClose} />
-      <button type="button" className="history-close" aria-label="기록 닫기" onClick={onClose}>×</button>
+      <button type="button" className="history-close" aria-label="메뉴 닫기" onClick={onClose}>×</button>
     </header>
     {children}
   </dialog>;

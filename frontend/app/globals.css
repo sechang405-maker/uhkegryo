@@ -470,10 +470,19 @@ button.mind-map-node[aria-pressed="true"] { border-color: var(--accent); backgro
 .history-drawer::backdrop { background:rgba(0,0,0,.64); }
 .history-drawer-header { display:flex; align-items:center; justify-content:space-between; flex-shrink:0; min-height:72px; padding:0 10px; border-bottom:3px solid var(--accent); }
 .history-close { min-width:44px; min-height:44px; border:0; background:transparent; font-size:26px; cursor:pointer; }
+.history-sidebar-actions { display:grid; flex-shrink:0; gap:8px; padding:14px 12px; border-bottom:1px solid color-mix(in srgb,var(--accent) 60%,var(--border)); background:color-mix(in srgb,var(--accent-surface) 46%,var(--surface)); }
+.history-sidebar-actions h2 { margin:0 0 2px; color:var(--text-secondary); font-size:11px; font-weight:800; letter-spacing:.04em; }
+.history-sidebar-actions .auth-access-control { position:static; width:100%; min-height:44px; padding:9px 12px; border-radius:12px; text-align:center; }
+.history-sidebar-actions .auth-access-error { position:static; max-width:none; padding:9px 11px; }
+.history-sidebar-actions .account-quota { position:static; z-index:auto; width:100%; max-width:none; justify-items:start; box-sizing:border-box; box-shadow:none; }
+.history-sidebar-actions .account-quota[data-expanded="false"] { border-radius:12px; }
+.history-sidebar-actions .account-quota-summary { justify-content:space-between; min-height:44px; padding:8px 10px; text-align:left; }
+.history-sidebar-actions .account-quota-details { justify-items:start; width:100%; }
+.history-sidebar-actions .personal-term-open { width:100%; min-height:44px; margin:0; border-radius:12px; text-align:left; }
 .history-drawer .history-sidebar-list { border-right:0; overscroll-behavior:contain; }
 @keyframes history-enter { from { transform:translateX(-100%); } to { transform:translateX(0); } }
 @media (prefers-reduced-motion:reduce) { .history-drawer[open] { animation:none; } }
-@media (max-width:760px) { .desktop-history-logo { display:none; } .mobile-workspace-nav .history-logo { flex:0 0 auto; padding:0 8px; } .mobile-workspace-nav .brand-name { display:none; } .mobile-workspace-nav .brand-mark { height:30px; width:30px; } }
+@media (max-width:760px) { .desktop-history-logo { display:none; } .mobile-workspace-nav .history-logo { flex:0 0 auto; padding:0 8px; } .mobile-workspace-nav .brand-name { display:none; } .mobile-workspace-nav .brand-mark { height:30px; width:30px; } .history-sidebar-actions { padding:10px 8px; } }
 
 .pin-gallery-items[data-masonry="ready"] { display:block; }
 .pin-gallery-items[data-masonry="ready"] > .masonry-item { position:absolute; top:0; left:0; }
