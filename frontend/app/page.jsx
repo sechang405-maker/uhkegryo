@@ -760,6 +760,11 @@ export default function HomePage() {
     setMenuOpen((open) => !open);
   }
 
+  function openPersonalTermCreator() {
+    setMenuOpen(false);
+    setPersonalTermOpen(true);
+  }
+
   async function openTermSearch(term) {
     visitScreen(`term:${term.term_id}`);
     gallerySelectionRef.current.reset(sessionIdRef.current);
@@ -1186,8 +1191,6 @@ export default function HomePage() {
 
   return (
     <main className="workspace" data-mobile-panel={mobilePanel}>
-      <AuthAccessControl />
-      <AccountQuota />
       <nav className="mobile-workspace-nav" aria-label="작업 화면">
         <HistoryLogo open={menuOpen} onClick={toggleMenu} />
         <button type="button" aria-pressed={mobilePanel === "reference"} aria-controls="reference-panel"
@@ -1203,6 +1206,12 @@ export default function HomePage() {
       </nav>
       <HistoryDrawer open={menuOpen} onClose={() => setMenuOpen(false)} triggerRef={menuButtonRef}>
         {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
+        {!uiDemoEnabled && <section className="history-sidebar-actions" aria-label="계정 및 주요 작업">
+          <h2>계정 및 작업</h2>
+          <AuthAccessControl />
+          <AccountQuota />
+          <button className="personal-term-open" type="button" onClick={openPersonalTermCreator}>새 용어 만들기</button>
+        </section>}
         <nav className="history-sidebar-list" aria-label="세션 목록">
           <p className="conversation-notice">{uiDemoEnabled
             ? "고정 샘플 대화는 이 브라우저에만 저장됩니다. 최대 10개 세션·총 50개 답변을 보관하며 서버로 보내지 않습니다. 개인·민감 정보는 입력하지 마세요."
@@ -1380,10 +1389,6 @@ export default function HomePage() {
       </section>
 
       <aside id="conversation-panel" className="prompt-panel" aria-label="대화">
-        {!uiDemoEnabled && <div className="prompt-toolbar">
-          <button className="personal-term-open" type="button"
-            onClick={() => setPersonalTermOpen(true)}>＋ 새 용어 만들기</button>
-        </div>}
           {!uiDemoEnabled && <section className="current-conditions" aria-label="현재 검색 조건" aria-busy={Boolean(conditionBusyId)}>
             <span className="current-conditions-label">현재 검색 조건</span>
             <div className="current-condition-chips">
