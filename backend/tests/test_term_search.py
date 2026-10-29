@@ -49,8 +49,8 @@ def search_setup(monkeypatch, card_factory, snapshot_factory):
     monkeypatch.setattr(agent, "get_repositories", forbidden)
     monkeypatch.setattr(LLMInterpretationAdapter, "interpret", forbidden)
     monkeypatch.setattr(JobTracer, "from_settings", forbidden)
-    monkeypatch.setattr(app.state, "catalog", snapshot, raising=False)
-    monkeypatch.setattr(app.state, "term_search_slots", asyncio.Semaphore(2), raising=False)
+    monkeypatch.setitem(app.state._state, "catalog", snapshot)
+    monkeypatch.setitem(app.state._state, "term_search_slots", asyncio.Semaphore(2))
     monkeypatch.setattr(term_search, "get_search_provider", lambda suffix: PinterestWidgetProvider(
         SearXNGPinterestSearchProvider(base_url="http://searxng:8080", json_loader=load, suffix=suffix),
         PinterestWidgetClient(json_loader=widget)))
@@ -82,7 +82,7 @@ def test_composite_research_keeps_posture_and_action(search_setup,monkeypatch,su
     from pathlib import Path
     from backend.services.catalog_repository import load_catalog
     snapshot=load_catalog(Path(__file__).parents[2]/'docs/domains/illustration-reference/term-cards')
-    monkeypatch.setattr(app.state,'catalog',snapshot)
+    monkeypatch.setitem(app.state._state,'catalog',snapshot)
     before=copy.deepcopy(snapshot)
     response=TestClient(app).post('/api/term-search',json={'term_id':'pose_seated_two_hand_aiming','suffix':suffix})
     assert response.status_code==200
