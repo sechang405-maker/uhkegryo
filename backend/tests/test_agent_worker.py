@@ -163,7 +163,7 @@ def _run(coro):
 
 def _worker(
     monkeypatch, jobs, recovery, snapshot, adapter, heartbeat_interval=10,
-    mcp_gateway=None, widget_client=None, personal_terms=None,
+    mcp_gateway=None, widget_client=None, personal_terms=None, grounded_ollama=False,
 ):
     monkeypatch.setattr(agent_worker, "JobRepository", lambda _pool: jobs)
     monkeypatch.setattr(agent_worker, "JobRetryRecovery", lambda _pool: recovery)
@@ -171,7 +171,7 @@ def _worker(
     return AgentJobWorker(
         object(), snapshot, adapter=adapter, heartbeat_interval=heartbeat_interval,
         mcp_gateway=mcp_gateway, widget_client=widget_client, personal_terms=personal_terms,
-        tracer=JobTracer(),
+        tracer=JobTracer(), grounded_ollama=grounded_ollama,
     )
 
 
@@ -463,6 +463,65 @@ def test_worker_searches_same_role_conditions_independently(monkeypatch,identity
                         for term_id in (identity, 'pose_action_two_hand_aiming')]
     assert [term.term_id for term in jobs.writes[-1][1].reference_plan.terms] == [identity, 'pose_action_two_hand_aiming']
     assert len(adapter.calls)==1 and adapter.tool_requests==[] and recovery.failures==[]
+
+
+def test_grounded_ollama_worker_uses_only_validated_query_fragments(monkeypatch):
+    from pathlib import Path
+    from backend.services.catalog_repository import load_catalog
+
+    snapshot = load_catalog(
+        Path(__file__).parents[2] / "docs/domains/illustration-reference/term-cards"
+    )
+    card = snapshot.get_active("body_slim")
+
+    class GroundedTransport(FakeAdapter):
+        def __init__(self):
+            super().__init__()
+            self.request_calls = []
+
+        async def _request(self, messages, *, output_format=None):
+            self.request_calls.append((messages, output_format))
+            payload = {
+                "answer_text": f"슬림 자료이며 {card['look_for'][0]}를 확인하세요.",
+                "query_choices": [
+                    {"term_id": "body_slim", "query_fragments": ["invented"]}
+                ],
+            }
+            return SimpleNamespace(
+                choices=[SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content=json.dumps(payload, ensure_ascii=False)),
+                )]
+            )
+
+    captured = []
+
+    class Search:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def search(self, role, fragments):
+            captured.append((role, fragments))
+            return RoleSearchOutcome(role=role)
+
+    monkeypatch.setattr(agent_worker, "SearXNGPinterestSearchProvider", Search)
+    adapter = GroundedTransport()
+    jobs = FakeJobs({
+        **JOB,
+        "request_text": "마르고 팔다리가 긴 캐릭터 체형 자료를 찾고 싶어",
+    })
+    recovery = FakeRecovery()
+    worker = _worker(
+        monkeypatch, jobs, recovery, snapshot, adapter, grounded_ollama=True
+    )
+    worker._local_search_url = "http://127.0.0.1:8080"
+
+    _run(worker.run_once())
+
+    assert adapter.calls == []
+    assert len(adapter.request_calls) == 1
+    assert captured == [(Role.BODY, tuple(card["query_fragments"]))]
+    assert recovery.failures == []
 
 
 def test_worker_guidance_uses_single_interpretation_without_search(monkeypatch, snapshot_factory):
@@ -839,8 +898,11 @@ def test_ollama_portfolio_worker_does_not_create_external_call_budget(monkeypatc
             raise AssertionError("external LLM budget used for local Ollama")
 
     class FakeWorker:
-        def __init__(self, *_args, llm_call_reserver=None, **_kwargs):
+        def __init__(
+            self, *_args, llm_call_reserver=None, grounded_ollama=False, **_kwargs
+        ):
             assert llm_call_reserver is None
+            assert grounded_ollama is True
 
         async def run_forever(self, *, concurrency):
             assert concurrency == 1

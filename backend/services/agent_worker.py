@@ -30,6 +30,7 @@ from backend.services.llm import (
     LLMInvalidStructuredOutput,
 )
 from backend.services.llm import format_active_cards_json
+from backend.services.ollama_grounded import OllamaGroundedInterpreter
 from backend.services.mcp_pinterest_search import parse_search_result, pop_search_diagnostics
 from backend.services.mcp_tool_gateway import McpToolGateway
 from backend.services.pinterest_widget import PinterestWidgetClient
@@ -71,6 +72,7 @@ class AgentJobWorker:
         tracer: JobTracer | None = None,
         personal_terms: PersonalTermRepository | None = None,
         llm_call_reserver: Callable[[], Awaitable[int]] | None = None,
+        grounded_ollama: bool = False,
     ) -> None:
         self._pool = pool
         self._jobs = JobRepository(pool)
@@ -87,6 +89,7 @@ class AgentJobWorker:
         self._tracer = tracer if tracer is not None else JobTracer.from_settings()
         self._personal_terms = personal_terms
         self._llm_call_reserver = llm_call_reserver
+        self._grounded_ollama = grounded_ollama
 
     async def run_once(
         self,
@@ -213,18 +216,29 @@ class AgentJobWorker:
                 previous = reference_update.previous_terms(context, snapshot)
                 refresh = context.get("reference_action") in ("refresh_all", "refresh_roles", "refresh_terms")
                 interpretation = None
+                grounded_queries: dict[str, tuple[str, ...]] = {}
                 with trace.stage("validating"):
                     if refresh:
                         resolution = reference_update.refresh_resolution(previous, snapshot, context)
                     else:
                         interpretation = routed.interpretation if routed is not None else None
                         if interpretation is None:
-                            interpretation = await self._adapter.interpret(
-                                job["request_text"], **conversation_context.trace_args(job),
-                                active_cards_json=format_active_cards_json(snapshot),
-                                session_context=conversation_context.prompt_context(context),
-                                **({"validation_feedback": feedback} if feedback else {}),
-                            )
+                            if self._grounded_ollama:
+                                grounded = await OllamaGroundedInterpreter(
+                                    snapshot, self._adapter
+                                ).interpret_grounded(
+                                    job["request_text"],
+                                    **conversation_context.trace_args(job),
+                                )
+                                interpretation = grounded.interpretation
+                                grounded_queries = grounded.query_fragments_by_term
+                            else:
+                                interpretation = await self._adapter.interpret(
+                                    job["request_text"], **conversation_context.trace_args(job),
+                                    active_cards_json=format_active_cards_json(snapshot),
+                                    session_context=conversation_context.prompt_context(context),
+                                    **({"validation_feedback": feedback} if feedback else {}),
+                                )
                         if requests_personal_term_creation(job["request_text"]):
                             interpretation = InterpretationOutput(
                                 interpretation_state="needs_clarification",
@@ -265,6 +279,7 @@ class AgentJobWorker:
                         if search_outcomes is None:
                             search_outcomes = await self._search_outcomes(
                                 resolution, request_text=str(job["request_text"]),
+                                query_fragments_by_term=grounded_queries,
                                 **({"exclude_pin_ids": {term_id: list(dict.fromkeys(
                                     pin.pin_id for pin in term.pins))
                                     for term_id, term in previous.items()}} if refresh else {}),
@@ -314,11 +329,14 @@ class AgentJobWorker:
             await self._handle_failure(job, error, trace)
 
     async def _search_outcomes(
-        self, resolution: ResolutionResult, *, request_text: str, exclude_pin_ids=None
+        self, resolution: ResolutionResult, *, request_text: str, exclude_pin_ids=None,
+        query_fragments_by_term: Mapping[str, tuple[str, ...]] | None = None,
     ) -> Mapping[str | Role, RoleSearchOutcome]:
         excluded_board_pins = {pin_id for pins in (exclude_pin_ids or {}).values() for pin_id in pins}
         if getattr(self, '_local_search_url', ''):
-            return await self._local_search_outcomes(resolution, exclude_pin_ids or {})
+            return await self._local_search_outcomes(
+                resolution, exclude_pin_ids or {}, query_fragments_by_term or {}
+            )
         if not getattr(self._adapter, 'image_search_enabled', True):
             return {term.selection.term_id: RoleSearchOutcome(role=term.selection.role,
                 code=ReasonCode.PIN_SEARCH_UNAVAILABLE) for term in resolution.terms}
@@ -329,10 +347,9 @@ class AgentJobWorker:
             raise ValueError("해석 어댑터가 MCP tool calling을 지원하지 않습니다")
         with self._tracer.phase("mcp-tools-list"):
             tools = await self._mcp_gateway.list_tools()
-        approved = {
-            term.selection.term_id: tuple(term.card["query_fragments"])
-            for term in resolution.terms
-        }
+        approved = self._approved_query_fragments(
+            resolution, query_fragments_by_term or {}
+        )
         roles = {term.selection.term_id: term.selection.role for term in resolution.terms}
         # term_id belongs to orchestration; the provider transport still takes role/fragments.
         tools = deepcopy(tools)
@@ -499,10 +516,30 @@ class AgentJobWorker:
             )
         return outcomes
 
-    async def _local_search_outcomes(self, resolution, exclude_pin_ids):
+    @staticmethod
+    def _approved_query_fragments(resolution, proposed):
+        approved = {}
+        for term in resolution.terms:
+            term_id = term.selection.term_id
+            defaults = tuple(term.card["query_fragments"])
+            fragments = tuple(proposed.get(term_id, ()))
+            approved[term_id] = (
+                fragments
+                if fragments and all(fragment in defaults for fragment in fragments)
+                else defaults
+            )
+        return approved
+
+    async def _local_search_outcomes(
+        self, resolution, exclude_pin_ids, query_fragments_by_term=None
+    ):
         # Bound provider exclusions per card, but never reuse any previous board image.
         excluded_board_pins = {pin_id for pins in exclude_pin_ids.values() for pin_id in pins}
         # Search only resolver-approved catalog fragments. No user text or LLM tool selection.
+        approved = self._approved_query_fragments(
+            resolution, query_fragments_by_term or {}
+        )
+
         async def search(term):
             role = term.selection.role
             term_id = term.selection.term_id
@@ -516,7 +553,7 @@ class AgentJobWorker:
                             exclude_pin_ids=tuple(exclude_pin_ids.get(term_id, ())),
                             **({'json_loader': self._search_json_loader} if self._search_json_loader is not None else {}),
                         )
-                        outcome = await provider.search(role, tuple(term.card['query_fragments']))
+                        outcome = await provider.search(role, approved[term_id])
                         if excluded_board_pins:
                             outcome.pins = [pin for pin in outcome.pins if pin.pin_id not in excluded_board_pins]
                             if not outcome.pins and outcome.code is None:
@@ -734,6 +771,7 @@ async def run_worker(snapshot: CatalogSnapshot, *, http_resources=None) -> None:
                     if local_llm or settings.is_portfolio else ''
                 ),
                 personal_terms=PersonalTermRepository(pool),
+                grounded_ollama=settings.llm_backend == 'ollama',
                 llm_call_reserver=(
                     portfolio_budget.reserve if portfolio_budget is not None else None
                 ),

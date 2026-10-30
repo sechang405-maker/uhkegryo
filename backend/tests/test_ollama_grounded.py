@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from backend.services.catalog_repository import load_catalog
+from backend.services.llm import LLMTimeout
 from backend.services.ollama_grounded import (
     GroundedInterpretationResult,
     OllamaGroundedInterpreter,
@@ -129,6 +130,11 @@ class _FakeAdapter:
         )
 
 
+class _FailingAdapter:
+    async def _request(self, messages, *, output_format=None):
+        raise LLMTimeout("local generation timed out")
+
+
 def test_grounded_enrichment_cannot_change_state_or_terms(snapshot):
     card = snapshot.get_active("body_slim")
     adapter = _FakeAdapter(
@@ -213,3 +219,16 @@ def test_clarification_does_not_call_model(snapshot):
     assert result.interpretation.interpretation_state.value == "needs_clarification"
     assert result.query_fragments_by_term == {}
     assert adapter.calls == []
+
+
+def test_model_failure_keeps_deterministic_selection_and_catalog_queries(snapshot):
+    result = _run_immediate(
+        OllamaGroundedInterpreter(snapshot, _FailingAdapter()).interpret_grounded(
+            "마르고 팔다리가 긴 캐릭터 체형 자료를 찾고 싶어"
+        )
+    )
+
+    assert [item.term_id for item in result.interpretation.selections] == ["body_slim"]
+    assert result.query_fragments_by_term == {
+        "body_slim": tuple(snapshot.get_active("body_slim")["query_fragments"])
+    }
