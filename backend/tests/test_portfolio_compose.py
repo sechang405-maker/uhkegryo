@@ -147,6 +147,8 @@ def test_windows_ollama_host_scripts_are_explicit_nonpersistent_and_value_safe()
 
 def test_windows_one_click_entrypoints_preserve_runtime_security_boundaries():
     online = (ROOT / "scripts/portfolio-host-online.ps1").read_text(encoding="utf-8")
+    admin_db = (ROOT / "scripts/portfolio-admin-db.ps1").read_text(encoding="utf-8")
+    stop = (ROOT / "scripts/portfolio-host-stop.ps1").read_text(encoding="utf-8")
     start_cmd = (ROOT / "어케그려-서비스-실행.cmd").read_text(encoding="utf-8")
     stop_cmd = (ROOT / "어케그려-서비스-종료.cmd").read_text(encoding="utf-8")
     guide = (ROOT / "어케그려-서비스-실행-안내.md").read_text(encoding="utf-8")
@@ -154,6 +156,8 @@ def test_windows_one_click_entrypoints_preserve_runtime_security_boundaries():
     assert "portfolio-host-start.ps1" in online
     assert "portfolio-host-stop.ps1" in online
     assert "portfolio-host-tunnel.ps1" in online
+    assert "portfolio-admin-db.ps1" in online
+    assert "portfolio-admin-db.ps1" in stop
     assert "Test-TrackedProcess" in online
     assert "$parsedRecords | ForEach-Object { $_ }" in online
     assert "started_ticks" in online
@@ -172,11 +176,23 @@ def test_windows_one_click_entrypoints_preserve_runtime_security_boundaries():
     assert "portfolio-host-new-env.ps1" not in online
     assert "PORTFOLIO_GATEWAY_SECRET=" not in online
 
+    assert '"uhkegryo-oauth-local-app-db-1"' in admin_db
+    assert '"uhkegryo-oauth-local"' in admin_db
+    assert '"app-db"' in admin_db
+    assert '"55433"' in admin_db
+    assert '"127.0.0.1"' in admin_db
+    assert '"/var/lib/postgresql/data"' in admin_db
+    assert "docker start" in admin_db and "docker stop" in admin_db
+    assert "docker compose" not in admin_db
+    assert "docker rm" not in admin_db
+    assert "New-Service" not in admin_db and "Set-Service" not in admin_db
+
     assert "portfolio-host-online.ps1" in start_cmd
     assert "portfolio-host-stop.ps1" in stop_cmd
     assert "pause" in start_cmd and "pause" in stop_cmd
     assert "Docker Desktop" in guide
     assert "PORTFOLIO_GATEWAY_ORIGIN" in guide
+    assert "기존 관리자 DB" in guide
     assert "portfolio-host-new-env.ps1" in guide
     assert "자동 부팅" in guide
 

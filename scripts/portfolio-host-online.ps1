@@ -14,6 +14,7 @@ $deployedOriginFile = Join-Path $runDir "deployed-origin.txt"
 $startScript = Join-Path $PSScriptRoot "portfolio-host-start.ps1"
 $stopScript = Join-Path $PSScriptRoot "portfolio-host-stop.ps1"
 $tunnelScript = Join-Path $PSScriptRoot "portfolio-host-tunnel.ps1"
+$adminDatabaseScript = Join-Path $PSScriptRoot "portfolio-admin-db.ps1"
 $envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $repositoryRoot $EnvFile }
 $publicOrigin = "https://uhkegryo-xi.vercel.app"
 $vercelVersion = "50.6.1"
@@ -88,19 +89,22 @@ Import-PortfolioEnvironment
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
 
 if (Test-HostReady) {
-    Write-Host "[1/4] Local database, search, API, and gateway are already ready."
+    Write-Host "[1/5] Local database, search, API, and gateway are already ready."
 } else {
-    Write-Host "[1/4] Cleaning only stale tracked runtime records."
+    Write-Host "[1/5] Cleaning only stale tracked runtime records."
     & $stopScript -EnvFile $envPath
-    Write-Host "[2/4] Starting the isolated local runtime."
+    Write-Host "[2/5] Starting the isolated local runtime."
     & $startScript -EnvFile $envPath
 }
 
+Write-Host "[3/5] Starting only the existing administrator database container."
+& $adminDatabaseScript -Action Start
+
 Remove-StaleTunnelRecord
 if (Test-TunnelReady) {
-    Write-Host "[3/4] Cloudflare Quick Tunnel is already ready."
+    Write-Host "[4/5] Cloudflare Quick Tunnel is already ready."
 } else {
-    Write-Host "[3/4] Starting a new Cloudflare Quick Tunnel."
+    Write-Host "[4/5] Starting a new Cloudflare Quick Tunnel."
     & $tunnelScript
 }
 
@@ -120,7 +124,7 @@ if (Test-Path -LiteralPath $deployedOriginFile -PathType Leaf) {
     $deployedOrigin = [IO.File]::ReadAllText($deployedOriginFile).Trim()
 }
 if ($deployedOrigin -ne $origin) {
-    Write-Host "[4/4] Updating the Vercel server origin and redeploying production."
+    Write-Host "[5/5] Updating the Vercel server origin and redeploying production."
     Push-Location $frontendRoot
     try {
         & npx.cmd --yes "vercel@$vercelVersion" whoami | Out-Null
@@ -147,7 +151,7 @@ if ($deployedOrigin -ne $origin) {
     Wait-PublicHealth
     [IO.File]::WriteAllText($deployedOriginFile, $origin, [Text.UTF8Encoding]::new($false))
 } else {
-    Write-Host "[4/4] Vercel already points to this tunnel."
+    Write-Host "[5/5] Vercel already points to this tunnel."
     Wait-PublicHealth
 }
 
