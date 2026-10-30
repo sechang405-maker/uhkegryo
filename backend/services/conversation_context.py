@@ -56,7 +56,16 @@ def trace_args(job):
 
 
 async def recall(memory, job, context, adapter, trace, query: RecallQuery | None = None):
-    if query is None and is_clear_new_request(job["request_text"], context):
+    state = context.get("state") or {}
+    empty_session = (
+        not context.get("recent")
+        and not context.get("sources")
+        and not context.get("previous_result")
+        and not state.get("constraints")
+        and not state.get("pending_question")
+        and not (set(state) - {"memory_version", "constraints", "pending_question"})
+    )
+    if query is None and (empty_session or is_clear_new_request(job["request_text"], context)):
         return None, False
     with trace.stage("memory-recall"):
         if query is None:

@@ -58,6 +58,7 @@ test("portfolio gateway proxy preserves status, body, and session cookie", async
     fetchImpl: async () => new Response(JSON.stringify({ session_id: "new" }), {
       status: 201,
       headers: {
+        "content-encoding": "gzip",
         "content-type": "application/json",
         "set-cookie": "session_id=opaque; Path=/; Secure; HttpOnly; SameSite=Lax",
       },
@@ -72,6 +73,7 @@ test("portfolio gateway proxy preserves status, body, and session cookie", async
   assert.equal(response.status, 201);
   assert.equal(response.headers.get("set-cookie"),
     "session_id=opaque; Path=/; Secure; HttpOnly; SameSite=Lax");
+  assert.equal(response.headers.has("content-encoding"), false);
   assert.deepEqual(await response.json(), { session_id: "new" });
 });
 
