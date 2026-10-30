@@ -806,3 +806,61 @@ def test_retry_attempts_limit_invalid_output_to_three_provider_calls(
 
     assert len(adapter.calls) == 3
     assert [failure["attempt"] for failure in recovery.failures] == [1, 2, 3]
+def test_ollama_portfolio_worker_does_not_create_external_call_budget(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from backend.services import agent_worker
+
+    settings = SimpleNamespace(
+        database_url="postgresql://portfolio:synthetic@app-db:5432/portfolio",
+        llm_backend="ollama",
+        is_portfolio=True,
+        worker_concurrency=1,
+        portfolio_daily_llm_call_limit=40,
+        mcp_base_url="",
+        searxng_base_url="",
+    )
+    pool = object()
+
+    async def create_pool(_settings):
+        return pool
+
+    async def close_pool(_pool):
+        assert _pool is pool
+
+    budget_created = []
+
+    class NoExternalBudget:
+        def __init__(self, *_args, **_kwargs):
+            budget_created.append(True)
+
+        async def reserve(self):
+            raise AssertionError("external LLM budget used for local Ollama")
+
+    class FakeWorker:
+        def __init__(self, *_args, llm_call_reserver=None, **_kwargs):
+            assert llm_call_reserver is None
+
+        async def run_forever(self, *, concurrency):
+            assert concurrency == 1
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr("backend.shared.config.get_settings", lambda: settings)
+    monkeypatch.setattr("backend.shared.database.create_pool", create_pool)
+    monkeypatch.setattr("backend.shared.database.close_pool", close_pool)
+    monkeypatch.setattr(
+        "backend.services.portfolio_budget.PortfolioLLMCallBudget", NoExternalBudget
+    )
+    monkeypatch.setattr(agent_worker, "AgentJobWorker", FakeWorker)
+    monkeypatch.setattr(agent_worker, "PersonalTermRepository", lambda _pool: object())
+
+    async def cancel_sleep(_seconds):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(agent_worker.asyncio, "sleep", cancel_sleep)
+
+    resources = SimpleNamespace(worker_widget=None, search_json=None)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(agent_worker.run_worker(object(), http_resources=resources))
+    assert budget_created == []

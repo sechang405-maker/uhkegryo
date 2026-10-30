@@ -258,9 +258,13 @@ class LLMInterpretationAdapter:
         self._user_template = user_template
         self._call_reserver = call_reserver
         if client is None:
+            local_ollama = self.settings.llm_backend == "ollama"
             client = openai.AsyncOpenAI(
-                api_key=self.settings.openrouter_api_key,
-                base_url=self.settings.openrouter_base_url,
+                api_key="ollama" if local_ollama else self.settings.openrouter_api_key,
+                base_url=(
+                    self.settings.ollama_base_url
+                    if local_ollama else self.settings.openrouter_base_url
+                ),
                 timeout=self.settings.llm_timeout_seconds,
                 max_retries=0,
             )
@@ -383,11 +387,17 @@ class LLMInterpretationAdapter:
     ):
         try:
             request = {
-                "model": self.settings.llm_model,
+                "model": (
+                    self.settings.ollama_model
+                    if self.settings.llm_backend == "ollama"
+                    else self.settings.llm_model
+                ),
                 "messages": messages,
                 "temperature": 0.0,
                 "max_tokens": self.settings.llm_max_tokens,
             }
+            if self.settings.llm_backend == "ollama":
+                request["reasoning_effort"] = "none"
             if output_format is not None:
                 request["response_format"] = output_format
             elif json_mode:
@@ -396,7 +406,10 @@ class LLMInterpretationAdapter:
                 request["tools"] = tools
             if tool_choice is not None:
                 request["tool_choice"] = tool_choice
-            if output_format is not None or tools is not None:
+            if (
+                self.settings.llm_backend == "openrouter"
+                and (output_format is not None or tools is not None)
+            ):
                 request["extra_body"] = {"provider": {"require_parameters": True}}
             if self._call_reserver is not None:
                 try:

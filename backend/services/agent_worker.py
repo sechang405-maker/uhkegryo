@@ -713,25 +713,25 @@ async def run_worker(snapshot: CatalogSnapshot, *, http_resources=None) -> None:
             if settings.database_url.startswith("sqlite"):
                 return
             pool = await create_pool(settings)
-            local_codex = settings.llm_backend == 'codex-cli'
+            local_llm = settings.llm_backend in ('codex-cli', 'ollama')
             portfolio_budget = None
-            if settings.is_portfolio:
+            if settings.is_portfolio and settings.llm_backend == 'openrouter':
                 from backend.services.portfolio_budget import PortfolioLLMCallBudget
 
                 portfolio_budget = PortfolioLLMCallBudget(
                     pool, limit=settings.portfolio_daily_llm_call_limit
                 )
             mcp_gateway = (
-                None if local_codex or settings.is_portfolio
+                None if local_llm or settings.is_portfolio
                 else McpToolGateway(mcp_url=settings.mcp_base_url)
             )
-            widget_client = http_resources.worker_widget if not local_codex or settings.searxng_base_url else None
+            widget_client = http_resources.worker_widget if not local_llm or settings.searxng_base_url else None
             await AgentJobWorker(
                 pool, snapshot, mcp_gateway=mcp_gateway, widget_client=widget_client,
                 search_json_loader=http_resources.search_json,
                 local_search_url=(
                     settings.searxng_base_url
-                    if local_codex or settings.is_portfolio else ''
+                    if local_llm or settings.is_portfolio else ''
                 ),
                 personal_terms=PersonalTermRepository(pool),
                 llm_call_reserver=(

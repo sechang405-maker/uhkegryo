@@ -287,3 +287,50 @@ asyncio.run(run())
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == "preflight,worker"
+
+
+def test_ollama_portfolio_lifespan_skips_openrouter_price_preflight():
+    env = os.environ.copy()
+    env.update({
+        "DATABASE_URL": OLLAMA_BASE["database_url"],
+        "RUNTIME_MODE": "anonymous_portfolio",
+        "ENVIRONMENT": "production",
+        "AUTH_MODE": "local",
+        "LLM_BACKEND": "ollama",
+        "OPENROUTER_API_KEY": "",
+        "OLLAMA_BASE_URL": OLLAMA_BASE["ollama_base_url"],
+        "OLLAMA_MODEL": OLLAMA_BASE["ollama_model"],
+        "WORKER_CONCURRENCY": "1",
+        "ALLOWED_ORIGINS": PUBLIC_ORIGIN,
+        "PORTFOLIO_PUBLIC_ORIGIN": PUBLIC_ORIGIN,
+        "PORTFOLIO_EVALUATION_ENDS_AT": "2099-01-01T00:00:00Z",
+        "PORTFOLIO_FREE_MODEL_ALLOWLIST": "",
+        "PORTFOLIO_MODEL_CATALOG_PATH": "",
+        "LANGFUSE_PUBLIC_KEY": "",
+        "LANGFUSE_SECRET_KEY": "",
+        "MCP_ENABLED": "false",
+        "MCP_BASE_URL": "",
+    })
+    code = """
+import asyncio
+import backend.main as main
+events = []
+def verify(settings):
+    raise AssertionError('OpenRouter preflight must not run for Ollama')
+async def worker(snapshot):
+    events.append('worker')
+    await asyncio.Event().wait()
+main.verify_selected_free_model = verify
+main.run_worker = worker
+async def run():
+    async with main.lifespan(main.app):
+        await asyncio.sleep(0)
+    print(','.join(events))
+asyncio.run(run())
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[2], env=env,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "worker"

@@ -693,6 +693,45 @@ def test_openai_client_has_max_retries_zero():
     assert call_kwargs.get("timeout") == 180.0
 
 
+def test_ollama_adapter_constructs_loopback_openai_compatible_client():
+    settings = _real_settings().model_copy(update={
+        "llm_backend": "ollama",
+        "ollama_base_url": "http://127.0.0.1:11434/v1",
+        "ollama_model": "qwen3.5:4b-q4_K_M",
+    })
+    with patch("openai.AsyncOpenAI") as fake_client_cls:
+        llm.LLMInterpretationAdapter(
+            settings=settings,
+            system_message=SYSTEM_EXAMPLE,
+            user_template=TEMPLATE_EXAMPLE,
+        )
+
+    assert fake_client_cls.call_args.kwargs == {
+        "api_key": "ollama",
+        "base_url": "http://127.0.0.1:11434/v1",
+        "timeout": 180.0,
+        "max_retries": 0,
+    }
+
+
+def test_ollama_request_disables_thinking_without_openrouter_provider_options():
+    settings = _real_settings().model_copy(update={
+        "llm_backend": "ollama",
+        "ollama_base_url": "http://127.0.0.1:11434/v1",
+        "ollama_model": "qwen3.5:4b-q4_K_M",
+        "llm_model": "qwen3.5:4b-q4_K_M",
+    })
+    completions = _FakeCompletions(responses=[_FakeResponse(SELECT_JSON)])
+    adapter = _adapter(completions, settings=settings)
+
+    _run(adapter._request([], output_format={"type": "json_object"}))
+
+    request = completions.calls[0]
+    assert request["model"] == "qwen3.5:4b-q4_K_M"
+    assert request["reasoning_effort"] == "none"
+    assert "extra_body" not in request
+
+
 def test_settings_reads_llm_model_and_timeout_from_env():
     with patch.dict(os.environ, {"LLM_MODEL": "vendor/model-x", "LLM_TIMEOUT_SECONDS": "72"}):
         settings = _real_settings()

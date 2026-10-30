@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
         app.state.catalog = load_catalog(resolve_term_cards_dir(settings))
     except CatalogLoadError as error:
         raise RuntimeError(f"CATALOG_INVALID_AT_STARTUP: {error}") from error
-    if settings.is_portfolio:
+    if settings.is_portfolio and settings.llm_backend == "openrouter":
         verify_selected_free_model(settings)
     app.state.term_search_slots = asyncio.Semaphore(2)
     resources = PublicHttpResources()
