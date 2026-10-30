@@ -22,13 +22,45 @@ Pydantic 검증과 resolver는 그대로 사용한다.
 JSON mode는 29 token만에 필수 계약 필드를 누락했다. 따라서 JSON Schema는 출력 형태를
 유도하지만 이 4B 모델의 교차 필드 규칙과 의미 선택까지 보장하지 못했다.
 
+### 9B 비교 평가
+
+같은 30문항, context 4096, `reasoning_effort=none`, 최대 출력 800 token,
+동시 생성 1건 조건으로 `qwen3.5:9b-q4_K_M`도 평가했다. 이 평가는 실제 TERM_CARD
+카탈로그와 resolver를 사용하지만 DB, worker, 이미지 검색 네트워크는 사용하지 않는
+생성 단계 평가다.
+
+- 구조 검증 완료 6건, 결정론 gate 4건, 실패 20건이었다.
+- 26번의 모델 호출 중 11건은 `LLM_INVALID_STRUCTURED_OUTPUT`이었다.
+- `LLM_UPSTREAM_UNAVAILABLE`로 기록된 3건은 Ollama 서버가 모두 HTTP 200을 반환했지만
+  정확히 800 token을 생성하고 종료한 경우였다. 네트워크 장애가 아니라 출력 상한에
+  따른 미완료 응답이다.
+- 개인 용어 6건은 일반 검증 실패로 기록됐다. 별도 대표 재현 1건은 스키마를 통과했지만
+  자세 입력을 `body`로 분류해 기대한 `pose` 의미를 놓쳤다.
+- 자동 기대값까지 통과한 모델 문항은 2건이었다. 수동 검토에서는 충돌 입력과 정보 부족
+  입력의 clarification type이 서로 맞지 않아 두 건도 운영 품질 통과로 보지 않는다.
+- 완료됐지만 기대값을 놓친 4건은 명확한 체형·팔짱·손을 허리에 얹은 자세·A 포즈 입력에
+  불필요한 추가 질문을 반환했다.
+
+모델 호출 지연은 최소 5,155ms, 중앙값 8,614ms, 평균 10,610ms, 최대 20,637ms였다.
+800 token에 도달한 3건을 제외하면 평균 9,496ms였다. 4B의 중앙값 7,842.5ms,
+평균 8,720.7ms보다 느리면서 의미·계약 준수 개선은 운영 전환에 충분하지 않았다.
+
+정답 데이터의 정확한 term ID 일치는 가까운 용어가 모두 가능할 때 엄격할 수 있다. 예를
+들어 아래에서 올려다보는 입력에 `view_low_angle` 대신 `view_worms_eye`를 고른 것은
+의미상 논의 여지가 있다. 그러나 해당 원문은 동시에 `drawing_chat` 상태에 selections와
+clarification type을 섞어 `state_rules`도 위반했으므로, 정답 term을 넓혀도 구조 실패는
+남는다. 반대로 clarification type을 검사하지 않는 두 자동 통과 사례는 현재 평가가 일부
+의미 오류에 관대하다는 증거다. 9B를 통과시키기 위해 기준은 변경하지 않았다.
+
 ## 설치·확인
 
-Windows용 Ollama 0.40.13에서 다음 한 모델만 평가했다.
+Windows용 Ollama 0.40.13에서 다음 두 모델을 평가했다.
 
 ```powershell
 ollama pull qwen3.5:4b-q4_K_M
+ollama pull qwen3.5:9b-q4_K_M
 ollama show qwen3.5:4b-q4_K_M
+ollama show qwen3.5:9b-q4_K_M
 ollama ps
 ```
 
@@ -36,6 +68,10 @@ ollama ps
 `100% GPU`, context 4096을 표시했다. RTX 5060 Laptop 8GB에서 `nvidia-smi`의
 사용 VRAM은 유휴 212MiB에서 4,232MiB로 늘었다. 이 수치는 같은 PC의 해당 측정이며
 다른 환경의 보장은 아니다.
+
+9B 패키지의 설치 표시 크기는 6.6GB, 모델 본체는 9.0B Q4_K_M이다. warm-up 뒤
+`ollama ps`는 모델 적재 5.6GB, `100% GPU`, context 4096을 표시했다. 같은 PC에서
+전체 GPU 메모리는 직전 348MiB에서 6,692MiB로 늘어 약 6,344MiB를 추가 사용했다.
 
 ## 호스트에서 평가
 
@@ -53,6 +89,7 @@ dry-run은 모델을 호출하지 않고 데이터·prompt·카탈로그 지문�
 .\.venv\Scripts\python.exe -m scripts.run_ollama_eval `
   --case-ids OLLAMA-01,OLLAMA-02,OLLAMA-03,OLLAMA-04,OLLAMA-05,OLLAMA-06,OLLAMA-07,OLLAMA-08,OLLAMA-09,OLLAMA-10,OLLAMA-11,OLLAMA-12,OLLAMA-13,OLLAMA-14,OLLAMA-15,OLLAMA-16,OLLAMA-17,OLLAMA-18,OLLAMA-19,OLLAMA-20,OLLAMA-21,OLLAMA-22,OLLAMA-23,OLLAMA-24,OLLAMA-25,OLLAMA-26,OLLAMA-27,OLLAMA-28,OLLAMA-29,OLLAMA-30 `
   --source-commit <40자리 검토 커밋 SHA> `
+  --model qwen3.5:9b-q4_K_M `
   --output <새 결과 폴더> `
   --execute
 ```
@@ -95,6 +132,7 @@ Vercel 화면에서 노트북의 로컬 모델까지 연결하려면 컨테이�
 
 ```powershell
 ollama stop qwen3.5:4b-q4_K_M
+ollama stop qwen3.5:9b-q4_K_M
 ```
 
 Ollama 서버를 다시 시작해도 다운로드한 모델은 남는다. 앱의 실패·취소·lease 회수는
