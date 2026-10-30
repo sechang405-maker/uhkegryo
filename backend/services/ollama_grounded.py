@@ -115,7 +115,7 @@ def _body_shape_direction(text: str) -> str | None:
     upper = r"(?:\uc5b4\uae68|\uc0c1\uccb4|\uc717\ubd80\ubd84)"
     lower = r"(?:\uc544\ub798|\uc544\ub7ab\ubd80\ubd84|\uace8\ubc18|\uc5c9\ub369\uc774|\ud558\uccb4)"
     narrow = r"(?:\uc881|\uac00\ub298|\ud3ed\uc774?\s*\uc791)"
-    wide = r"(?:\ub113|\uad75|\ud3ed\uc774?\s*(?:\ud06c|\ucee4))"
+    wide = r"(?:\ub113|\uad75|\ud3ed(?:\uc740|\uc774|\uac00)?\s*(?:\ud06c|\ucee4))"
     upper_narrow = re.search(
         rf"{upper}(?:(?!{lower}).){{0,12}}{narrow}|{narrow}.{{0,8}}{upper}", text
     )
@@ -143,28 +143,46 @@ def _structural_evidence(term_id: str, text: str) -> tuple[str, ...]:
         return _matches_both(
             normalized,
             r"(?:\uc704|\ub192|\uc0c1\uacf5|\uc9c0\ubd95|\uba38\ub9ac.{0,6}\uc704)",
-            r"(?:\uc544\ub798|\ubc14\ub2e5.{0,8}\ubcf4|\ub0b4\ub824\ub2e4\ubcf4)",
+            r"(?:\uc544\ub798|\ubc14\ub2e5|\ub545).{0,10}(?:\ubcf4|\ud5a5|\ub0b4\ub824\ub2e4)|\ub0b4\ub824\ub2e4",
+        )
+    if term_id == "view_low_angle":
+        return _matches_both(
+            normalized,
+            r"(?:\ubc1c\ubc11|\ubc1c\uce58|(?:\ubc14\ub2e5|\uc544\ub798).{0,8}(?:\ucabd|\uc5d0\uc11c)|\ubb34\ub98e.{0,8}\ub0ae|\uce74\uba54\ub77c.{0,8}\ub0ae)",
+            r"(?:\uc704|\uc5bc\uad74|\ud131).{0,10}(?:\ubcf4|\ud5a5)|\uc62c\ub824\ub2e4",
         )
     if term_id == "perspective_two_point":
         return _matches_both(
             normalized,
             r"(?:\ubaa8\uc11c\ub9ac|\uadc0\ud241\uc774|\ucf54\ub108|\uc591\ucabd\s*\ubcbd|\ub450\s*\ubcbd)",
-            r"(?:\uc11c\ub85c\s*(?:\ub2e4\ub978|\ubc18\ub300)\s*\ubc29\ud5a5|\uc88c\uc6b0.{0,8}(?:\ub2e4\ub978|\ubc8c\uc5b4|\ud5a5\ud558))",
+            r"(?:\uc11c\ub85c\s*(?:\ub2e4\ub978|\ubc18\ub300)\s*\ubc29\ud5a5|\uc88c\uc6b0.{0,12}(?:\ub2e4\ub978|\ubc8c\uc5b4|\ud5a5\ud558)|\uc67c\ucabd.{0,24}\uc624\ub978\ucabd.{0,24}\ub2e4\ub978)",
         )
     if term_id == "perspective_foreshortening":
         return _matches_both(
             normalized,
-            r"(?:\ub208\uc55e|\uce74\uba54\ub77c.{0,8}(?:\uac00\uae4c|\uc55e)|\uac00\uae4c\uc6b4)",
-            r"(?:\uba40\ub9ac|\uba3c|\ub4a4\ucabd|\ud6c4\ubc29).{0,12}(?:\uc791|\uc881|\uc9e7)",
+            r"(?:\ub208|\uc5bc\uad74|\ub80c\uc988|\uce74\uba54\ub77c).{0,8}(?:\uc55e|\uac00\uae4c)|\uac00\uae4c\uc6b4",
+            r"(?:\uba40\ub9ac|\uba3c|\ub4a4\ucabd|\ub4a4\ud3b8|\ud6c4\ubc29).{0,14}(?:\uc791|\uc881|\uc9e7)",
         )
     direction = _body_shape_direction(normalized)
     if term_id == direction:
-        relation = re.search(
-            r"(?:\uc5b4\uae68|\uc0c1\uccb4|\uc544\ub798|\uace8\ubc18|\ud558\uccb4).{0,24}(?:\uc881|\ub113|\uc904\uc5b4|\ud37c\uc9c0)",
-            normalized,
-        )
-        return (relation.group(0),) if relation else ()
+        return (normalized[:120],)
+    if term_id == "pose_contrapposto":
+        return _contrapposto_evidence(normalized)
     return ()
+
+
+def _contrapposto_evidence(text: str) -> tuple[str, ...]:
+    weight_leg = _matches_both(
+        text,
+        r"(?:(?:\ud55c\ucabd|\uc67c|\uc624\ub978)\s*(?:\ubc1c|\ub2e4\ub9ac))",
+        r"(?:\uccb4\uc911|\ubb34\uac8c|\uc911\uc2ec).{0,8}(?:\uc2e3|\ub450|\uac78|\ubab0)",
+    )
+    counter_tilt = _matches_both(
+        text,
+        r"\uc5b4\uae68.{0,14}(?:\uae30\uc6b8|\uacbd\uc0ac|\uc0ac\uc120)",
+        r"\uace8\ubc18.{0,14}(?:\ubc18\ub300|\uc5ed\ubc29\ud5a5|\uae30\uc6b8|\uacbd\uc0ac|\uc0ac\uc120)",
+    )
+    return tuple(dict.fromkeys((*weight_leg, *counter_tilt)))
 
 
 def _requires_stronger_pose_relation(term_id: str, text: str, label: str) -> bool:
@@ -172,17 +190,14 @@ def _requires_stronger_pose_relation(term_id: str, text: str, label: str) -> boo
     if _has_affirmed_phrase(normalized, label.casefold()):
         return False
     if term_id == "pose_contrapposto":
-        weight_leg = _matches_both(
+        return not _contrapposto_evidence(normalized)
+    if term_id == "pose_hand_open_palm":
+        open_palm = _matches_both(
             normalized,
-            r"(?:(?:\ud55c\ucabd|\uc67c|\uc624\ub978)\s*(?:\ubc1c|\ub2e4\ub9ac))",
-            r"(?:\uccb4\uc911|\ubb34\uac8c|\uc911\uc2ec).{0,8}(?:\uc2e3|\ub450|\uac78|\ubab0)",
+            r"\uc190\ubc14\ub2e5",
+            r"(?:\ud3b4|\ubc8c\ub824|\ubcf4\uc5ec|\uc815\uba74)",
         )
-        counter_tilt = _matches_both(
-            normalized,
-            r"\uc5b4\uae68.{0,14}(?:\uae30\uc6b8|\uacbd\uc0ac)",
-            r"\uace8\ubc18.{0,14}(?:\ubc18\ub300|\uc5ed\ubc29\ud5a5|\uae30\uc6b8|\uacbd\uc0ac)",
-        )
-        return not (weight_leg or counter_tilt)
+        return not open_palm
     if term_id == "pose_supine":
         lying = re.search(
             r"(?:\ubc14\ub2e5|\uce68\ub300|\ub9e4\ud2b8).{0,12}(?:\ub204\uc6cc|\ub208|\ub4f1\uc744\s*\ub300)|(?:\ubc18\ub4ef\uc774|\ucc9c\uc7a5).{0,8}(?:\ub204\uc6cc|\ubcf4)",
@@ -372,6 +387,12 @@ def _score_card(request_text: str, term_id: str, card: dict) -> _Candidate | Non
 
 def _contradicted(term_id: str, request_text: str) -> bool:
     text = normalize_input_text(request_text).casefold()
+    negated_labels = {
+        "view_high_angle": r"\ud558\uc774\s*\uc575\uae00(?:\uc740|\ub294|\uc744|\ub97c)?\s*(?:\uc544\ub2c8|\uc81c\uc678|\ube7c|\ub9d0\uace0)",
+        "view_low_angle": r"\ub85c\uc6b0\s*\uc575\uae00(?:\uc740|\ub294|\uc744|\ub97c)?\s*(?:\uc544\ub2c8|\uc81c\uc678|\ube7c|\ub9d0\uace0)",
+    }
+    if term_id in negated_labels and re.search(negated_labels[term_id], text):
+        return True
     body_direction = _body_shape_direction(text)
     if term_id in {"body_triangle", "body_inverted_triangle"}:
         if body_direction is not None and body_direction != term_id:
@@ -595,7 +616,7 @@ def _has_affirmed_phrase(text: str, phrase: str) -> bool:
         after = text[match.end():match.end() + 12]
         if re.search(
             r"^(?:\uc740|\ub294|\uc774|\uac00|\uc744|\ub97c|\uc5d0\uc11c|\uc73c\ub85c)?\s*"
-            r"(?:\ub9d0\uace0|\uc544\ub2cc|\uc81c\uc678|\ube7c\uace0|\uc544\ub2c8\ub77c)",
+            r"(?:\ub9d0\uace0|\uc544\ub2cc|\uc81c\uc678|\ube7c\uace0|\uc544\ub2c8)",
             after,
         ):
             continue

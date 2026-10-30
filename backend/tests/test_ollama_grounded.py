@@ -423,3 +423,49 @@ def test_planner_does_not_cross_body_part_clauses(snapshot):
     assert {selection.term_id for selection in result.selections} == {
         "body_inverted_triangle"
     }
+
+
+@pytest.mark.parametrize(
+    ("request_text", "expected_terms"),
+    [
+        (
+            "\uc778\ubb3c\ubcf4\ub2e4 \uc704\ucabd \uc704\uce58\uc5d0\uc11c \ub545\uc744 \ud5a5\ud574 \ubcf8 \uad6c\ub3c4",
+            {"view_high_angle"},
+        ),
+        (
+            "\ubb34\ub98e \ub192\uc774\ubcf4\ub2e4 \ub0ae\uc740 \uce74\uba54\ub77c\uac00 \ud131 \ucabd\uc744 \ud5a5\ud55c\ub2e4",
+            {"view_low_angle"},
+        ),
+        (
+            "\uc9d1 \ucf54\ub108\uc5d0\uc11c \uc67c\ucabd \uba74\uacfc \uc624\ub978\ucabd \uba74\uc774 \ub2e4\ub978 \ubc29\ud5a5\uc73c\ub85c \uac04\ub2e4",
+            {"perspective_two_point"},
+        ),
+        (
+            "\uc5bc\uad74 \uc55e \uc190\uc740 \ud06c\uace0 \ub4a4\ud3b8 \uc5b4\uae68\ub294 \uc791\uac8c \ubcf4\uc778\ub2e4",
+            {"perspective_foreshortening"},
+        ),
+        (
+            "\uc717\ubd80\ubd84\uc740 \uac00\ub298\uace0 \ud558\uccb4 \ud3ed\uc740 \ucee4\uc9c4\ub2e4",
+            {"body_triangle"},
+        ),
+        (
+            "\uc5b4\uae68\ub294 \ub113\uace0 \ud558\uccb4\ub294 \uc881\uc740 \uc0ac\ub78c\uc744 \ubc1c\ubc11\uc5d0\uc11c \uc62c\ub824\ub2e4\ubcf8\ub2e4",
+            {"body_inverted_triangle", "view_low_angle"},
+        ),
+        (
+            "\ubcbd\uc5d0 \uc190\ubc14\ub2e5\uc744 \ubd99\uc774\uace0 \ubab8\uc744 \uae30\ub300\uace0 \uc120 \ud3ec\uc988",
+            {"pose_support_wall"},
+        ),
+        (
+            "\ud558\uc774 \uc575\uae00\uc740 \uc544\ub2c8\uace0 \ubc14\ub2e5 \ucabd\uc5d0\uc11c \uc62c\ub824\ub2e4\ubcf4\ub294 \uc2dc\uc120",
+            {"view_low_angle"},
+        ),
+    ],
+)
+def test_planner_uses_relational_evidence_not_isolated_words(
+    snapshot, request_text, expected_terms
+):
+    result = plan_grounded_request(request_text, snapshot)
+
+    assert result.interpretation_state.value == "select_terms"
+    assert {selection.term_id for selection in result.selections} == expected_terms
