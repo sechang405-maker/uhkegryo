@@ -28,6 +28,7 @@ from backend.services.llm import (
     _extract_content,
     format_active_cards_json,
 )
+from backend.services.ollama_grounded import OllamaGroundedInterpreter
 from backend.services.personal_term_generator import SYSTEM_MESSAGE, _validate_generated_text
 from backend.services.structured_output import strict_schema
 
@@ -94,6 +95,8 @@ def metadata(commit: str, execute: bool, snapshot, model: str = DEFAULT_MODEL) -
         raise ValueError("Supply a full reviewed source commit SHA")
     sources = [
         ROOT / "backend/services/llm.py",
+        ROOT / "backend/services/ollama_grounded.py",
+        ROOT / "backend/services/agent_worker.py",
         ROOT / "backend/shared/config.py",
         Path(__file__),
     ]
@@ -110,7 +113,7 @@ def metadata(commit: str, execute: bool, snapshot, model: str = DEFAULT_MODEL) -
         "quantization": QUANTIZATION,
         "context_tokens": 4096,
         "reasoning_effort": "none",
-        "prompt_version": "uhkegryo-interpreter-v4",
+        "prompt_version": "grounded-ollama-v1 (personal terms retain v4 transport)",
         "prompt_sha256": digest(PROMPT),
         "catalog_version": snapshot.dataset_version,
         "catalog_files_sha256": {
@@ -120,14 +123,17 @@ def metadata(commit: str, execute: bool, snapshot, model: str = DEFAULT_MODEL) -
             path.relative_to(ROOT).as_posix(): digest(path) for path in sources
         },
         "attempts_per_case": 1,
-        "maximum_generations": 30,
+        "maximum_generations": 26,
         "automatic_retry": False,
         "model_judge": False,
         "database": "not used",
         "search_network": "not used",
         "usage": "local_gpu",
         "cost_usd": 0,
-        "scope": "model plus catalog injection and deterministic resolver; no worker DB or image search",
+        "scope": (
+            "deterministic catalog planner plus bounded model explanation/query choice; "
+            "personal-term schema remains model-generated; no worker DB or image search"
+        ),
     }
 
 
@@ -146,6 +152,45 @@ def _interpretation_checks(case: dict, interpretation) -> dict[str, bool]:
     }
 
 
+def _grounded_checks(case: dict, result, snapshot) -> dict[str, bool]:
+    interpretation = result.interpretation
+    checks = {"schema": True, **_interpretation_checks(case, interpretation)}
+    selected_ids = [item.term_id for item in interpretation.selections]
+    expected_clarification = case["expected"]["state"] == "needs_clarification"
+    checks["clarification_appropriate"] = (
+        bool(interpretation.clarifying_question)
+        and not interpretation.selections
+        and interpretation.answer_text == ""
+        if expected_clarification
+        else interpretation.interpretation_state.value == "select_terms"
+    )
+    if interpretation.interpretation_state.value == "select_terms":
+        cards = [snapshot.get_active(term_id) for term_id in selected_ids]
+        checks["korean_answer"] = bool(re.search(r"[가-힣]", interpretation.answer_text))
+        checks["grounded_answer"] = (
+            all(str(card["label_ko"]) in interpretation.answer_text for card in cards)
+            and any(
+                str(point) in interpretation.answer_text
+                for card in cards
+                for point in card["look_for"]
+            )
+        )
+    else:
+        checks["korean_answer"] = interpretation.answer_text == ""
+        checks["grounded_answer"] = interpretation.answer_text == ""
+    checks["query_fragments_allowed"] = set(result.query_fragments_by_term) == set(
+        selected_ids
+    ) and all(
+        fragments
+        and all(
+            fragment in snapshot.get_active(term_id)["query_fragments"]
+            for fragment in fragments
+        )
+        for term_id, fragments in result.query_fragments_by_term.items()
+    )
+    return checks
+
+
 def _personal_format() -> dict:
     return {
         "type": "json_schema",
@@ -158,14 +203,14 @@ def _personal_format() -> dict:
 
 
 async def _run_interpretation(adapter, case, snapshot):
-    interpretation = await adapter.interpret(
+    result = await OllamaGroundedInterpreter(snapshot, adapter).interpret_grounded(
         case["input"],
         job_id=case["id"],
         session_id="synthetic-ollama-evaluation",
         attempt=1,
         max_attempts=1,
-        active_cards_json=format_active_cards_json(snapshot),
     )
+    interpretation = result.interpretation
     resolution = await validate(
         SyntheticMemory(), {"request_text": case["input"]}, interpretation, snapshot
     )
@@ -174,13 +219,19 @@ async def _run_interpretation(adapter, case, snapshot):
         queries.append({
             "term_id": term.selection.term_id,
             "role": term.selection.role.value,
-            "query_fragments": list(term.card.get("query_fragments", [])),
+            "query_fragments": list(result.query_fragments_by_term.get(
+                term.selection.term_id, term.card.get("query_fragments", [])
+            )),
         })
     return {
         "interpretation": interpretation.model_dump(mode="json"),
-        "checks": _interpretation_checks(case, interpretation),
+        "checks": _grounded_checks(case, result, snapshot),
         "resolution_status": resolution.status,
         "resolved_search_terms": queries,
+        "model_called": result.model_called,
+        "model_answer_accepted": result.model_answer_accepted,
+        "model_query_applied": result.model_query_applied,
+        "adapter_attempts": int(result.model_called),
     }
 
 

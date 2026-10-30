@@ -163,6 +163,9 @@ def test_grounded_enrichment_cannot_change_state_or_terms(snapshot):
     assert result.query_fragments_by_term == {
         "body_slim": ("slim body reference",)
     }
+    assert result.model_called is True
+    assert result.model_answer_accepted is True
+    assert result.model_query_applied is False
     assert len(adapter.calls) == 1
 
 
@@ -218,6 +221,7 @@ def test_clarification_does_not_call_model(snapshot):
 
     assert result.interpretation.interpretation_state.value == "needs_clarification"
     assert result.query_fragments_by_term == {}
+    assert result.model_called is False
     assert adapter.calls == []
 
 
@@ -232,3 +236,5 @@ def test_model_failure_keeps_deterministic_selection_and_catalog_queries(snapsho
     assert result.query_fragments_by_term == {
         "body_slim": tuple(snapshot.get_active("body_slim")["query_fragments"])
     }
+    assert result.model_called is True
+    assert result.model_answer_accepted is False

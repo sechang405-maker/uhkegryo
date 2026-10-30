@@ -13,7 +13,7 @@ from backend.schemas.enums import ClarificationType, InterpretationState, Role
 from backend.schemas.models import InterpretationOutput, InterpretationSelection
 from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.input_safety import normalize_input_text
-from backend.services.llm import LLMError, _extract_content
+from backend.services.llm import LLMConfigurationError, LLMError, _extract_content
 from backend.services.resolver import clarification_question
 from backend.services.structured_output import strict_schema
 
@@ -95,6 +95,9 @@ class _GroundedEnrichment(BaseModel):
 class GroundedInterpretationResult:
     interpretation: InterpretationOutput
     query_fragments_by_term: dict[str, tuple[str, ...]]
+    model_called: bool = False
+    model_answer_accepted: bool = False
+    model_query_applied: bool = False
 
 
 def _canonical_word(raw: str) -> str:
@@ -354,7 +357,7 @@ def _validated_queries(
     snapshot: CatalogSnapshot,
     interpretation: InterpretationOutput,
     enrichment: _GroundedEnrichment,
-) -> dict[str, tuple[str, ...]]:
+) -> tuple[dict[str, tuple[str, ...]], bool]:
     defaults = _default_queries(snapshot, interpretation)
     chosen: dict[str, tuple[str, ...]] = {}
     for choice in enrichment.query_choices:
@@ -364,10 +367,11 @@ def _validated_queries(
         fragments = tuple(dict.fromkeys(choice.query_fragments))
         if fragments and all(fragment in allowed for fragment in fragments):
             chosen[choice.term_id] = fragments
-    return {
+    validated = {
         term_id: chosen.get(term_id, fragments)
         for term_id, fragments in defaults.items()
     }
+    return validated, any(validated[key] != defaults[key] for key in defaults)
 
 
 def _is_grounded_answer(
@@ -442,14 +446,27 @@ class OllamaGroundedInterpreter:
             enrichment = _GroundedEnrichment.model_validate_json(
                 _extract_content(response)
             )
+        except LLMConfigurationError:
+            raise
         except (LLMError, ValidationError, ValueError, TypeError, json.JSONDecodeError):
-            return GroundedInterpretationResult(interpretation, defaults)
+            return GroundedInterpretationResult(
+                interpretation, defaults, model_called=True
+            )
 
         answer_text = enrichment.answer_text
-        if not _is_grounded_answer(answer_text, self.snapshot, interpretation):
+        answer_accepted = _is_grounded_answer(
+            answer_text, self.snapshot, interpretation
+        )
+        if not answer_accepted:
             answer_text = interpretation.answer_text
         enriched = interpretation.model_copy(update={"answer_text": answer_text})
+        queries, query_applied = _validated_queries(
+            self.snapshot, enriched, enrichment
+        )
         return GroundedInterpretationResult(
             enriched,
-            _validated_queries(self.snapshot, enriched, enrichment),
+            queries,
+            model_called=True,
+            model_answer_accepted=answer_accepted,
+            model_query_applied=query_applied,
         )
