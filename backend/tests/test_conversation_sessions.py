@@ -209,7 +209,7 @@ def test_portfolio_queue_cap_rejects_before_inserting_another_job():
                 Connection(),
                 session_id="2dc4e9df-2d76-490f-bd0c-7ec8360be942",
                 request_text="로우 앵글 포즈",
-                idempotency_key="2dc4e9df-2d76-490f-bd0c-7ec8360be943",
+                idempotency_key="queue-cap-test-key",
             )
 
     asyncio.run(case())

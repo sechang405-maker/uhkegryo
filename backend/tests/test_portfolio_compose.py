@@ -1,6 +1,8 @@
 from pathlib import Path
+import shutil
 import subprocess
 
+import pytest
 import yaml
 
 
@@ -139,6 +141,7 @@ def test_windows_ollama_host_scripts_are_explicit_nonpersistent_and_value_safe()
     assert tunnel.index("Remove-Item -LiteralPath $originFile") < tunnel.index("Start-Process")
 
 
+@pytest.mark.skipif(shutil.which("powershell.exe") is None, reason="Windows PowerShell runtime check")
 def test_windows_secret_primitives_run_on_the_supported_powershell():
     generator = (ROOT / "scripts/portfolio-host-new-env.ps1").read_text(encoding="utf-8")
     assert "RandomNumberGenerator]::Create()" in generator
