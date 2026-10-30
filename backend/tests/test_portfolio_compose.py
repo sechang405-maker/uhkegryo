@@ -163,6 +163,8 @@ def test_windows_one_click_entrypoints_preserve_runtime_security_boundaries():
     assert '"vercel@$vercelVersion"' in online
     assert "--target production" in online
     assert "--sensitive" in online
+    assert "RedirectStandardInput" in online
+    assert "vercel-origin-input.tmp" in online
     assert "https://uhkegryo-xi.vercel.app/service-health" not in online
     assert '"$publicOrigin/service-health"' in online
     assert "New-Service" not in online and "Set-Service" not in online

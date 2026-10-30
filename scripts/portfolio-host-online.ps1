@@ -127,8 +127,18 @@ if ($deployedOrigin -ne $origin) {
         if ($LASTEXITCODE -ne 0) {
             throw "The existing Vercel login is unavailable. Run 'npx vercel login' yourself, then retry."
         }
-        $origin | & npx.cmd --yes "vercel@$vercelVersion" env add PORTFOLIO_GATEWAY_ORIGIN production --force --yes --sensitive
-        if ($LASTEXITCODE -ne 0) { throw "Vercel origin update failed." }
+        $originInputFile = Join-Path $runDir "vercel-origin-input.tmp"
+        [IO.File]::WriteAllText($originInputFile, $origin, [Text.UTF8Encoding]::new($false))
+        try {
+            $envUpdate = Start-Process -FilePath "npx.cmd" -ArgumentList @(
+                "--yes", "vercel@$vercelVersion", "env", "add",
+                "PORTFOLIO_GATEWAY_ORIGIN", "production", "--force", "--yes", "--sensitive"
+            ) -WorkingDirectory $frontendRoot -NoNewWindow -Wait -PassThru `
+                -RedirectStandardInput $originInputFile
+            if ($envUpdate.ExitCode -ne 0) { throw "Vercel origin update failed." }
+        } finally {
+            Remove-Item -LiteralPath $originInputFile -Force -ErrorAction SilentlyContinue
+        }
         & npx.cmd --yes "vercel@$vercelVersion" redeploy $publicOrigin --target production
         if ($LASTEXITCODE -ne 0) { throw "Vercel production redeploy failed." }
     } finally {
