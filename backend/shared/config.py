@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     portfolio_evaluation_ends_at: datetime | None = None
     portfolio_free_model_allowlist: str = ''
     portfolio_daily_llm_call_limit: int = Field(default=40, ge=1, le=40)
+    portfolio_max_pending_jobs: int = Field(default=8, ge=1, le=8)
+    portfolio_daily_term_search_limit: int = Field(default=80, ge=1, le=80)
     portfolio_model_catalog_path: str = ''
     portfolio_model_catalog_max_age_seconds: int = Field(default=3600, ge=60, le=86400)
 

@@ -63,6 +63,8 @@ def test_portfolio_settings_accept_exact_loopback_ollama_runtime():
     assert settings.ollama_base_url == "http://127.0.0.1:11434/v1"
     assert settings.ollama_model == "qwen3.5:4b-q4_K_M"
     assert settings.llm_model == "qwen3.5:4b-q4_K_M"
+    assert settings.portfolio_max_pending_jobs == 8
+    assert settings.portfolio_daily_term_search_limit == 80
 
 
 @pytest.mark.parametrize(
@@ -79,6 +81,7 @@ def test_portfolio_settings_accept_exact_loopback_ollama_runtime():
         {"portfolio_free_model_allowlist": "example/model:free"},
         {"portfolio_model_catalog_path": "C:/synthetic/openrouter-models.json"},
         {"worker_concurrency": 2},
+        {"portfolio_max_pending_jobs": 9},
     ],
 )
 def test_ollama_portfolio_rejects_nonlocal_or_unapproved_runtime(change):
@@ -209,6 +212,8 @@ def test_portfolio_app_omits_auth_admin_and_api_documentation():
     assert "/openapi.json" not in routes
     assert not any(path.startswith("/api/auth") for path in routes)
     assert not any(path.startswith("/api/admin") for path in routes)
+    assert not any(path.startswith("/api/personal-terms") for path in routes)
+    assert "/api/local/profile" not in routes
 
 
 def test_portfolio_local_codex_profile_is_not_found(monkeypatch):

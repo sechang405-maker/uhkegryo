@@ -12,6 +12,7 @@ from backend.services.failure_mapping import OperationalFailure
 from backend.services.personal_term_repository import PersonalTermNotFound, PersonalTermRepository
 from backend.services.pinterest_widget import PinterestWidgetClient, PinterestWidgetProvider
 from backend.services.response_assembler import RoleSearchOutcome
+from backend.services.portfolio_budget import PortfolioActionBudget, PortfolioActionBudgetExceeded
 from backend.services.search_url_builder import build_search_url
 from backend.services.searxng_pinterest_search import SearXNGPinterestSearchProvider
 from backend.shared.config import get_settings
@@ -102,6 +103,19 @@ async def search_term(payload: TermSearchRequest, request: Request, response: Re
     await slots.acquire()
     role = Role(card["role"])
     try:
+        if getattr(settings, "is_portfolio", False):
+            sessions, _ = await _database_call(get_repositories())
+            try:
+                await _database_call(PortfolioActionBudget(
+                    sessions._pool,
+                    resource="term_search",
+                    limit=settings.portfolio_daily_term_search_limit,
+                ).reserve())
+            except PortfolioActionBudgetExceeded:
+                raise HTTPException(
+                    429,
+                    "오늘의 공개 체험 이미지 검색 80회를 모두 사용했습니다. UTC 자정 뒤 다시 시도해 주세요.",
+                ) from None
         async with asyncio.timeout(SEARCH_TIMEOUT_SECONDS):
             provider = get_search_provider(payload.suffix, **(
                 {'exclude_pin_ids': tuple(payload.exclude_pin_ids)} if payload.exclude_pin_ids else {}))

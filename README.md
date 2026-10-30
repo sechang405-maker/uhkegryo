@@ -490,3 +490,26 @@ frontend 개발 서버도 해당 PowerShell 창에서 `Ctrl+C`로 중지합니�
 ## 현재 대화 기억 상태
 
 익명 HttpOnly 쿠키 소유자와 여러 대화를 분리하고, `/api/sessions` 생성·목록·열람·이력 조회를 제공합니다. `/api/agent`는 선택적 `session_id`를 받고, 최근 기록·현재 조건·요약을 전달하며 과거 답변의 저장 레퍼런스를 다시 열 수 있습니다. 대화 목록과 전환 UI도 현재 frontend에 연결돼 있습니다. Docker Compose에서는 `db-migrate`가 001부터 현재 migration까지 비파괴 순서로 적용한 뒤 API가 시작됩니다. 이는 로그인 계정 인증이나 다중 기기 동기화를 의미하지 않으며, 실제 모델 품질과 장기 보관 정책은 계속 검증 대상입니다.
+### Windows 로컬 Ollama 공개 체험 실행
+
+공개 Vercel 화면과 노트북의 `qwen3.5:4b-q4_K_M`를 연결하는 체험 런타임은
+DB `127.0.0.1:55434`, 검색 `127.0.0.1:8081`, FastAPI `127.0.0.1:8000`,
+보호된 Next 게이트웨이 `127.0.0.1:3120`만 사용합니다. Ollama `11434`와 DB/API는
+터널에 직접 연결하지 않습니다.
+
+```powershell
+powershell -NoProfile -File scripts/portfolio-host-new-env.ps1
+powershell -NoProfile -File scripts/portfolio-host-start.ps1
+powershell -NoProfile -File scripts/portfolio-host-tunnel.ps1
+```
+
+종료할 때는 아래 명령으로 터널, 호스트 프로세스, 전용 DB/검색 컨테이너만 내립니다.
+DB 볼륨과 모델 파일은 삭제하지 않으며 자동 부팅 서비스는 만들지 않습니다.
+
+```powershell
+powershell -NoProfile -File scripts/portfolio-host-stop.ps1
+```
+
+공개 모드는 전체 방문자 합산 UTC 일 40회 모델 호출, 일 80회 직접 이미지 검색,
+동시 worker 1개, 미완료 작업 8개로 제한됩니다. 활성화 시각부터 7일 뒤 자동 만료하며,
+신규 용어 생성은 로컬 모델 평가에서 0/6으로 안정성이 확인되지 않아 비활성화됩니다.

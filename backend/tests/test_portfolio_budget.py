@@ -12,6 +12,8 @@ import pytest
 
 from backend.services.llm import LLMInterpretationAdapter, LLMUpstreamUnavailable
 from backend.services.portfolio_budget import (
+    PortfolioActionBudget,
+    PortfolioActionBudgetExceeded,
     PortfolioBudgetExceeded,
     PortfolioLLMCallBudget,
 )
@@ -47,6 +49,21 @@ def test_budget_uses_one_atomic_upsert_and_fails_closed_at_limit():
     assert "WHERE PORTFOLIO_LLM_DAILY_USAGE.USED_CALLS < $2" in normalized
     assert "RETURNING USED_CALLS" in normalized
     assert args[1] == 40
+
+
+def test_public_action_budget_is_atomic_and_resource_scoped():
+    pool = _Pool([{"used_actions": 80}, None])
+    budget = PortfolioActionBudget(pool, resource="term_search", limit=80)
+
+    assert asyncio.run(budget.reserve()) == 80
+    with pytest.raises(PortfolioActionBudgetExceeded):
+        asyncio.run(budget.reserve())
+
+    query, args = pool.calls[0]
+    normalized = " ".join(query.split()).upper()
+    assert "INSERT INTO PORTFOLIO_ACTION_DAILY_USAGE" in normalized
+    assert "ON CONFLICT (USAGE_DATE, RESOURCE) DO UPDATE" in normalized
+    assert args[1:] == ("term_search", 80)
 
 
 class _Completions:

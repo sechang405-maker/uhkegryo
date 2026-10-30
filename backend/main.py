@@ -56,16 +56,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="2차 프로젝트 API", lifespan=lifespan)
 
 
-if settings.is_portfolio:
-    app.routes[:] = [
-        route for route in app.routes
-        if not (
-            str(getattr(route, "path", "")).startswith("/docs")
-            or getattr(route, "path", None) in {"/redoc", "/openapi.json"}
-        )
-    ]
-
-
 @app.middleware('http')
 async def portfolio_evaluation_window(request, call_next):
     if settings.portfolio_is_expired():
@@ -125,10 +115,18 @@ async def handle_api_contract_error(request: FastAPI, exc: ApiContractError) -> 
 
 app.include_router(agent_router)
 app.include_router(term_search_router)
-app.include_router(personal_terms_router)
 if not settings.is_portfolio:
+    app.include_router(personal_terms_router)
     app.include_router(auth_router)
     app.include_router(admin_demo_router)
+else:
+    app.routes[:] = [
+        route for route in app.routes
+        if not (
+            str(getattr(route, "path", "")).startswith("/docs")
+            or getattr(route, "path", None) in {"/redoc", "/openapi.json", "/api/local/profile"}
+        )
+    ]
 
 
 @app.exception_handler(Exception)

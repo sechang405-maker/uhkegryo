@@ -29,6 +29,7 @@ from backend.shared.config import get_settings
 from backend.shared.database import close_pool, create_pool
 from backend.services.job_repository import (
     IdempotencyConflict,
+    PortfolioQueueFull,
     SessionMessageLimitReached,
     JobNotFound,
 )
@@ -136,7 +137,11 @@ async def get_repositories() -> tuple[SessionRepository, JobRepository]:
     global _pool
     if _pool is None:
         _pool = await create_pool(get_settings())
-    return SessionRepository(_pool), JobRepository(_pool)
+    settings = get_settings()
+    return SessionRepository(_pool), JobRepository(
+        _pool,
+        max_pending_jobs=(settings.portfolio_max_pending_jobs if settings.is_portfolio else None),
+    )
 
 
 @router.on_event("shutdown")
@@ -335,6 +340,11 @@ async def submit_agent(
         raise ApiContractError(ApiErrorCode.SESSION_NOT_FOUND, token) from None
     except QuotaExceeded:
         raise ApiContractError(ApiErrorCode.ACCOUNT_AI_QUOTA_EXCEEDED, token) from None
+    except PortfolioQueueFull:
+        raise HTTPException(
+            429,
+            "공개 체험의 대기 요청이 많습니다. 현재 요청이 끝난 뒤 다시 시도해 주세요.",
+        ) from None
 
     # 신규 발급이든 재사용이든 세션 활동이므로 달력 기준 3개월로 갱신한다. 재사용할 때는
     # 토큰을 그대로 내보내 식별자가 바뀌지 않는다(`session-job-persistence.md:25`).

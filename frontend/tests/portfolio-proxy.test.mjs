@@ -40,3 +40,20 @@ test("PC portfolio gateway returns unavailable when its secret is misconfigured"
   assert.equal(response.status, 503);
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
+
+test("PC portfolio gateway rejects secret-bearing requests outside the reviewed API", async () => {
+  process.env.PORTFOLIO_MODE = "1";
+  process.env.PORTFOLIO_GATEWAY_REQUIRED = "1";
+  process.env.PORTFOLIO_GATEWAY_SECRET = "s".repeat(48);
+  const { proxy } = await import(`../proxy.js?allowlist=${Date.now()}`);
+  const headers = { "x-portfolio-gateway-secret": "s".repeat(48) };
+
+  for (const request of [
+    new Request("https://gateway.example/api/personal-terms", { headers }),
+    new Request("https://gateway.example/api/local/profile", { method: "POST", headers }),
+    new Request("https://gateway.example/api/sessions", { method: "PATCH", headers }),
+  ]) {
+    const response = proxy(request);
+    assert.equal(response.status, 404);
+  }
+});

@@ -1,3 +1,5 @@
+import { isPortfolioGatewayRequestAllowed } from "./portfolio-gateway-policy.mjs";
+
 export const PORTFOLIO_OFFLINE_MESSAGE =
   "현재 데모 운영 시간이 아닙니다. 평가 시간에 다시 접속해 주세요.";
 export const OFFLINE_FAILURE_CODE = "PORTFOLIO_BACKEND_OFFLINE";
@@ -38,6 +40,16 @@ function offlineResponse() {
   }, {
     status: 503,
     headers: { "cache-control": "no-store" },
+  });
+}
+
+function notFoundResponse() {
+  return new Response("Not Found", {
+    status: 404,
+    headers: {
+      "cache-control": "no-store",
+      "content-type": "text/plain; charset=utf-8",
+    },
   });
 }
 
@@ -93,6 +105,9 @@ function forwardedResponseHeaders(headers) {
 
 export function createPortfolioGatewayProxy({ env = process.env, fetchImpl = fetch } = {}) {
   return async function portfolioGatewayProxy(request, upstreamPath) {
+    if (!isPortfolioGatewayRequestAllowed(request.method, upstreamPath)) {
+      return notFoundResponse();
+    }
     const configuration = gatewayConfiguration(env);
     if (!configuration) return offlineResponse();
     const target = upstreamUrl(configuration.origin, upstreamPath, request.url);

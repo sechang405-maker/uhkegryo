@@ -39,6 +39,7 @@ import { createConditionRemovalController, readCurrentConditions, removeCurrentC
 import { clearLiveReferenceState, filterLiveTerms, readLiveReferenceState, writeLiveReferenceState } from "../lib/live-reference-state.mjs";
 
 const homeSlots = createMindMapSlots(HOME_TERMS);
+const portfolioMode = process.env.NEXT_PUBLIC_PORTFOLIO_MODE === "1";
 
 export default function HomePage() {
   const [requestText, setRequestText] = useState("");
@@ -330,7 +331,7 @@ export default function HomePage() {
   }, [restoreAttempt]);
 
   useEffect(() => {
-    if(uiDemoEnabled||!conversationReady) return;
+    if(uiDemoEnabled||portfolioMode||!conversationReady) return;
     let active=true;
     personalTermClient.list().then(result=>{if(active)setPersonalTerms(result.items||[]);}).catch(()=>{});
     return ()=>{active=false;};
@@ -1208,8 +1209,11 @@ export default function HomePage() {
         {uiDemoEnabled && <span className="demo-badge">{DEMO_NOTICE}</span>}
         {!uiDemoEnabled && <section className="history-sidebar-actions" aria-label="계정 및 주요 작업">
           <h2>계정 및 작업</h2>
-          <AuthAccessControl />
-          <AccountQuota />
+          {!portfolioMode && <AuthAccessControl />}
+          {!portfolioMode && <AccountQuota />}
+          {portfolioMode && <p className="personal-term-disabled-notice">
+            신규 용어 생성은 로컬 모델 평가에서 0 / 6건만 안정적으로 통과해 공개 체험에서 비활성화했습니다.
+          </p>}
           <button className="personal-term-open" type="button" onClick={openPersonalTermCreator}>새 용어 만들기</button>
         </section>}
         <nav className="history-sidebar-list" aria-label="세션 목록">
@@ -1418,7 +1422,7 @@ export default function HomePage() {
           <ConversationPanel key={sessionId || "no-session"} turns={turns}
             reopenableTurnIds={reopenableTurnIds} onOpenReferences={openTurn}
             onRetryStatus={retryTurnStatus} retryStatusBusy={conversationBusy}
-            onCreatePersonalTerm={() => setPersonalTermOpen(true)} />
+            onCreatePersonalTerm={portfolioMode ? undefined : () => setPersonalTermOpen(true)} />
           <TermGuide term={termGuide} />
           {uiDemoEnabled && <div className="demo-scenarios" aria-label="대표 샘플 입력">
             <p>대표 예시를 선택한 뒤 전송해 보세요.</p>
@@ -1472,7 +1476,7 @@ export default function HomePage() {
             {requestLength >= 450 && <span id="request-count" className="character-count" role="status">{requestLength} / 500</span>}
           </div>
         </form>
-        <PersonalTermCreator open={personalTermOpen} onClose={() => setPersonalTermOpen(false)} onItemsChange={applyPersonalTerms} />
+        {!portfolioMode && <PersonalTermCreator open={personalTermOpen} onClose={() => setPersonalTermOpen(false)} onItemsChange={applyPersonalTerms} />}
       </aside>
       <dialog className="image-preview" ref={previewDialogRef} aria-labelledby="preview-title"
         onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.close(); }}

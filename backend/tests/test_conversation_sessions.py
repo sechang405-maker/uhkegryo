@@ -181,3 +181,35 @@ def test_latest_history_keyset_same_timestamp_and_foreign_cursor():
         legacy=await jobs.history(sid,20,0)
         assert [item['job_id'] for item in legacy]==expected[:20]
     asyncio.run(database_case(case))
+def test_portfolio_queue_cap_rejects_before_inserting_another_job():
+    from backend.services.job_repository import JobRepository, PortfolioQueueFull
+
+    class Connection:
+        def __init__(self):
+            self.execute_calls = []
+            self.fetchval_calls = 0
+
+        async def execute(self, query, *args):
+            self.execute_calls.append((query, args))
+
+        async def fetchval(self, query, *args):
+            self.fetchval_calls += 1
+            if self.fetchval_calls == 1:
+                return "2dc4e9df-2d76-490f-bd0c-7ec8360be942"
+            return 8
+
+        async def fetchrow(self, query, *args):
+            assert "INSERT INTO jobs" not in query
+            return None
+
+    async def case():
+        repository = JobRepository(object(), max_pending_jobs=8)
+        with pytest.raises(PortfolioQueueFull):
+            await repository._submit(
+                Connection(),
+                session_id="2dc4e9df-2d76-490f-bd0c-7ec8360be942",
+                request_text="로우 앵글 포즈",
+                idempotency_key="2dc4e9df-2d76-490f-bd0c-7ec8360be943",
+            )
+
+    asyncio.run(case())

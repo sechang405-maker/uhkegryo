@@ -115,3 +115,51 @@ test("portfolio gateway proxy returns the exact offline response on network fail
     user_message: PORTFOLIO_OFFLINE_MESSAGE,
   });
 });
+
+test("portfolio gateway proxy exposes only the reviewed route and method pairs", async () => {
+  const forwarded = [];
+  const proxy = createPortfolioGatewayProxy({
+    env: configured(),
+    fetchImpl: async (url, options) => {
+      forwarded.push([String(url), options.method]);
+      return new Response("ok");
+    },
+  });
+  const allowed = [
+    ["GET", "/service-health"],
+    ["POST", "/api/agent"],
+    ["GET", "/api/jobs/2dc4e9df-2d76-490f-bd0c-7ec8360be942"],
+    ["GET", "/api/sessions"],
+    ["POST", "/api/sessions"],
+    ["GET", "/api/sessions/2dc4e9df-2d76-490f-bd0c-7ec8360be942"],
+    ["DELETE", "/api/sessions/2dc4e9df-2d76-490f-bd0c-7ec8360be942"],
+    ["GET", "/api/sessions/2dc4e9df-2d76-490f-bd0c-7ec8360be942/jobs"],
+    ["GET", "/api/sessions/2dc4e9df-2d76-490f-bd0c-7ec8360be942/conditions"],
+    ["DELETE", "/api/sessions/2dc4e9df-2d76-490f-bd0c-7ec8360be942/conditions/body_slim"],
+    ["POST", "/api/term-search"],
+  ];
+  for (const [method, path] of allowed) {
+    const response = await proxy(new Request(`https://portfolio.vercel.app${path}`, {
+      method,
+      ...(method === "POST" ? { body: "{}" } : {}),
+    }), path);
+    assert.equal(response.status, 200, `${method} ${path}`);
+  }
+  assert.equal(forwarded.length, allowed.length);
+
+  for (const [method, path] of [
+    ["GET", "/api/personal-terms"],
+    ["POST", "/api/local/profile"],
+    ["GET", "/api/auth/me"],
+    ["GET", "/api/admin/demo"],
+    ["PATCH", "/api/sessions/2dc4e9df-2d76-490f-bd0c-7ec8360be942"],
+    ["POST", "/api/jobs/2dc4e9df-2d76-490f-bd0c-7ec8360be942"],
+  ]) {
+    const response = await proxy(new Request(`https://portfolio.vercel.app${path}`, {
+      method,
+      ...(method === "POST" || method === "PATCH" ? { body: "{}" } : {}),
+    }), path);
+    assert.equal(response.status, 404, `${method} ${path}`);
+  }
+  assert.equal(forwarded.length, allowed.length);
+});

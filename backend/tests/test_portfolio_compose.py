@@ -88,3 +88,45 @@ def test_vercel_hybrid_examples_are_value_free_and_server_only():
     assert "OPENROUTER" not in vercel_sample
     assert "DATABASE" not in vercel_sample
     assert "tests/" in ignore and ".env*" in ignore
+
+
+def test_windows_ollama_host_compose_exposes_only_isolated_loopback_dependencies():
+    compose = yaml.safe_load(
+        (ROOT / "compose.portfolio-ollama-host.yml").read_text(encoding="utf-8")
+    )
+    assert compose["name"] == "uhkegryo-portfolio-ollama-host"
+    services = compose["services"]
+    assert set(services) == {"db", "db-migrate", "searxng"}
+    assert services["db"]["ports"] == [
+        "127.0.0.1:${PORTFOLIO_DB_PORT:-55434}:5432"
+    ]
+    assert services["searxng"]["ports"] == [
+        "127.0.0.1:${PORTFOLIO_SEARXNG_PORT:-8081}:8080"
+    ]
+    assert all(service.get("restart") == "no" for service in services.values())
+    rendered = (ROOT / "compose.portfolio-ollama-host.yml").read_text(encoding="utf-8")
+    assert "11434" not in rendered and "8000" not in rendered and "3120" not in rendered
+
+
+def test_windows_ollama_host_scripts_are_explicit_nonpersistent_and_value_safe():
+    generator = (ROOT / "scripts/portfolio-host-new-env.ps1").read_text(encoding="utf-8")
+    start = (ROOT / "scripts/portfolio-host-start.ps1").read_text(encoding="utf-8")
+    stop = (ROOT / "scripts/portfolio-host-stop.ps1").read_text(encoding="utf-8")
+    tunnel = (ROOT / "scripts/portfolio-host-tunnel.ps1").read_text(encoding="utf-8")
+
+    assert "RandomNumberGenerator" in generator
+    assert "AddDays(7)" in generator
+    assert "qwen3.5:4b-q4_K_M" in generator
+    assert "OPENROUTER_API_KEY=" in generator
+    assert "PORTFOLIO_GATEWAY_SECRET=" in generator
+    assert "Write-Output" not in generator
+
+    for source in (start, stop):
+        assert "compose.portfolio-ollama-host.yml" in source
+    assert "127.0.0.1" in start
+    assert "PORTFOLIO_GATEWAY_REQUIRED" in start
+    assert "Start-Process" in start and "-WindowStyle Hidden" in start
+    assert "Set-Service" not in start and "New-Service" not in start
+    assert " down -v" not in stop and "--volumes" not in stop
+    assert "http://127.0.0.1:3120" in tunnel
+    assert "--url" in tunnel

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server.js";
+import { isPortfolioGatewayRequestAllowed } from "./lib/portfolio-gateway-policy.mjs";
 
 const PRIVATE_PREFIXES = ["/admin", "/invite", "/transfer"];
 const GATEWAY_PREFIXES = ["/api/", "/service-health"];
@@ -38,6 +39,7 @@ export function proxy(request) {
   }
   if (process.env.PORTFOLIO_GATEWAY_REQUIRED === "1"
       && GATEWAY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix))) {
+    if (!isPortfolioGatewayRequestAllowed(request.method, pathname)) return notFound();
     const expected = process.env.PORTFOLIO_GATEWAY_SECRET || "";
     if (expected.length < 32) return unavailable();
     if (!secretMatches(request.headers.get("x-portfolio-gateway-secret"), expected)) return notFound();

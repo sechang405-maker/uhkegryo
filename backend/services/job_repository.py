@@ -25,6 +25,10 @@ class IdempotencyConflict(Exception):
     """The same session and key were reused for different request text."""
 
 
+class PortfolioQueueFull(Exception):
+    """The public single-GPU worker already has its maximum pending work."""
+
+
 class JobNotFound(Exception):
     """The job does not exist or is not owned by the requesting session."""
 
@@ -73,8 +77,9 @@ def conversation_uses_ai_quota(request_text: str) -> bool:
 class JobRepository:
     """Store jobs and enforce session-scoped idempotency in PostgreSQL."""
 
-    def __init__(self, pool: Any) -> None:
+    def __init__(self, pool: Any, *, max_pending_jobs: int | None = None) -> None:
         self._pool = pool
+        self._max_pending_jobs = max_pending_jobs
 
     async def claim_next(self) -> Any | None:
         """Claim the oldest eligible job without racing another worker."""
@@ -209,6 +214,16 @@ class JobRepository:
                     text_hash, str(existing["job_id"]),
                 )
             return _to_envelope(existing), False
+
+        if self._max_pending_jobs is not None:
+            await connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended('portfolio-job-queue', 0))"
+            )
+            pending_jobs = await connection.fetchval(
+                "SELECT count(*) FROM jobs WHERE status NOT IN ('completed', 'failed')"
+            )
+            if pending_jobs >= self._max_pending_jobs:
+                raise PortfolioQueueFull
 
         message_count = await connection.fetchval(
             "SELECT count(*) FROM jobs WHERE session_id=$1::uuid", session_id

@@ -752,7 +752,7 @@ async def run_worker(snapshot: CatalogSnapshot, *, http_resources=None) -> None:
             pool = await create_pool(settings)
             local_llm = settings.llm_backend in ('codex-cli', 'ollama')
             portfolio_budget = None
-            if settings.is_portfolio and settings.llm_backend == 'openrouter':
+            if settings.is_portfolio:
                 from backend.services.portfolio_budget import PortfolioLLMCallBudget
 
                 portfolio_budget = PortfolioLLMCallBudget(

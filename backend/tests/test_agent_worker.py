@@ -865,7 +865,7 @@ def test_retry_attempts_limit_invalid_output_to_three_provider_calls(
 
     assert len(adapter.calls) == 3
     assert [failure["attempt"] for failure in recovery.failures] == [1, 2, 3]
-def test_ollama_portfolio_worker_does_not_create_external_call_budget(monkeypatch):
+def test_ollama_portfolio_worker_uses_the_shared_public_call_budget(monkeypatch):
     import asyncio
     from types import SimpleNamespace
 
@@ -890,18 +890,18 @@ def test_ollama_portfolio_worker_does_not_create_external_call_budget(monkeypatc
 
     budget_created = []
 
-    class NoExternalBudget:
-        def __init__(self, *_args, **_kwargs):
-            budget_created.append(True)
+    class PublicBudget:
+        def __init__(self, received_pool, *, limit):
+            budget_created.append((received_pool, limit))
 
         async def reserve(self):
-            raise AssertionError("external LLM budget used for local Ollama")
+            return 1
 
     class FakeWorker:
         def __init__(
             self, *_args, llm_call_reserver=None, grounded_ollama=False, **_kwargs
         ):
-            assert llm_call_reserver is None
+            assert callable(llm_call_reserver)
             assert grounded_ollama is True
 
         async def run_forever(self, *, concurrency):
@@ -912,7 +912,7 @@ def test_ollama_portfolio_worker_does_not_create_external_call_budget(monkeypatc
     monkeypatch.setattr("backend.shared.database.create_pool", create_pool)
     monkeypatch.setattr("backend.shared.database.close_pool", close_pool)
     monkeypatch.setattr(
-        "backend.services.portfolio_budget.PortfolioLLMCallBudget", NoExternalBudget
+        "backend.services.portfolio_budget.PortfolioLLMCallBudget", PublicBudget
     )
     monkeypatch.setattr(agent_worker, "AgentJobWorker", FakeWorker)
     monkeypatch.setattr(agent_worker, "PersonalTermRepository", lambda _pool: object())
@@ -925,4 +925,4 @@ def test_ollama_portfolio_worker_does_not_create_external_call_budget(monkeypatc
     resources = SimpleNamespace(worker_widget=None, search_json=None)
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(agent_worker.run_worker(object(), http_resources=resources))
-    assert budget_created == []
+    assert budget_created == [(pool, 40)]
