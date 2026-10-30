@@ -8,6 +8,8 @@ $originFile = Join-Path $runDir "tunnel-origin.txt"
 $logFile = Join-Path $runDir "tunnel.log"
 if (Test-Path -LiteralPath $pidFile) { throw "Tunnel PID record already exists." }
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
+Remove-Item -LiteralPath $logFile -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $originFile -Force -ErrorAction SilentlyContinue
 $tunnel = Start-Process -FilePath $Cloudflared -ArgumentList @("tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:3120", "--logfile", $logFile, "--loglevel", "info") -WorkingDirectory $repositoryRoot -WindowStyle Hidden -PassThru
 [IO.File]::WriteAllText($pidFile, (@{ id = $tunnel.Id; started_ticks = $tunnel.StartTime.ToUniversalTime().Ticks } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 for ($attempt = 0; $attempt -lt 60; $attempt++) {
