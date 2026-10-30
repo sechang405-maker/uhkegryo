@@ -6,6 +6,7 @@ import json
 import pytest
 
 from backend.schemas.enums import Role
+from backend.schemas.personal_terms import GeneratedPersonalTermDraft
 from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.llm import LLMTimeout
 from backend.services.personal_term_generator import (
@@ -13,6 +14,8 @@ from backend.services.personal_term_generator import (
     PersonalTermGenerationInProgress,
     PersonalTermGenerationRetryRequired,
     PersonalTermGenerator,
+    _catalog_grounding,
+    _validate_semantic_grounding,
 )
 from backend.services.personal_term_repository import (
     PersonalTermIdempotencyConflict,
@@ -32,8 +35,8 @@ def generated_payload(**overrides):
         "cautions_ko": ["허리를 과도하게 꺾지 않아요."],
         "aliases_ko": ["몸 비틀기"],
         "query_fragments_en": ["torso twist pose reference"],
-        "proposal_kind": "descriptive",
-        "uncertainty_ko": None,
+        "proposal_kind": "ambiguous",
+        "uncertainty_ko": "\uAE30\uC874 \uCE74\uD0C8\uB85C\uADF8\uC5D0 \uADFC\uAC70\uAC00 \uC5C6\uC5B4 \uD655\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.",
     }
     payload.update(overrides)
     return payload
@@ -81,6 +84,43 @@ def catalog():
         role_terms={Role.POSE: ["pose_twist"]},
         roles_order=(Role.POSE,),
     )
+
+
+def test_catalog_grounding_uses_existing_term_as_the_trusted_source():
+    snapshot = catalog()
+    source = snapshot.active_cards["pose_twist"]["label_ko"]
+
+    evidence = _catalog_grounding(source, snapshot)
+
+    assert [item.term_id for item in evidence] == ["pose_twist"]
+    assert evidence[0].role is Role.POSE
+
+
+def test_grounded_personal_term_cannot_reverse_the_catalog_role():
+    snapshot = catalog()
+    source = snapshot.active_cards["pose_twist"]["label_ko"]
+    evidence = _catalog_grounding(source, snapshot)
+    draft = GeneratedPersonalTermDraft.model_validate(
+        generated_payload(role="body")
+    )
+
+    with pytest.raises(ValueError, match="role conflicts"):
+        _validate_semantic_grounding(draft, evidence)
+
+
+def test_ungrounded_new_term_must_remain_an_ambiguous_draft():
+    draft = GeneratedPersonalTermDraft.model_validate(generated_payload(
+        proposal_kind="descriptive", uncertainty_ko=None
+    ))
+
+    with pytest.raises(ValueError, match="ungrounded proposal"):
+        _validate_semantic_grounding(draft, ())
+
+    ambiguous = GeneratedPersonalTermDraft.model_validate(generated_payload(
+        proposal_kind="ambiguous",
+        uncertainty_ko="\uAE30\uC874 \uCE74\uD0C8\uB85C\uADF8\uC5D0 \uAC19\uC740 \uAC1C\uB150\uC774 \uC5C6\uC5B4 \uD655\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.",
+    ))
+    _validate_semantic_grounding(ambiguous, ())
 
 
 def test_generation_is_structured_owner_scoped_idempotent_and_warns_without_merging():

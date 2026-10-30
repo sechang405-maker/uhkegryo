@@ -32,8 +32,8 @@ def _personal_response():
         "cautions_ko": ["허리만 꺾이지 않게 몸통 전체의 방향을 봅니다."],
         "aliases_ko": ["비틀어 기댄 자세"],
         "query_fragments_en": ["twisted leaning pose reference"],
-        "proposal_kind": "descriptive",
-        "uncertainty_ko": None,
+        "proposal_kind": "ambiguous",
+        "uncertainty_ko": "\uAE30\uC874 \uCE74\uD0C8\uB85C\uADF8\uC5D0 \uAC19\uC740 \uAC1C\uB150\uC774 \uC5C6\uC5B4 \uC758\uBBF8 \uD655\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.",
     }
     return SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload, ensure_ascii=False)))],
@@ -122,8 +122,19 @@ def test_execute_calls_each_model_backed_case_at_most_once(tmp_path):
     assert (tmp_path / "run" / "review.md").exists()
     interpretation_rows = [row for row in rows if row["kind"] == "interpretation"]
     assert all("model_called" in row for row in interpretation_rows)
+    assert all(
+        row["model_output"]
+        for row in interpretation_rows
+        if row["model_called"]
+    )
+    assert all("model_answer" in row for row in interpretation_rows)
     assert all("grounded_answer" in row["checks"] for row in interpretation_rows)
     assert all("query_fragments_allowed" in row["checks"] for row in interpretation_rows)
+    personal_rows = [row for row in rows if row["kind"] == "personal_term"]
+    assert all(row["model_output"] for row in personal_rows)
+    assert all("validation_result" in row for row in personal_rows)
+    assert any(row["validation_result"] == "accepted_ambiguous_draft" for row in personal_rows)
+    assert any(row["validation_result"] == "semantic_or_safety_rejection" for row in personal_rows)
 
 
 def test_configuration_failure_stops_later_model_calls_and_sanitizes_output(tmp_path):

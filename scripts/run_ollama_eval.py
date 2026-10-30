@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+from pydantic import ValidationError
+
 from backend.schemas.personal_terms import GeneratedPersonalTermDraft
 from backend.services.catalog_repository import load_catalog
 from backend.services.conversation_context import validate
@@ -29,7 +31,12 @@ from backend.services.llm import (
     format_active_cards_json,
 )
 from backend.services.ollama_grounded import OllamaGroundedInterpreter
-from backend.services.personal_term_generator import SYSTEM_MESSAGE, _validate_generated_text
+from backend.services.personal_term_generator import (
+    _catalog_grounding,
+    _generation_messages,
+    _validate_generated_text,
+    _validate_semantic_grounding,
+)
 from backend.services.structured_output import strict_schema
 
 
@@ -44,6 +51,13 @@ APPROVED_MODELS = frozenset({
     DEFAULT_MODEL,
     "qwen3.5:9b-q4_K_M",
 })
+
+
+class _PersonalTermValidationError(Exception):
+    def __init__(self, raw: str, validation_result: str) -> None:
+        super().__init__(validation_result)
+        self.raw = raw
+        self.validation_result = validation_result
 BASE_URL = "http://127.0.0.1:11434/v1"
 QUANTIZATION = "Q4_K_M"
 
@@ -230,26 +244,46 @@ async def _run_interpretation(adapter, case, snapshot):
         "resolved_search_terms": queries,
         "model_called": result.model_called,
         "model_answer_accepted": result.model_answer_accepted,
+        "model_output": result.model_raw_output,
+        "model_answer": result.model_answer_text,
+        "validation_result": (
+            "accepted" if result.model_answer_accepted
+            else result.model_answer_rejection_reason or "generation_failed"
+        ),
+        "model_evidence_accepted": result.model_evidence_accepted,
         "model_query_applied": result.model_query_applied,
         "adapter_attempts": int(result.model_called),
     }
 
 
-async def _run_personal_term(adapter, case):
-    messages = [
-        {"role": "system", "content": SYSTEM_MESSAGE},
-        {"role": "user", "content": json.dumps({"source_input": case["input"]}, ensure_ascii=False)},
-    ]
+async def _run_personal_term(adapter, case, snapshot):
+    grounding = _catalog_grounding(case["input"], snapshot)
+    messages = _generation_messages(case["input"], grounding)
     response = await adapter._request(messages, output_format=_personal_format())
-    draft = GeneratedPersonalTermDraft.model_validate_json(_extract_content(response))
-    _validate_generated_text(draft)
+    raw = _extract_content(response)
+    try:
+        draft = GeneratedPersonalTermDraft.model_validate_json(raw)
+        _validate_generated_text(draft)
+        _validate_semantic_grounding(draft, grounding)
+    except ValidationError as error:
+        raise _PersonalTermValidationError(raw, "invalid_structured_output") from error
+    except (ValueError, TypeError, json.JSONDecodeError) as error:
+        raise _PersonalTermValidationError(raw, "semantic_or_safety_rejection") from error
     expected = case["expected"]
     return {
+        "model_output": raw,
+        "validation_result": (
+            "accepted_grounded_draft" if grounding else "accepted_ambiguous_draft"
+        ),
         "draft": draft.model_dump(mode="json"),
         "checks": {
             "schema": True,
             "role": draft.role.value in expected["allowed_roles"],
-            "proposal_kind": draft.proposal_kind.value in expected["allowed_proposal_kinds"],
+            "proposal_kind": (
+                draft.proposal_kind in expected["allowed_proposal_kinds"]
+                if grounding
+                else draft.proposal_kind == "ambiguous"
+            ),
         },
     }
 
@@ -335,7 +369,7 @@ async def run(
                     row.update(status="completed", verified_model=model)
                 else:
                     row["adapter_attempts"] = 1
-                    row.update(await _run_personal_term(adapter, case))
+                    row.update(await _run_personal_term(adapter, case, snapshot))
                     row.update(status="completed", verified_model=model)
             except LLMConfigurationError:
                 row.update(status="configuration_error", failure_code="CONFIGURATION_ERROR")
@@ -344,6 +378,13 @@ async def run(
                 row.update(status="timeout", failure_code="LLM_TIMEOUT")
             except LLMError as error:
                 row.update(status="invalid_or_failed", failure_code=error.failure_code.value)
+            except _PersonalTermValidationError as error:
+                row.update(
+                    status="invalid_or_failed",
+                    failure_code="INVALID_OR_FAILED",
+                    model_output=error.raw,
+                    validation_result=error.validation_result,
+                )
             except Exception:
                 row.update(status="invalid_or_failed", failure_code="INVALID_OR_FAILED")
             row["latency_ms"] = round((time.monotonic() - started) * 1000)

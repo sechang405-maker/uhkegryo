@@ -18,6 +18,7 @@ from backend.schemas.personal_terms import (
     PersonalTermRecord,
     SourceInput,
 )
+from backend.schemas.enums import Role
 from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.llm import LLMError, _extract_content
 from backend.services.personal_term_repository import PersonalTermRepository
@@ -36,6 +37,7 @@ The card must describe a drawable character body, pose, composition, or perspect
 plain_meaning_ko is a Korean user-facing definition, never a question, prompt, reasoning trace, or instruction.
 Do not emit HTML, Markdown links, URLs, secrets, tool calls, or fields outside the schema.
 Use descriptive for established/descriptive wording, coined for a newly coined phrase, and ambiguous when uncertain.
+Use only approved_catalog_evidence as established drawing knowledge. If it is empty, proposal_kind must be ambiguous.
 For ambiguous output, explain the uncertainty in uncertainty_ko. Do not claim that AI-created wording is an established term."""
 
 CONTROL_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -70,6 +72,14 @@ class DuplicateWarning:
     term_id: str
     label_ko: str
     match_kind: str
+
+
+@dataclass(frozen=True)
+class CatalogGrounding:
+    term_id: str
+    role: Role
+    label_ko: str
+    look_for: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -182,14 +192,13 @@ class PersonalTermGenerator:
                 "schema": strict_schema(GeneratedPersonalTermDraft.model_json_schema()),
             },
         }
-        messages = [
-            {"role": "system", "content": SYSTEM_MESSAGE},
-            {"role": "user", "content": json.dumps({"source_input": source_input}, ensure_ascii=False)},
-        ]
+        grounding = _catalog_grounding(source_input, self._catalog)
+        messages = _generation_messages(source_input, grounding)
         try:
             raw = await self._transport.generate(messages, response_format)
             generated = GeneratedPersonalTermDraft.model_validate_json(raw)
             _validate_generated_text(generated)
+            _validate_semantic_grounding(generated, grounding)
             draft = generated.with_source_input(source_input)
             record = await self._repository.complete_generation(
                 token, state.term_id, draft, charge_quota=quota_reserved
@@ -249,6 +258,84 @@ def _validate_generated_text(draft: GeneratedPersonalTermDraft) -> None:
         raise ValueError("unsafe generated text")
     if INTERNAL_DESCRIPTION_PATTERN.search(draft.plain_meaning_ko):
         raise ValueError("description contains an internal question or instruction")
+
+
+def _catalog_grounding(
+    source_input: str, catalog: CatalogSnapshot
+) -> tuple[CatalogGrounding, ...]:
+    normalized_source = _normalize(source_input)
+    matched_ids: set[str] = set()
+    for term_id, card in catalog.active_cards.items():
+        names = [card.get("label_ko", ""), *(card.get("aliases_ko") or [])]
+        if not any(
+            len(normalized) >= 2 and normalized in normalized_source
+            for name in names
+            if (normalized := _normalize(str(name)))
+        ):
+            continue
+        matched_ids.add(term_id)
+    if catalog.active_cards and all(
+        "confidence_gate" in card and "look_for" in card
+        for card in catalog.active_cards.values()
+    ):
+        from backend.services.ollama_grounded import plan_grounded_request
+
+        planned = plan_grounded_request(source_input, catalog)
+        matched_ids.update(selection.term_id for selection in planned.selections)
+    return tuple(
+        CatalogGrounding(
+            term_id=term_id,
+            role=Role(str(catalog.active_cards[term_id]["role"])),
+            label_ko=str(catalog.active_cards[term_id].get("label_ko", "")),
+            look_for=tuple(
+                str(item) for item in catalog.active_cards[term_id].get("look_for", [])
+            ),
+        )
+        for term_id in sorted(matched_ids)
+    )
+
+
+def _generation_messages(
+    source_input: str, grounding: tuple[CatalogGrounding, ...]
+) -> list[dict]:
+    return [
+        {"role": "system", "content": SYSTEM_MESSAGE},
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "source_input": source_input,
+                    "approved_catalog_evidence": [
+                        {
+                            "term_id": item.term_id,
+                            "role": item.role.value,
+                            "label_ko": item.label_ko,
+                            "look_for": list(item.look_for),
+                        }
+                        for item in grounding
+                    ],
+                    "grounding_rule": (
+                        "If approved_catalog_evidence is empty, proposal_kind must be "
+                        "ambiguous and uncertainty_ko must ask the user to confirm the meaning."
+                    ),
+                },
+                ensure_ascii=False,
+            ),
+        },
+    ]
+
+
+def _validate_semantic_grounding(
+    draft: GeneratedPersonalTermDraft,
+    grounding: tuple[CatalogGrounding, ...],
+) -> None:
+    if not grounding:
+        if draft.proposal_kind != "ambiguous":
+            raise ValueError("ungrounded proposal must remain ambiguous")
+        return
+    allowed_roles = {item.role for item in grounding}
+    if draft.role not in allowed_roles:
+        raise ValueError("generated role conflicts with catalog grounding")
 
 
 def _normalize(value: str) -> str:

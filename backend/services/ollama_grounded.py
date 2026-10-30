@@ -115,11 +115,19 @@ class _GroundedQueryChoice(BaseModel):
     query_fragments: list[str] = Field(max_length=4)
 
 
+class _GroundedEvidenceChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    term_id: str
+    look_for: str = Field(min_length=1, max_length=240)
+
+
 class _GroundedEnrichment(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     answer_text: str = Field(min_length=1, max_length=1200)
     query_choices: list[_GroundedQueryChoice] = Field(max_length=10)
+    evidence_choices: list[_GroundedEvidenceChoice] = Field(max_length=10)
 
 
 @dataclass(frozen=True)
@@ -129,6 +137,10 @@ class GroundedInterpretationResult:
     model_called: bool = False
     model_answer_accepted: bool = False
     model_query_applied: bool = False
+    model_answer_text: str | None = None
+    model_raw_output: str | None = None
+    model_answer_rejection_reason: str | None = None
+    model_evidence_accepted: bool = False
 
 
 def _canonical_word(raw: str) -> str:
@@ -430,25 +442,56 @@ def _validated_queries(
     return validated, any(validated[key] != defaults[key] for key in defaults)
 
 
-def _is_grounded_answer(
-    text: str, snapshot: CatalogSnapshot, interpretation: InterpretationOutput
-) -> bool:
+def _answer_rejection_reason(
+    text: str,
+    snapshot: CatalogSnapshot,
+    interpretation: InterpretationOutput,
+) -> str | None:
     if not _KOREAN_PATTERN.search(text) or _UNSAFE_ANSWER_PATTERN.search(text):
-        return False
+        return "unsafe_or_non_korean"
     selected_ids = {selection.term_id for selection in interpretation.selections}
     if any(term_id in text for term_id in selected_ids):
-        return False
+        return "internal_id_leak"
     cards = [snapshot.get_active(term_id) for term_id in selected_ids]
     if any(
         str(fragment).casefold() in text.casefold()
         for card in cards
         for fragment in card["query_fragments"]
     ):
-        return False
+        return "search_fragment_leak"
     if any(str(card["label_ko"]) not in text for card in cards):
-        return False
-    checkpoints = [str(item) for card in cards for item in card["look_for"]]
-    return any(checkpoint in text for checkpoint in checkpoints)
+        return "missing_catalog_label"
+    selected_roles = {selection.role for selection in interpretation.selections}
+    if any(
+        card["role"] in {role.value for role in selected_roles}
+        and term_id not in selected_ids
+        and len(str(card["label_ko"])) >= 2
+        and str(card["label_ko"]) in text
+        for term_id, card in snapshot.active_cards.items()
+    ):
+        return "conflicting_catalog_label"
+    return None
+
+
+def _evidence_by_term(enrichment: _GroundedEnrichment) -> dict[str, str]:
+    evidence = {choice.term_id: choice.look_for for choice in enrichment.evidence_choices}
+    if len(evidence) != len(enrichment.evidence_choices):
+        return {}
+    return evidence
+
+
+def _catalog_evidence_is_valid(
+    enrichment: _GroundedEnrichment,
+    snapshot: CatalogSnapshot,
+    interpretation: InterpretationOutput,
+) -> bool:
+    evidence = _evidence_by_term(enrichment)
+    selected_ids = {selection.term_id for selection in interpretation.selections}
+    return set(evidence) == selected_ids and all(
+        evidence[selection.term_id]
+        in snapshot.get_active(selection.term_id)["look_for"]
+        for selection in interpretation.selections
+    )
 
 
 class OllamaGroundedInterpreter:
@@ -480,7 +523,8 @@ class OllamaGroundedInterpreter:
                 "role": "system",
                 "content": (
                     "Return only JSON. Explain the approved drawing cards in Korean. "
-                    "Mention every label_ko and quote at least one look_for checkpoint exactly. "
+                    "Mention every label_ko. For every approved card, copy exactly one supplied "
+                    "look_for checkpoint into evidence_choices; answer_text may explain it naturally. "
                     "For each term_id, choose only exact query_fragments supplied for that card. "
                     "Never add cards, URLs, HTML, markdown links, or internal IDs to answer_text."
                 ),
@@ -501,24 +545,36 @@ class OllamaGroundedInterpreter:
                 "schema": strict_schema(_GroundedEnrichment.model_json_schema()),
             },
         }
+        raw_content: str | None = None
         try:
             response = await self.llm_adapter._request(
                 messages, output_format=output_format
             )
-            enrichment = _GroundedEnrichment.model_validate_json(
-                _extract_content(response)
-            )
+            raw_content = _extract_content(response)
+            enrichment = _GroundedEnrichment.model_validate_json(raw_content)
         except LLMConfigurationError:
             raise
         except (LLMError, ValidationError, ValueError, TypeError, json.JSONDecodeError):
             return GroundedInterpretationResult(
-                interpretation, defaults, model_called=True
+                interpretation,
+                defaults,
+                model_called=True,
+                model_answer_text=raw_content,
+                model_raw_output=raw_content,
+                model_answer_rejection_reason="invalid_structured_output",
             )
 
-        answer_text = enrichment.answer_text
-        answer_accepted = _is_grounded_answer(
-            answer_text, self.snapshot, interpretation
+        model_answer_text = enrichment.answer_text
+        rejection_reason = _answer_rejection_reason(
+            model_answer_text,
+            self.snapshot,
+            interpretation,
         )
+        answer_accepted = rejection_reason is None
+        evidence_accepted = _catalog_evidence_is_valid(
+            enrichment, self.snapshot, interpretation
+        )
+        answer_text = f"{model_answer_text}\n\n{interpretation.answer_text}"
         if not answer_accepted:
             answer_text = interpretation.answer_text
         enriched = interpretation.model_copy(update={"answer_text": answer_text})
@@ -531,4 +587,8 @@ class OllamaGroundedInterpreter:
             model_called=True,
             model_answer_accepted=answer_accepted,
             model_query_applied=query_applied,
+            model_answer_text=model_answer_text,
+            model_raw_output=raw_content,
+            model_answer_rejection_reason=rejection_reason,
+            model_evidence_accepted=evidence_accepted,
         )

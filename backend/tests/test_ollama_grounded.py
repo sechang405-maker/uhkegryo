@@ -9,6 +9,7 @@ from backend.services.llm import LLMTimeout
 from backend.services.ollama_grounded import (
     GroundedInterpretationResult,
     OllamaGroundedInterpreter,
+    _answer_rejection_reason,
     plan_grounded_request,
 )
 
@@ -163,6 +164,9 @@ def test_grounded_enrichment_cannot_change_state_or_terms(snapshot):
                     "query_fragments": ["slim body reference"],
                 }
             ],
+            "evidence_choices": [
+                {"term_id": "body_slim", "look_for": card["look_for"][0]}
+            ],
         }
     )
 
@@ -272,3 +276,46 @@ def test_model_failure_keeps_deterministic_selection_and_catalog_queries(snapsho
     }
     assert result.model_called is True
     assert result.model_answer_accepted is False
+
+
+def test_answer_validator_accepts_a_paraphrase_with_explicit_catalog_evidence(snapshot):
+    card = snapshot.get_active("body_slim")
+    interpretation = plan_grounded_request(
+        card["confidence_gate"]["require_any"][0], snapshot
+    )
+    text = f"{card['label_ko']}: \uc120\ud0dd\ud55c \uccb4\ud615\uc744 \uadf8\ub9b4 \ub54c \uc804\uccb4 \ube44\uc728\uc744 \uc0b4\ud3b4\ubcf4\uc138\uc694."
+
+    reason = _answer_rejection_reason(
+        text,
+        snapshot,
+        interpretation,
+    )
+
+    assert reason is None
+    assert card["look_for"][0] not in text
+
+
+def test_catalog_evidence_copy_is_diagnostic_not_an_answer_rejection(snapshot):
+    card = snapshot.get_active("body_slim")
+    interpretation = plan_grounded_request(
+        card["confidence_gate"]["require_any"][0], snapshot
+    )
+    text = f"{card['label_ko']}: \uc804\uccb4 \ube44\uc728\uc744 \uc0b4\ud3b4\ubcf4\uc138\uc694."
+
+    assert _answer_rejection_reason(text, snapshot, interpretation) is None
+
+    adapter = _FakeAdapter({
+        "answer_text": text,
+        "query_choices": [],
+        "evidence_choices": [
+            {"term_id": "body_slim", "look_for": "invented checkpoint"}
+        ],
+    })
+    result = _run_immediate(
+        OllamaGroundedInterpreter(snapshot, adapter).interpret_grounded(
+            card["confidence_gate"]["require_any"][0]
+        )
+    )
+    assert result.model_answer_accepted is True
+    assert result.model_evidence_accepted is False
+    assert card["look_for"][0] in result.interpretation.answer_text
