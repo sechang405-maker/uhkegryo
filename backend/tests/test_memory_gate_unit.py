@@ -23,6 +23,7 @@ def test_drawing_inflection_skips_memory_classification_for_new_request():
     requests = [
         "남성 캐릭터의 상체가 넓고 허리는 좁은 역삼각형 체형을 그리고 싶어.",
         "한쪽 다리에 체중을 싣고 골반과 어깨가 반대로 기울어진 포즈를 설명해줘.",
+        "아래에서 올려다보는 로우 앵글 2점 투시로 건물을 그리고 싶어.",
     ]
     for request_text in requests:
         assert conversation_context.is_clear_new_request(request_text, context)
