@@ -66,6 +66,32 @@ _CONCEPT_PREFIXES = (
     ("발끝", "발"),
     ("발까지", "발"),
 )
+_TERM_CUE_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
+    "view_low_angle": (
+        (r"아래", r"밑"),
+        (r"올려다보", r"치켜보", r"위로\s*보"),
+    ),
+    "perspective_foreshortening": (
+        (r"카메라", r"렌즈"),
+        (r"뻗", r"내밀", r"앞으로\s*쭉"),
+        (r"팔", r"손", r"발"),
+    ),
+    "perspective_two_point": (
+        (r"두", r"좌우", r"양옆", r"서로\s*다른"),
+        (r"소실점",),
+    ),
+    "pose_support_wall": (
+        (r"벽",),
+        (r"기대", r"등받이", r"등.{0,8}벽"),
+    ),
+    "pose_leaping": (
+        (r"도약", r"뛰어오", r"점프", r"공중", r"허공"),
+    ),
+    "pose_a_pose": (
+        (r"\bA\s*자",),
+        (r"포즈", r"스탠딩", r"팔다리"),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -175,6 +201,26 @@ def _score_card(request_text: str, term_id: str, card: dict) -> _Candidate | Non
         if phrase_score > score:
             score = phrase_score
         evidence.extend(raw for _query, raw in matches)
+
+    cue_groups = _TERM_CUE_GROUPS.get(term_id)
+    if cue_groups:
+        cue_evidence: list[str] = []
+        for alternatives in cue_groups:
+            match = next(
+                (
+                    re.search(pattern, request_text, re.IGNORECASE)
+                    for pattern in alternatives
+                    if re.search(pattern, request_text, re.IGNORECASE)
+                ),
+                None,
+            )
+            if match is None:
+                cue_evidence = []
+                break
+            cue_evidence.append(match.group(0))
+        if cue_evidence:
+            score = max(score, 10.0 + len(cue_evidence))
+            evidence.extend(cue_evidence)
 
     evidence = list(dict.fromkeys(evidence))
     if score < _MIN_SCORE or not evidence:
@@ -383,6 +429,12 @@ def _is_grounded_answer(
     if any(term_id in text for term_id in selected_ids):
         return False
     cards = [snapshot.get_active(term_id) for term_id in selected_ids]
+    if any(
+        str(fragment).casefold() in text.casefold()
+        for card in cards
+        for fragment in card["query_fragments"]
+    ):
+        return False
     if any(str(card["label_ko"]) not in text for card in cards):
         return False
     checkpoints = [str(item) for card in cards for item in card["look_for"]]

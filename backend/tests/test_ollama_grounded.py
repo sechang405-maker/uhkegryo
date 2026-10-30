@@ -39,6 +39,12 @@ def snapshot():
         ("정면에서 머리부터 발끝까지 보이는 캐릭터 자료", {"view_front", "view_full_body"}),
         ("어깨는 넓고 허리와 하체는 좁은 역삼각형 체형", {"body_inverted_triangle"}),
         ("복도 끝 한 점으로 선이 모이는 배경 원근", {"perspective_one_point", "perspective_vanishing_point"}),
+        ("캐릭터를 아래에서 올려다보는 구도", {"view_low_angle"}),
+        ("카메라 쪽으로 뻗은 팔이 크게 보이는 원근 자세", {"perspective_foreshortening"}),
+        ("건물 모서리를 중심으로 좌우 두 소실점이 있는 원근", {"perspective_two_point"}),
+        ("벽에 등을 기대고 편하게 서 있는 포즈 자료", {"pose_support_wall"}),
+        ("달리다가 공중으로 크게 도약하는 역동적인 인물", {"pose_leaping"}),
+        ("정면 전신 A자 기본 포즈 시트", {"view_front", "view_full_body", "pose_a_pose"}),
     ],
 )
 def test_planner_selects_literal_catalog_evidence_without_model(
@@ -83,6 +89,12 @@ def test_planner_clarifies_without_inventing_search_terms(
             "의자 끝에 걸터앉아서 상체를 앞으로 숙인 포즈",
             {"pose_sitting_on_edge", "pose_sitting_leaning_forward"},
         ),
+        ("밑에서 위로 치켜보는 시점", {"view_low_angle"}),
+        ("팔을 렌즈 앞으로 쭉 내민 과장된 자세", {"perspective_foreshortening"}),
+        ("건물 귀퉁이 양옆의 서로 다른 소실점", {"perspective_two_point"}),
+        ("벽을 등받이 삼아 서 있는 모습", {"pose_support_wall"}),
+        ("바닥을 차고 허공에 뛰어오른 순간", {"pose_leaping"}),
+        ("팔다리를 살짝 벌린 A자 스탠딩", {"pose_a_pose"}),
     ],
 )
 def test_planner_preserves_meaning_for_holdout_paraphrases(
@@ -208,6 +220,25 @@ def test_ungrounded_explanation_falls_back_to_catalog_text(snapshot):
     assert "슬림" in result.interpretation.answer_text
     assert snapshot.get_active("body_slim")["look_for"][0] in result.interpretation.answer_text
     assert "This is" not in result.interpretation.answer_text
+
+
+def test_explanation_that_leaks_search_fragment_uses_catalog_fallback(snapshot):
+    card = snapshot.get_active("body_slim")
+    adapter = _FakeAdapter({
+        "answer_text": (
+            f"슬림은 {card['look_for'][0]}를 봅니다. slim body reference로 검색하세요."
+        ),
+        "query_choices": [],
+    })
+
+    result = _run_immediate(
+        OllamaGroundedInterpreter(snapshot, adapter).interpret_grounded(
+            "마르고 팔다리가 긴 캐릭터 체형 자료를 찾고 싶어"
+        )
+    )
+
+    assert "slim body reference" not in result.interpretation.answer_text
+    assert result.model_answer_accepted is False
 
 
 def test_clarification_does_not_call_model(snapshot):
