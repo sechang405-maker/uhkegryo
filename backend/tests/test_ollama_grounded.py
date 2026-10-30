@@ -1,12 +1,27 @@
 from pathlib import Path
+import json
+from types import SimpleNamespace
 
 import pytest
 
 from backend.services.catalog_repository import load_catalog
-from backend.services.ollama_grounded import plan_grounded_request
+from backend.services.ollama_grounded import (
+    GroundedInterpretationResult,
+    OllamaGroundedInterpreter,
+    plan_grounded_request,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _run_immediate(coroutine):
+    """Drive a coroutine whose fake transport has no asynchronous suspension."""
+    try:
+        coroutine.send(None)
+    except StopIteration as completed:
+        return completed.value
+    raise AssertionError("fake transport unexpectedly suspended")
 
 
 @pytest.fixture(scope="module")
@@ -93,3 +108,108 @@ def test_planner_clarifies_unknown_colloquial_shape_instead_of_guessing(snapshot
 
     assert result.interpretation_state.value == "needs_clarification"
     assert result.selections == []
+
+
+class _FakeAdapter:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = []
+
+    async def _request(self, messages, *, output_format=None):
+        self.calls.append((messages, output_format))
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(
+                        content=json.dumps(self.payload, ensure_ascii=False)
+                    ),
+                )
+            ]
+        )
+
+
+def test_grounded_enrichment_cannot_change_state_or_terms(snapshot):
+    card = snapshot.get_active("body_slim")
+    adapter = _FakeAdapter(
+        {
+            "answer_text": (
+                f"슬림 자료로 분류했어요. 그림에서 {card['look_for'][0]}를 확인하세요."
+            ),
+            "query_choices": [
+                {
+                    "term_id": "body_slim",
+                    "query_fragments": ["slim body reference"],
+                }
+            ],
+        }
+    )
+
+    result = _run_immediate(
+        OllamaGroundedInterpreter(snapshot, adapter).interpret_grounded(
+            "마르고 팔다리가 긴 캐릭터 체형 자료를 찾고 싶어"
+        )
+    )
+
+    assert isinstance(result, GroundedInterpretationResult)
+    assert result.interpretation.interpretation_state.value == "select_terms"
+    assert [item.term_id for item in result.interpretation.selections] == ["body_slim"]
+    assert result.query_fragments_by_term == {
+        "body_slim": ("slim body reference",)
+    }
+    assert len(adapter.calls) == 1
+
+
+def test_unapproved_query_fragment_falls_back_to_catalog_queries(snapshot):
+    card = snapshot.get_active("body_slim")
+    adapter = _FakeAdapter(
+        {
+            "answer_text": f"슬림 자료이며 {card['look_for'][0]}를 확인하세요.",
+            "query_choices": [
+                {"term_id": "body_slim", "query_fragments": ["invented search"]}
+            ],
+        }
+    )
+
+    result = _run_immediate(
+        OllamaGroundedInterpreter(snapshot, adapter).interpret_grounded(
+            "마르고 팔다리가 긴 캐릭터 체형 자료를 찾고 싶어"
+        )
+    )
+
+    assert result.query_fragments_by_term == {
+        "body_slim": tuple(card["query_fragments"])
+    }
+
+
+def test_ungrounded_explanation_falls_back_to_catalog_text(snapshot):
+    adapter = _FakeAdapter(
+        {
+            "answer_text": "This is a useful drawing reference.",
+            "query_choices": [],
+        }
+    )
+
+    result = _run_immediate(
+        OllamaGroundedInterpreter(snapshot, adapter).interpret_grounded(
+            "마르고 팔다리가 긴 캐릭터 체형 자료를 찾고 싶어"
+        )
+    )
+
+    assert "슬림" in result.interpretation.answer_text
+    assert snapshot.get_active("body_slim")["look_for"][0] in result.interpretation.answer_text
+    assert "This is" not in result.interpretation.answer_text
+
+
+def test_clarification_does_not_call_model(snapshot):
+    adapter = _FakeAdapter({"answer_text": "호출되면 안 됨", "query_choices": []})
+
+    result = _run_immediate(
+        OllamaGroundedInterpreter(snapshot, adapter).interpret_grounded(
+            "그냥 멋지고 자연스러운 자료"
+        )
+    )
+
+    assert result.interpretation.interpretation_state.value == "needs_clarification"
+    assert result.query_fragments_by_term == {}
+    assert adapter.calls == []

@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from backend.schemas.enums import ClarificationType, InterpretationState, Role
 from backend.schemas.models import InterpretationOutput, InterpretationSelection
 from backend.services.catalog_repository import CatalogSnapshot
 from backend.services.input_safety import normalize_input_text
+from backend.services.llm import LLMError, _extract_content
 from backend.services.resolver import clarification_question
+from backend.services.structured_output import strict_schema
 
 
 _GENERIC_WORDS = {
@@ -69,6 +75,26 @@ class _Candidate:
     component: str
     score: float
     evidence: tuple[str, ...]
+
+
+class _GroundedQueryChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    term_id: str
+    query_fragments: list[str] = Field(max_length=4)
+
+
+class _GroundedEnrichment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answer_text: str = Field(min_length=1, max_length=1200)
+    query_choices: list[_GroundedQueryChoice] = Field(max_length=10)
+
+
+@dataclass(frozen=True)
+class GroundedInterpretationResult:
+    interpretation: InterpretationOutput
+    query_fragments_by_term: dict[str, tuple[str, ...]]
 
 
 def _canonical_word(raw: str) -> str:
@@ -304,3 +330,126 @@ def plan_grounded_request(
         selections=selections,
         answer_text=_fallback_answer(snapshot, candidates),
     )
+
+
+_KOREAN_PATTERN = re.compile(r"[가-힣]")
+_UNSAFE_ANSWER_PATTERN = re.compile(
+    r"(?:https?://|www\.|<[^>]+>|\[[^\]]+\]\([^)]+\))", re.IGNORECASE
+)
+
+
+def _default_queries(
+    snapshot: CatalogSnapshot, interpretation: InterpretationOutput
+) -> dict[str, tuple[str, ...]]:
+    return {
+        selection.term_id: tuple(
+            str(fragment)
+            for fragment in snapshot.get_active(selection.term_id)["query_fragments"]
+        )
+        for selection in interpretation.selections
+    }
+
+
+def _validated_queries(
+    snapshot: CatalogSnapshot,
+    interpretation: InterpretationOutput,
+    enrichment: _GroundedEnrichment,
+) -> dict[str, tuple[str, ...]]:
+    defaults = _default_queries(snapshot, interpretation)
+    chosen: dict[str, tuple[str, ...]] = {}
+    for choice in enrichment.query_choices:
+        allowed = defaults.get(choice.term_id)
+        if allowed is None:
+            continue
+        fragments = tuple(dict.fromkeys(choice.query_fragments))
+        if fragments and all(fragment in allowed for fragment in fragments):
+            chosen[choice.term_id] = fragments
+    return {
+        term_id: chosen.get(term_id, fragments)
+        for term_id, fragments in defaults.items()
+    }
+
+
+def _is_grounded_answer(
+    text: str, snapshot: CatalogSnapshot, interpretation: InterpretationOutput
+) -> bool:
+    if not _KOREAN_PATTERN.search(text) or _UNSAFE_ANSWER_PATTERN.search(text):
+        return False
+    selected_ids = {selection.term_id for selection in interpretation.selections}
+    if any(term_id in text for term_id in selected_ids):
+        return False
+    cards = [snapshot.get_active(term_id) for term_id in selected_ids]
+    if any(str(card["label_ko"]) not in text for card in cards):
+        return False
+    checkpoints = [str(item) for card in cards for item in card["look_for"]]
+    return any(checkpoint in text for checkpoint in checkpoints)
+
+
+class OllamaGroundedInterpreter:
+    """Enrich deterministic Ollama selections without delegating IDs or state."""
+
+    def __init__(self, snapshot: CatalogSnapshot, llm_adapter: Any) -> None:
+        self.snapshot = snapshot
+        self.llm_adapter = llm_adapter
+
+    async def interpret_grounded(
+        self, request_text: str, **_trace_context: Any
+    ) -> GroundedInterpretationResult:
+        interpretation = plan_grounded_request(request_text, self.snapshot)
+        if interpretation.interpretation_state is not InterpretationState.SELECT_TERMS:
+            return GroundedInterpretationResult(interpretation, {})
+
+        defaults = _default_queries(self.snapshot, interpretation)
+        approved_cards = [
+            {
+                "term_id": selection.term_id,
+                "label_ko": self.snapshot.get_active(selection.term_id)["label_ko"],
+                "look_for": self.snapshot.get_active(selection.term_id)["look_for"],
+                "query_fragments": defaults[selection.term_id],
+            }
+            for selection in interpretation.selections
+        ]
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Return only JSON. Explain the approved drawing cards in Korean. "
+                    "Mention every label_ko and quote at least one look_for checkpoint exactly. "
+                    "For each term_id, choose only exact query_fragments supplied for that card. "
+                    "Never add cards, URLs, HTML, markdown links, or internal IDs to answer_text."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"request_text": request_text, "approved_cards": approved_cards},
+                    ensure_ascii=False,
+                ),
+            },
+        ]
+        output_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "grounded_ollama_enrichment",
+                "strict": True,
+                "schema": strict_schema(_GroundedEnrichment.model_json_schema()),
+            },
+        }
+        try:
+            response = await self.llm_adapter._request(
+                messages, output_format=output_format
+            )
+            enrichment = _GroundedEnrichment.model_validate_json(
+                _extract_content(response)
+            )
+        except (LLMError, ValidationError, ValueError, TypeError, json.JSONDecodeError):
+            return GroundedInterpretationResult(interpretation, defaults)
+
+        answer_text = enrichment.answer_text
+        if not _is_grounded_answer(answer_text, self.snapshot, interpretation):
+            answer_text = interpretation.answer_text
+        enriched = interpretation.model_copy(update={"answer_text": answer_text})
+        return GroundedInterpretationResult(
+            enriched,
+            _validated_queries(self.snapshot, enriched, enrichment),
+        )
