@@ -554,6 +554,227 @@ def test_grounded_ollama_empty_session_clarifies_without_memory_json(monkeypatch
     assert recovery.failures == []
 
 
+@pytest.mark.parametrize(
+    ("request_text", "expected_ids", "expected_model_calls"),
+    [
+        (
+            "\ubc29\uae08 \ucd94\ucc9c\ud55c \uc870\uac74\uc744 \ub2e4\uc2dc \ubcf4\uc5ec\uc918.",
+            {"pose_weight_shift"},
+            0,
+        ),
+        (
+            "\uadf8 \uc790\uc138\uc5d0 \ub85c\uc6b0 \uc575\uae00 \uc2dc\uc810\ub3c4 \uc12e\uc5b4\uc918.",
+            {"pose_weight_shift", "view_low_angle"},
+            1,
+        ),
+    ],
+)
+def test_grounded_worker_reuses_owned_conditions_without_memory_json(
+    monkeypatch, request_text, expected_ids, expected_model_calls,
+):
+    """Recall and mixed edits use bounded session state, not model-made memory JSON."""
+    from pathlib import Path
+    from backend.services.catalog_repository import load_catalog
+    from backend.services.resolver import resolve
+    from backend.services.response_assembler import assemble
+
+    snapshot = load_catalog(
+        Path(__file__).parents[2] / "docs/domains/illustration-reference/term-cards"
+    )
+    source_id = "00000000-0000-4000-8000-000000000041"
+    pose = snapshot.get_active("pose_weight_shift")
+    source = {
+        "job_id": source_id,
+        "request_text": pose["label_ko"],
+        "terms": [{
+            "role": "pose", "term_id": "pose_weight_shift",
+            "label_ko": pose["label_ko"], "label_en": pose["label_en"],
+        }],
+        "message": "",
+        "question": None,
+    }
+    prior_output = InterpretationOutput(
+        interpretation_state="select_terms",
+        answer_text="\uae30\uc874 \uc790\uc138 \uc870\uac74\uc785\ub2c8\ub2e4.",
+        selections=[{
+            "role": "pose", "term_id": "pose_weight_shift",
+            "evidence": [pose["label_ko"]], "confidence": 1,
+        }],
+    )
+    prior = assemble(
+        resolve(prior_output, snapshot, request_text=pose["label_ko"]), snapshot,
+        answer_text=prior_output.answer_text,
+    )
+    context = {
+        "state": {"constraints": {"pose_weight_shift": {
+            "role": "pose", "term_id": "pose_weight_shift", "evidence": pose["label_ko"],
+            "source_job_id": source_id,
+        }}},
+        "recent": [source],
+        "sources": [source],
+        "previous_result": prior.model_dump(mode="json"),
+    }
+
+    jobs = FakeJobs({**JOB, "request_text": request_text})
+
+    class StatefulMemory:
+        def __init__(self, _jobs):
+            self.completed = []
+
+        async def load(self, _job):
+            return context
+
+        async def records(self, _job, ids):
+            assert set(map(str, ids)) == {source_id}
+            return [source]
+
+        async def complete(self, job, result, state):
+            self.completed.append((result, state))
+            await jobs.update_status(
+                job_id=job["job_id"], attempt=job["attempt"],
+                status=JobStatus.COMPLETED, result=result,
+            )
+
+    class FakeGroundedAdapter(FakeAdapter):
+        def __init__(self):
+            super().__init__()
+            self.request_calls = []
+
+        async def memory(self, *_args, **_kwargs):
+            raise AssertionError("grounded follow-ups must not ask the model for memory JSON")
+
+        async def _request(self, messages, *, output_format=None):
+            self.request_calls.append((messages, output_format))
+            payload = json.loads(messages[-1]["content"])
+            cards = payload["approved_cards"]
+            enrichment = {
+                "answer_text": " ".join(
+                    f'{card["label_ko"]}: {card["look_for"][0]}' for card in cards
+                ),
+                "query_choices": [{
+                    "term_id": card["term_id"],
+                    "query_fragments": card["query_fragments"],
+                } for card in cards],
+            }
+            return SimpleNamespace(choices=[SimpleNamespace(
+                finish_reason="stop",
+                message=SimpleNamespace(content=json.dumps(enrichment, ensure_ascii=False)),
+            )])
+
+    searches = []
+
+    class Search:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def search(self, role, fragments):
+            searches.append((role, fragments))
+            return RoleSearchOutcome(role=role)
+
+    recovery = FakeRecovery()
+    adapter = FakeGroundedAdapter()
+    monkeypatch.setattr(agent_worker, "JobRepository", lambda _pool: jobs)
+    monkeypatch.setattr(agent_worker, "JobRetryRecovery", lambda _pool: recovery)
+    monkeypatch.setattr(agent_worker, "ConversationMemory", StatefulMemory)
+    monkeypatch.setattr(agent_worker, "SearXNGPinterestSearchProvider", Search)
+    worker = AgentJobWorker(
+        object(), snapshot, adapter=adapter, tracer=JobTracer(), grounded_ollama=True,
+        local_search_url="http://127.0.0.1:8080",
+    )
+
+    _run(worker.run_once())
+
+    result = jobs.writes[-1][1]
+    assert result.agent_status in (AgentStatus.SUCCESS, AgentStatus.PARTIAL_RESULT)
+    assert {term.term_id for term in result.reference_plan.terms} == expected_ids
+    assert len(adapter.request_calls) == expected_model_calls
+    assert adapter.calls == []
+    assert recovery.failures == []
+    assert {role for role, _fragments in searches} == (
+        {Role.COMPOSITION} if "view_low_angle" in expected_ids else set()
+    )
+
+
+def test_grounded_worker_refreshes_images_without_interpretation_or_memory_json(monkeypatch):
+    """An explicit image refresh keeps the board and only repeats image search."""
+    from pathlib import Path
+    from backend.services.catalog_repository import load_catalog
+    from backend.services.resolver import resolve
+    from backend.services.response_assembler import assemble
+
+    snapshot = load_catalog(
+        Path(__file__).parents[2] / "docs/domains/illustration-reference/term-cards"
+    )
+    pose = snapshot.get_active("pose_weight_shift")
+    prior_output = InterpretationOutput(
+        interpretation_state="select_terms",
+        answer_text="\uae30\uc874 \uc790\uc138 \uc870\uac74\uc785\ub2c8\ub2e4.",
+        selections=[{
+            "role": "pose", "term_id": "pose_weight_shift",
+            "evidence": [pose["label_ko"]], "confidence": 1,
+        }],
+    )
+    prior = assemble(
+        resolve(prior_output, snapshot, request_text=pose["label_ko"]), snapshot,
+        answer_text=prior_output.answer_text,
+    )
+    context = {
+        "state": {"constraints": {}}, "recent": [], "sources": [],
+        "previous_result": prior.model_dump(mode="json"),
+    }
+    jobs = FakeJobs({
+        **JOB,
+        "request_text": "\uc774\uc804 \uc870\uac74\uc740 \uc720\uc9c0\ud558\uace0 \ucc38\uace0 \uc774\ubbf8\uc9c0\ub9cc \uc0c8\ub85c \uac80\uc0c9\ud574\uc918.",
+    })
+
+    class StatefulMemory:
+        async def load(self, _job):
+            return context
+
+        async def complete(self, job, result, _state):
+            await jobs.update_status(
+                job_id=job["job_id"], attempt=job["attempt"],
+                status=JobStatus.COMPLETED, result=result,
+            )
+
+    class NoModelAdapter(FakeAdapter):
+        async def memory(self, *_args, **_kwargs):
+            raise AssertionError("image refresh must not ask the model for memory JSON")
+
+        async def _request(self, *_args, **_kwargs):
+            raise AssertionError("image refresh must not call the model")
+
+    searches = []
+
+    class Search:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def search(self, role, fragments, **_kwargs):
+            searches.append((role, fragments))
+            return RoleSearchOutcome(role=role)
+
+    recovery = FakeRecovery()
+    adapter = NoModelAdapter()
+    monkeypatch.setattr(agent_worker, "JobRepository", lambda _pool: jobs)
+    monkeypatch.setattr(agent_worker, "JobRetryRecovery", lambda _pool: recovery)
+    monkeypatch.setattr(agent_worker, "ConversationMemory", lambda _pool: StatefulMemory())
+    monkeypatch.setattr(agent_worker, "SearXNGPinterestSearchProvider", Search)
+    worker = AgentJobWorker(
+        object(), snapshot, adapter=adapter, tracer=JobTracer(), grounded_ollama=True,
+        local_search_url="http://127.0.0.1:8080",
+    )
+
+    _run(worker.run_once())
+
+    result = jobs.writes[-1][1]
+    assert {term.term_id for term in result.reference_plan.terms} == {"pose_weight_shift"}
+    assert result.reference_update.replaced_term_ids == ["pose_weight_shift"]
+    assert searches == [(Role.POSE, tuple(pose["query_fragments"]))]
+    assert adapter.calls == []
+    assert recovery.failures == []
+
+
 def test_worker_guidance_uses_single_interpretation_without_search(monkeypatch, snapshot_factory):
     output = InterpretationOutput(interpretation_state='needs_clarification',
         clarification_type='catalog_limitation', unresolved_constraints=['조합 미지원'],

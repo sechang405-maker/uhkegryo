@@ -188,7 +188,13 @@ class AgentJobWorker:
             with trace.stage("memory-context"):
                 context = await conversation_context.prepare(self._memory, job, self._adapter, trace)
                 recommendations.reset_context(job, context)
-            recommendation_intent = recommendations.has_intent(job, context)
+            grounded_pointer = (
+                self._grounded_ollama
+                and conversation_context.explicit_grounded_pointer(job["request_text"])
+            )
+            recommendation_intent = (
+                recommendations.has_intent(job, context) and not grounded_pointer
+            )
             recommendation_decision = None
             feedback = job.get("validation_feedback_json")
             if isinstance(feedback, str):
@@ -209,7 +215,9 @@ class AgentJobWorker:
                 recall_query = (
                     routed.route
                     if routed is not None
-                    else conversation_context.grounded_memory_route(context)
+                    else conversation_context.grounded_memory_route(
+                        context, job["request_text"]
+                    )
                     if self._grounded_ollama
                     else None
                 )
@@ -257,8 +265,13 @@ class AgentJobWorker:
                         if interpretation.interpretation_state == 'select_terms' and explicit_non_search(job['request_text']):
                             raise LLMInvalidStructuredOutput('Explicit non-search intent conflicts with selected reference terms',
                                 stage='conversation_validation', feedback=[{'path': [], 'code': 'reference_intent_conflict'}])
-                        recommendation_decision = await recommendations.handle(
-                            self._memory, job, interpretation, snapshot, context)
+                        recommendation_decision = (
+                            None
+                            if grounded_pointer
+                            else await recommendations.handle(
+                                self._memory, job, interpretation, snapshot, context
+                            )
+                        )
                         if context.get('_recommendation_topic_reset'):
                             previous = {}
                         if recommendation_decision:

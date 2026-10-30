@@ -55,31 +55,47 @@ def trace_args(job):
             for key in ("job_id", "session_id", "attempt", "max_attempts")}
 
 
-def grounded_memory_route(context):
-    """Keep empty Ollama sessions out of model-generated memory state.
+def explicit_grounded_pointer(text: str) -> bool:
+    current = current_action_text(text).casefold()
+    prior = re.search(
+        r"\ubc29\uae08|\uc544\uae4c|\uc774\uc804|\uadf8\s*(?:\uc870\uac74|\uc790\uc138|\ucd94\ucc9c)|"
+        r"\ucd94\ucc9c\ud55c\s*\uc870\uac74|\b(?:previous|earlier|that|same)\b",
+        current,
+    )
+    action = re.search(
+        r"\ub2e4\uc2dc\s*\ubcf4\uc5ec|\uc720\uc9c0|\uadf8\ub300\ub85c|\uc12e\uc5b4|\ucd94\uac00|"
+        r"\b(?:show|keep|reuse|add|mix)\b",
+        current,
+    )
+    return bool(prior and action)
 
-    With no prior turn or stored state there is nothing to recall, refresh, or
-    merge.  Returning a typed server decision lets the grounded planner handle
-    both ordinary requests and honest clarification without asking the local
-    model to manufacture RecallQuery JSON.
+
+def _explicit_reference_refresh(text: str) -> bool:
+    current = current_action_text(text).casefold()
+    return bool(re.search(
+        r"(?:\ucc38\uace0\s*)?\uc774\ubbf8\uc9c0(?:\ub9cc)?[^.!?\n]{0,20}"
+        r"(?:\uc0c8\ub85c|\ub2e4\uc2dc)[^.!?\n]{0,12}(?:\uac80\uc0c9|\ucc3e)|"
+        r"(?:\uc0c8\ub85c|\ub2e4\uc2dc)[^.!?\n]{0,12}(?:\uac80\uc0c9|\ucc3e)[^.!?\n]{0,20}"
+        r"(?:\ucc38\uace0\s*)?\uc774\ubbf8\uc9c0|"
+        r"\b(?:refresh|search again|new references?)\b",
+        current,
+    ))
+
+
+def grounded_memory_route(context, request_text: str = ""):
+    """Keep local-model memory routing in validated server code.
+
+    Current conditions are reread by ``reference_fallback``. Explicit
+    image-only refreshes reuse the validated previous board. Questions outside
+    that bounded state clarify instead of asking Ollama for RecallQuery JSON.
     """
-    state = context.get("state") or {}
-    meaningful_state = {
-        key: value
-        for key, value in state.items()
-        if key not in {"memory_version", "constraints", "pending_question"}
-        and value
-    }
-    if (
-        not context.get("recent")
-        and not context.get("sources")
-        and not context.get("previous_result")
-        and not state.get("constraints")
-        and not state.get("pending_question")
-        and not meaningful_state
-    ):
-        return RecallQuery(mode="none")
-    return None
+    previous_terms = (
+        ((context.get("previous_result") or {}).get("reference_plan") or {}).get("terms")
+        or []
+    )
+    if previous_terms and _explicit_reference_refresh(request_text):
+        return RecallQuery(mode="none", reference_action="refresh_all")
+    return RecallQuery(mode="none")
 
 
 async def recall(memory, job, context, adapter, trace, query: RecallQuery | None = None):
@@ -313,7 +329,8 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
     from backend.services.recommendations import _condition_slot
     text = job['request_text']
     editing = interpretation.interpretation_state is InterpretationState.SELECT_TERMS
-    if ((not wants_reference(text) and not editing)
+    grounded_pointer = explicit_grounded_pointer(text)
+    if ((not wants_reference(text) and not editing and not grounded_pointer)
             or interpretation.interpretation_state not in (
                 InterpretationState.DRAWING_CHAT, InterpretationState.NEEDS_CLARIFICATION, InterpretationState.SELECT_TERMS)
             or interpretation.clarification_type in (
@@ -352,7 +369,7 @@ async def reference_fallback(memory, job, interpretation, snapshot, context):
     current_selections = dict(selections)
     current_slots = {_condition_slot(item.role, item.term_id, snapshot) for item in current_selections.values()}
     reset = context.get('_recommendation_topic_reset') or interpretation.topic_reset_evidence
-    pointer = re.search(r'이런|그런|그걸로|그거|추천한\s*걸로|그대로|그\s*(?:포즈|자세|캐릭터|조건|설명)|바꿔|유지|'
+    pointer = grounded_pointer or re.search(r'이런|그런|그걸로|그거|추천한\s*걸로|그대로|그\s*(?:포즈|자세|캐릭터|조건|설명)|바꿔|유지|'
                         r'\b(?:that|same|keep|change)\b', current, re.I)
     pointer = pointer or re.fullmatch(r'\s*(?:찾아\s*(?:줘|주세요)|검색\s*해\s*(?:줘|주세요)|'
         r'(?:please\s+)?(?:find|search)(?:\s+(?:it|references?))?)[.!?\s]*', current, re.I)

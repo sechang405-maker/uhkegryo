@@ -50,3 +50,29 @@ def test_drawing_inflection_skips_memory_classification_for_new_request():
         else:
             raise AssertionError("recall unexpectedly suspended")
         assert result == (None, False)
+
+
+def test_grounded_followups_never_require_model_memory_json():
+    context = {
+        "state": {"constraints": {"pose_shift": {
+            "role": "pose", "term_id": "pose_shift", "evidence": "weight shift",
+            "source_job_id": "00000000-0000-4000-8000-000000000001",
+        }}},
+        "recent": [{"job_id": "00000000-0000-4000-8000-000000000001"}],
+        "sources": [],
+        "previous_result": {"reference_plan": {"terms": [{"term_id": "pose_shift"}]}},
+    }
+
+    recall = conversation_context.grounded_memory_route(
+        context, "\ubc29\uae08 \ucd94\ucc9c\ud55c \uc870\uac74\uc744 \ub2e4\uc2dc \ubcf4\uc5ec\uc918."
+    )
+    mixed = conversation_context.grounded_memory_route(
+        context, "\uadf8 \uc790\uc138\uc5d0 \ub85c\uc6b0 \uc575\uae00 \uc2dc\uc810\ub3c4 \uc12e\uc5b4\uc918."
+    )
+    refresh = conversation_context.grounded_memory_route(
+        context, "\uc774\uc804 \uc870\uac74\uc740 \uc720\uc9c0\ud558\uace0 \ucc38\uace0 \uc774\ubbf8\uc9c0\ub9cc \uc0c8\ub85c \uac80\uc0c9\ud574\uc918."
+    )
+
+    assert recall.mode == mixed.mode == refresh.mode == "none"
+    assert recall.reference_action == mixed.reference_action == "update"
+    assert refresh.reference_action == "refresh_all"

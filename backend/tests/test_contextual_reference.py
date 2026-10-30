@@ -97,6 +97,29 @@ def test_bare_find_reuses_immediate_related_user_description(card_factory, snaps
     assert output.selections[0].source_job_id == UUID(OLD)
 
 
+def test_explicit_condition_recall_reuses_grounded_source_without_memory_model(
+    card_factory, snapshot_factory,
+):
+    original = row(request="weight shift pose")
+    original["terms"] = [{
+        "role": "pose", "term_id": "pose_shift",
+        "label_ko": "weight shift", "label_en": "Weight shift",
+    }]
+    state = context(original, {"pose_shift": {
+        "role": "pose", "term_id": "pose_shift", "evidence": "weight shift",
+        "source_job_id": OLD,
+    }})
+    output = asyncio.run(conversation_context.reference_fallback(
+        Memory([original]),
+        {"request_text": "\ubc29\uae08 \ucd94\ucc9c\ud55c \uc870\uac74\uc744 \ub2e4\uc2dc \ubcf4\uc5ec\uc918."},
+        chat(), snapshot_factory([card_factory("pose_shift", label_ko="weight shift")]),
+        state,
+    ))
+
+    assert [item.term_id for item in output.selections] == ["pose_shift"]
+    assert output.selections[0].source_job_id == UUID(OLD)
+
+
 def test_bare_find_new_session_asks_one_minimal_question(snapshot_factory):
     output = asyncio.run(conversation_context.reference_fallback(Memory([]), {'request_text': '찾아줘'},
         chat(), snapshot_factory([]), context()))
