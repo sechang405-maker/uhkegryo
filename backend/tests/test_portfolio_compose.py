@@ -129,6 +129,8 @@ def test_windows_ollama_host_scripts_are_explicit_nonpersistent_and_value_safe()
     assert "ollama list" not in start
     assert "PORTFOLIO_GATEWAY_REQUIRED" in start
     assert "Start-Process" in start and "-WindowStyle Hidden" in start
+    assert "Get-NetTCPConnection" in start
+    assert "owning_process" in start
     assert "Set-Service" not in start and "New-Service" not in start
     assert " down -v" not in stop and "--volumes" not in stop
     assert "http://127.0.0.1:3120" in tunnel

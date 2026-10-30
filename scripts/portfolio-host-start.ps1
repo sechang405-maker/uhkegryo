@@ -76,10 +76,16 @@ $api = Start-Process -FilePath $python -ArgumentList @("-m", "uvicorn", "backend
 $web = Start-Process -FilePath "npm.cmd" -ArgumentList @("run", "start", "--prefix", "frontend", "--", "--hostname", "127.0.0.1", "--port", $env:PORTFOLIO_FRONTEND_PORT) -WorkingDirectory $repositoryRoot -WindowStyle Hidden -RedirectStandardOutput $webOut -RedirectStandardError $webErr -PassThru
 
 $records = @(
-    @{ name = "api"; id = $api.Id; started_ticks = $api.StartTime.ToUniversalTime().Ticks },
-    @{ name = "web"; id = $web.Id; started_ticks = $web.StartTime.ToUniversalTime().Ticks }
+    @{ name = "api-launcher"; id = $api.Id; started_ticks = $api.StartTime.ToUniversalTime().Ticks; owning_process = $false },
+    @{ name = "web-launcher"; id = $web.Id; started_ticks = $web.StartTime.ToUniversalTime().Ticks; owning_process = $false }
 )
 [IO.File]::WriteAllText($pidFile, ($records | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+
+function Get-ListenerRecord([string]$name, [int]$port) {
+    $connection = Get-NetTCPConnection -State Listen -LocalAddress "127.0.0.1" -LocalPort $port -ErrorAction Stop | Select-Object -First 1
+    $process = Get-Process -Id $connection.OwningProcess -ErrorAction Stop
+    return @{ name = $name; id = $process.Id; started_ticks = $process.StartTime.ToUniversalTime().Ticks; owning_process = $true }
+}
 
 try {
     $ready = $false
@@ -91,7 +97,20 @@ try {
         } catch {}
     }
     if (-not $ready) { throw "Protected local gateway did not become healthy." }
+    $records = @(
+        (Get-ListenerRecord "api" ([int]$env:PORTFOLIO_API_PORT)),
+        (Get-ListenerRecord "web" ([int]$env:PORTFOLIO_FRONTEND_PORT))
+    )
+    [IO.File]::WriteAllText($pidFile, ($records | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 } catch {
+    $cleanupRecords = @($records)
+    foreach ($target in @(
+        @{ name = "api"; port = [int]$env:PORTFOLIO_API_PORT },
+        @{ name = "web"; port = [int]$env:PORTFOLIO_FRONTEND_PORT }
+    )) {
+        try { $cleanupRecords += Get-ListenerRecord $target.name $target.port } catch {}
+    }
+    [IO.File]::WriteAllText($pidFile, ($cleanupRecords | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
     & (Join-Path $PSScriptRoot "portfolio-host-stop.ps1") -EnvFile $envPath
     throw
 }
