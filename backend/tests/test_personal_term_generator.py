@@ -15,6 +15,7 @@ from backend.services.personal_term_generator import (
     PersonalTermGenerationRetryRequired,
     PersonalTermGenerator,
     _catalog_grounding,
+    _normalize_generated_draft,
     _validate_semantic_grounding,
 )
 from backend.services.personal_term_repository import (
@@ -121,6 +122,19 @@ def test_ungrounded_new_term_must_remain_an_ambiguous_draft():
         uncertainty_ko="\uAE30\uC874 \uCE74\uD0C8\uB85C\uADF8\uC5D0 \uAC19\uC740 \uAC1C\uB150\uC774 \uC5C6\uC5B4 \uD655\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.",
     ))
     _validate_semantic_grounding(ambiguous, ())
+
+
+def test_server_owns_the_role_when_the_source_has_one_explicit_category():
+    draft = GeneratedPersonalTermDraft.model_validate(generated_payload(role="body"))
+
+    normalized = _normalize_generated_draft(
+        draft,
+        "\ubab8\ud1b5\uc744 \ube44\ud2c0\uba74\uc11c \ub4b7\ubc1c\uc5d0 \uccb4\uc911\uc744 \uc2e3\uc740 \uc790\uc138",
+        (),
+    )
+
+    assert normalized.role is Role.POSE
+    assert normalized.proposal_kind == "ambiguous"
 
 
 def test_generation_is_structured_owner_scoped_idempotent_and_warns_without_merging():

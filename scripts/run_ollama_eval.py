@@ -251,6 +251,7 @@ async def _run_interpretation(adapter, case, snapshot):
             else result.model_answer_rejection_reason or "generation_failed"
         ),
         "model_evidence_accepted": result.model_evidence_accepted,
+        "model_answer_sanitized": result.model_answer_sanitized,
         "model_query_applied": result.model_query_applied,
         "adapter_attempts": int(result.model_called),
     }

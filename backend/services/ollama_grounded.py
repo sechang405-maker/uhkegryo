@@ -92,6 +92,8 @@ _TERM_CUE_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         (r"포즈", r"스탠딩", r"팔다리"),
     ),
 }
+_TERM_CUE_GROUPS["pose_sitting"] = (("\uc549",),)
+
 _POINT_PERSPECTIVE_CUES = {
     "perspective_one_point": r"(?:1|한|일)\s*점\s*(?:투시|원근)",
     "perspective_two_point": r"(?:2|두|이)\s*점\s*(?:투시|원근)",
@@ -141,6 +143,18 @@ class GroundedInterpretationResult:
     model_raw_output: str | None = None
     model_answer_rejection_reason: str | None = None
     model_evidence_accepted: bool = False
+    model_answer_sanitized: bool = False
+
+
+_CONFLICTING_TERMS: dict[str, frozenset[str]] = {
+    "view_low_angle": frozenset({"view_high_angle"}),
+    "view_high_angle": frozenset({"view_low_angle"}),
+    "view_front": frozenset({"view_back"}),
+    "view_back": frozenset({"view_front"}),
+    "perspective_one_point": frozenset({"perspective_two_point", "perspective_three_point"}),
+    "perspective_two_point": frozenset({"perspective_one_point", "perspective_three_point"}),
+    "perspective_three_point": frozenset({"perspective_one_point", "perspective_two_point"}),
+}
 
 
 def _canonical_word(raw: str) -> str:
@@ -450,7 +464,7 @@ def _answer_rejection_reason(
     if not _KOREAN_PATTERN.search(text) or _UNSAFE_ANSWER_PATTERN.search(text):
         return "unsafe_or_non_korean"
     selected_ids = {selection.term_id for selection in interpretation.selections}
-    if any(term_id in text for term_id in selected_ids):
+    if any(term_id in text for term_id in snapshot.active_cards):
         return "internal_id_leak"
     cards = [snapshot.get_active(term_id) for term_id in selected_ids]
     if any(
@@ -461,23 +475,40 @@ def _answer_rejection_reason(
         return "search_fragment_leak"
     if any(str(card["label_ko"]) not in text for card in cards):
         return "missing_catalog_label"
-    selected_roles = {selection.role for selection in interpretation.selections}
-    if any(
-        card["role"] in {role.value for role in selected_roles}
-        and term_id not in selected_ids
-        and len(str(card["label_ko"])) >= 2
-        and str(card["label_ko"]) in text
-        for term_id, card in snapshot.active_cards.items()
-    ):
-        return "conflicting_catalog_label"
+    conflicting_ids = set().union(
+        *(_CONFLICTING_TERMS.get(term_id, frozenset()) for term_id in selected_ids)
+    )
+    for term_id in conflicting_ids:
+        label = str(snapshot.get_active(term_id)["label_ko"])
+        if _has_affirmed_phrase(text, label):
+            return "conflicting_catalog_label"
     return None
 
 
-def _evidence_by_term(enrichment: _GroundedEnrichment) -> dict[str, str]:
-    evidence = {choice.term_id: choice.look_for for choice in enrichment.evidence_choices}
-    if len(evidence) != len(enrichment.evidence_choices):
-        return {}
-    return evidence
+def _has_affirmed_phrase(text: str, phrase: str) -> bool:
+    for match in re.finditer(re.escape(phrase), text, re.IGNORECASE):
+        before = text[max(0, match.start() - 12):match.start()]
+        after = text[match.end():match.end() + 12]
+        if re.search("(?:\ub9d0\uace0|\uc544\ub2cc|\uc81c\uc678|\ube7c\uace0|\uc544\ub2c8\ub77c)", after):
+            continue
+        if re.search(r"(?:not|except|exclude)\s*$", before, re.IGNORECASE):
+            continue
+        return True
+    return False
+
+
+def _sanitize_internal_ids(
+    text: str, selected_ids: set[str]
+) -> tuple[str, bool]:
+    sanitized = text
+    for term_id in selected_ids:
+        sanitized = re.sub(
+            rf"\s*[\(\[]?\s*{re.escape(term_id)}\s*[\)\]]?",
+            "",
+            sanitized,
+            flags=re.IGNORECASE,
+        )
+    return sanitized.strip(), sanitized != text
 
 
 def _catalog_evidence_is_valid(
@@ -485,12 +516,11 @@ def _catalog_evidence_is_valid(
     snapshot: CatalogSnapshot,
     interpretation: InterpretationOutput,
 ) -> bool:
-    evidence = _evidence_by_term(enrichment)
     selected_ids = {selection.term_id for selection in interpretation.selections}
-    return set(evidence) == selected_ids and all(
-        evidence[selection.term_id]
-        in snapshot.get_active(selection.term_id)["look_for"]
-        for selection in interpretation.selections
+    evidence_ids = {choice.term_id for choice in enrichment.evidence_choices}
+    return evidence_ids == selected_ids and all(
+        choice.look_for in snapshot.get_active(choice.term_id)["look_for"]
+        for choice in enrichment.evidence_choices
     )
 
 
@@ -565,8 +595,12 @@ class OllamaGroundedInterpreter:
             )
 
         model_answer_text = enrichment.answer_text
+        selected_ids = {selection.term_id for selection in interpretation.selections}
+        safe_answer_text, answer_sanitized = _sanitize_internal_ids(
+            model_answer_text, selected_ids
+        )
         rejection_reason = _answer_rejection_reason(
-            model_answer_text,
+            safe_answer_text,
             self.snapshot,
             interpretation,
         )
@@ -574,7 +608,7 @@ class OllamaGroundedInterpreter:
         evidence_accepted = _catalog_evidence_is_valid(
             enrichment, self.snapshot, interpretation
         )
-        answer_text = f"{model_answer_text}\n\n{interpretation.answer_text}"
+        answer_text = f"{safe_answer_text}\n\n{interpretation.answer_text}"
         if not answer_accepted:
             answer_text = interpretation.answer_text
         enriched = interpretation.model_copy(update={"answer_text": answer_text})
@@ -591,4 +625,5 @@ class OllamaGroundedInterpreter:
             model_raw_output=raw_content,
             model_answer_rejection_reason=rejection_reason,
             model_evidence_accepted=evidence_accepted,
+            model_answer_sanitized=answer_sanitized,
         )

@@ -47,6 +47,12 @@ MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\([^)]+\)")
 INTERNAL_DESCRIPTION_PATTERN = re.compile(
     r"(?:\?|질문|알려\s*주세요|입력해\s*주세요|답해\s*주세요|무엇인가요|어떤가요)"
 )
+_ROLE_CUE_PATTERNS = {
+    Role.BODY: re.compile("\uccb4\ud615|\ube44\uc728|\uc2e4\ub8e8\uc5e3|\ubab8\ub9e4"),
+    Role.POSE: re.compile("\uc790\uc138|\ud3ec\uc988|\ub3d9\uc791|\uc81c\uc2a4\ucc98"),
+    Role.COMPOSITION: re.compile("\uad6c\ub3c4|\ubc30\uce58|\ud654\uba74|\ud504\ub808\uc784"),
+    Role.PERSPECTIVE: re.compile("\ud22c\uc2dc|\uc6d0\uadfc|\uc18c\uc2e4\uc810|\ucd95\uc18c"),
+}
 
 
 class PersonalTermGenerationFailed(Exception):
@@ -198,6 +204,9 @@ class PersonalTermGenerator:
             raw = await self._transport.generate(messages, response_format)
             generated = GeneratedPersonalTermDraft.model_validate_json(raw)
             _validate_generated_text(generated)
+            generated = _normalize_generated_draft(
+                generated, source_input, grounding
+            )
             _validate_semantic_grounding(generated, grounding)
             draft = generated.with_source_input(source_input)
             record = await self._repository.complete_generation(
@@ -336,6 +345,28 @@ def _validate_semantic_grounding(
     allowed_roles = {item.role for item in grounding}
     if draft.role not in allowed_roles:
         raise ValueError("generated role conflicts with catalog grounding")
+
+
+def _normalize_generated_draft(
+    draft: GeneratedPersonalTermDraft,
+    source_input: str,
+    grounding: tuple[CatalogGrounding, ...],
+) -> GeneratedPersonalTermDraft:
+    grounded_roles = {item.role for item in grounding}
+    requested_roles = {
+        role for role, pattern in _ROLE_CUE_PATTERNS.items()
+        if pattern.search(source_input)
+    }
+    server_role: Role | None = None
+    if len(grounded_roles) == 1:
+        server_role = next(iter(grounded_roles))
+    elif len(requested_roles) == 1:
+        requested_role = next(iter(requested_roles))
+        if not grounded_roles or requested_role in grounded_roles:
+            server_role = requested_role
+    if server_role is None or draft.role is server_role:
+        return draft
+    return draft.model_copy(update={"role": server_role})
 
 
 def _normalize(value: str) -> str:

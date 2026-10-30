@@ -150,6 +150,35 @@ def test_personal_terms_are_owner_scoped_idempotent_and_persistent():
     asyncio.run(database_case(case))
 
 
+def test_ambiguous_proposal_cannot_be_activated_until_the_user_resolves_it():
+    async def case(pool):
+        sessions = SessionRepository(pool)
+        repository = PersonalTermRepository(pool)
+        await sessions.create_session("owner-a")
+        created, _ = await repository.create_proposal(
+            "owner-a",
+            draft(
+                proposal_kind="ambiguous",
+                uncertainty_ko="\uc815\ud655\ud55c \uc758\ubbf8\ub97c \ud655\uc778\ud574\uc57c \ud569\ub2c8\ub2e4.",
+            ),
+            idempotency_key="ambiguous-proposal",
+            input_hash="ambiguous-v1",
+        )
+
+        with pytest.raises(PersonalTermStateConflict):
+            await repository.confirm_term("owner-a", created.term_id)
+
+        await repository.update_term(
+            "owner-a",
+            created.term_id,
+            PersonalTermUpdate(proposal_kind="descriptive"),
+        )
+        active = await repository.confirm_term("owner-a", created.term_id)
+        assert active.status == "active"
+
+    asyncio.run(database_case(case))
+
+
 def test_unknown_owner_cannot_create_or_discover_terms():
     async def case(pool):
         repository = PersonalTermRepository(pool)

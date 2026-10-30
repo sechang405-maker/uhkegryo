@@ -319,3 +319,59 @@ def test_catalog_evidence_copy_is_diagnostic_not_an_answer_rejection(snapshot):
     assert result.model_answer_accepted is True
     assert result.model_evidence_accepted is False
     assert card["look_for"][0] in result.interpretation.answer_text
+
+
+def test_negated_opposite_label_is_not_treated_as_a_conflict(snapshot):
+    low = snapshot.get_active("view_low_angle")
+    high = snapshot.get_active("view_high_angle")
+    interpretation = plan_grounded_request(
+        "\ud558\uc774 \uc575\uae00 \ub9d0\uace0 \uc544\ub798\uc5d0\uc11c \uce58\ucf1c\ubcf4\ub294 \uad6c\ub3c4",
+        snapshot,
+    )
+    text = (
+        f"{high['label_ko']} \ub9d0\uace0 {low['label_ko']}\uc744 \uc0ac\uc6a9\ud558\uc138\uc694. "
+        "\uce74\uba54\ub77c\ub294 \uc778\ubb3c\ubcf4\ub2e4 \uc544\ub798\uc5d0 \uc788\uc2b5\ub2c8\ub2e4."
+    )
+
+    assert _answer_rejection_reason(text, snapshot, interpretation) is None
+
+
+def test_affirmed_opposite_label_is_rejected(snapshot):
+    low = snapshot.get_active("view_low_angle")
+    high = snapshot.get_active("view_high_angle")
+    interpretation = plan_grounded_request(
+        "\uc544\ub798\uc5d0\uc11c \uc62c\ub824\ub2e4\ubcf4\ub294 \uad6c\ub3c4", snapshot
+    )
+    text = f"{low['label_ko']}\uacfc {high['label_ko']}\uc744 \uac19\uc774 \uc0ac\uc6a9\ud558\uc138\uc694."
+
+    assert _answer_rejection_reason(
+        text, snapshot, interpretation
+    ) == "conflicting_catalog_label"
+
+
+def test_internal_id_is_removed_before_a_grounded_answer_is_used(snapshot):
+    card = snapshot.get_active("body_inverted_triangle")
+    request_text = "\uc5b4\uae68\ub294 \ub113\uace0 \ud5c8\ub9ac\ub294 \uc881\uc544\uc9c0\ub294 \uc5ed\uc0bc\uac01\ud615 \uccb4\ud615"
+    interpretation = plan_grounded_request(request_text, snapshot)
+    adapter = _FakeAdapter({
+        "answer_text": (
+            f"{card['label_ko']} (body_inverted_triangle): "
+            "\uc5b4\uae68\uc640 \uc0c1\uccb4\uac00 \uace8\ubc18\ubcf4\ub2e4 \ub113\uac8c \ubcf4\uc774\ub294\uc9c0 \ud655\uc778\ud558\uc138\uc694."
+        ),
+        "query_choices": [],
+        "evidence_choices": [
+            {"term_id": "body_inverted_triangle", "look_for": card["look_for"][0]},
+            {"term_id": "body_inverted_triangle", "look_for": card["look_for"][1]},
+        ],
+    })
+
+    result = _run_immediate(
+        OllamaGroundedInterpreter(snapshot, adapter).interpret_grounded(
+            request_text
+        )
+    )
+
+    assert result.model_answer_accepted is True
+    assert result.model_answer_sanitized is True
+    assert result.model_evidence_accepted is True
+    assert "body_inverted_triangle" not in result.interpretation.answer_text

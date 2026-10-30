@@ -365,6 +365,8 @@ class PersonalTermRepository:
                     return _record(row)
                 if row["status"] != "proposed":
                     raise PersonalTermStateConflict
+                if row["proposal_kind"] == "ambiguous":
+                    raise PersonalTermStateConflict
                 slot = row["layout_slot"]
                 if slot is None:
                     slot = await connection.fetchval(
