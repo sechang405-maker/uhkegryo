@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {deleteConversation,ensureLocalProfile,ensureServiceAvailable,SERVICE_UNAVAILABLE_ERROR} from '../lib/server-conversation.mjs';
+import {deleteConversation,ensureConversationProfile,ensureLocalProfile,ensureServiceAvailable,SERVICE_UNAVAILABLE_ERROR} from '../lib/server-conversation.mjs';
 import {createDemoSessionStore} from '../lib/portfolio-demo-sessions.mjs';
 const id='00000000-0000-0000-0000-000000000001';
 test('delete uses credentials and action header; success does not require JSON',async()=>{
@@ -16,6 +16,12 @@ test('failed and busy deletion give actionable errors',async()=>{
 test('profile bootstrap is explicit and errors are not silently ignored',async()=>{
  assert.equal(await ensureLocalProfile({fetchImpl:async(url,o)=>{assert.equal(url,'/api/local/profile');assert.equal(o.method,'POST');assert.equal(o.headers['X-Conversation-Action'],'profile');return {ok:true,json:async()=>({persistent:true})};}}),true);
  await assert.rejects(ensureLocalProfile({fetchImpl:async()=>({ok:false})}));
+});
+test('portfolio conversation startup never calls the blocked local profile route',async()=>{
+ let called=false;
+ const persistent=await ensureConversationProfile({portfolioMode:true,fetchImpl:async()=>{called=true;throw new Error('must not call');}});
+ assert.equal(persistent,false);
+ assert.equal(called,false);
 });
 test('service availability is checked without mutating data and reports a precise reconnect error',async()=>{
  let request;

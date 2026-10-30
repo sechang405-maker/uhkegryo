@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { countCharacters, createSubmissionController, validateRequestText, shouldSubmitOnEnter } from "../lib/agent-submit.mjs";
 import { resizeComposerInput, createScrollEndAnchor } from "../lib/composer-autosize.mjs";
 import { createGallerySelection } from "../lib/gallery-selection.mjs";
-import { createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, SERVICE_UNAVAILABLE_ERROR, ensureServiceAvailable, ensureLocalProfile, deleteConversation } from "../lib/server-conversation.mjs";
+import { createConversation, listConversations, listConversationPage, mergeSessions, loadOlderConversation, restoreConversation, resumeConversation, RESTORE_ERROR, SERVICE_UNAVAILABLE_ERROR, ensureServiceAvailable, ensureConversationProfile, deleteConversation } from "../lib/server-conversation.mjs";
 import { DEMO_JOB, DEMO_REQUEST_TEXT, uiDemoEnabled } from "../lib/demo-job.mjs";
 import { DEMO_SCENARIOS, DEMO_NOTICE, DEMO_INPUT_ERROR, demoTerm } from "../lib/portfolio-demo-fixtures.mjs";
 import { createDemoSessionStore } from "../lib/portfolio-demo-sessions.mjs";
@@ -308,7 +308,7 @@ export default function HomePage() {
     gallerySelectionRef.current.reset(sessionIdRef.current);
     setRestoreError("");
     setConversationReady(false);
-    ensureServiceAvailable({ signal: controller.signal }).then(() => ensureLocalProfile({ signal: controller.signal })).then((persistent) => {
+    ensureServiceAvailable({ signal: controller.signal }).then(() => ensureConversationProfile({ portfolioMode, signal: controller.signal })).then((persistent) => {
       if (controller.signal.aborted) return;
       setPersistentProfile(persistent);
       refreshSessions();

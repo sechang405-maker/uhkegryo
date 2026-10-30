@@ -28,6 +28,10 @@ export async function ensureLocalProfile(options = {}) {
   if (!response.ok) throw new Error(RESTORE_ERROR);
   return (await response.json()).persistent === true;
 }
+export async function ensureConversationProfile(options = {}) {
+  if (options.portfolioMode === true) return false;
+  return ensureLocalProfile(options);
+}
 export async function deleteConversation(id, options = {}) {
   sessionId(id);
   const response = await (options.fetchImpl || globalThis.fetch)(`/api/sessions/${id}`, {
