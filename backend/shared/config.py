@@ -12,19 +12,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 APPROVED_LOCAL_CODEX_OWNER_ACCOUNT_ID = UUID('eb6bc5d0-d8ec-456e-b7be-db819c1a0e4c')
+APPROVED_LOCAL_OLLAMA_MODEL = 'qwen3.5:4b-q4_K_M'
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # LLM
-    llm_backend: Literal['openrouter', 'codex-cli'] = 'openrouter'
+    llm_backend: Literal['openrouter', 'codex-cli', 'ollama'] = 'openrouter'
     codex_timeout_seconds: float = Field(default=180, ge=10, le=300)
     codex_bin_dir: str = ''
     codex_executable: str = ''
     codex_owner_account_id: UUID | None = None
     local_profile_token: str = Field(default='', repr=False)
     openrouter_api_key: str = ""
+    ollama_base_url: str = "http://127.0.0.1:11434/v1"
+    ollama_model: str = APPROVED_LOCAL_OLLAMA_MODEL
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
@@ -112,19 +115,44 @@ class Settings(BaseSettings):
     @model_validator(mode='after')
     def local_codex_boundary(self):
         if self.is_portfolio:
-            if self.llm_backend != 'openrouter':
-                raise ValueError('Portfolio mode requires OpenRouter and forbids Codex fallback')
-            if not self.openrouter_api_key:
-                raise ValueError('Portfolio mode requires a server-only OpenRouter API key')
-            if self.openrouter_base_url.rstrip('/') != 'https://openrouter.ai/api/v1':
-                raise ValueError('Portfolio mode requires the official OpenRouter base URL')
-            models = self.portfolio_free_models
-            if not models or any(not model.endswith(':free') for model in models):
-                raise ValueError('Portfolio allowlist must contain only explicit :free model IDs')
-            if not self.llm_model.endswith(':free'):
-                raise ValueError('Portfolio mode requires an explicit free model')
-            if self.llm_model not in models:
-                raise ValueError('Portfolio model must be present in the approved allowlist')
+            if self.llm_backend == 'openrouter':
+                if not self.openrouter_api_key:
+                    raise ValueError('Portfolio mode requires a server-only OpenRouter API key')
+                if self.openrouter_base_url.rstrip('/') != 'https://openrouter.ai/api/v1':
+                    raise ValueError('Portfolio mode requires the official OpenRouter base URL')
+                models = self.portfolio_free_models
+                if not models or any(not model.endswith(':free') for model in models):
+                    raise ValueError('Portfolio allowlist must contain only explicit :free model IDs')
+                if not self.llm_model.endswith(':free'):
+                    raise ValueError('Portfolio mode requires an explicit free model')
+                if self.llm_model not in models:
+                    raise ValueError('Portfolio model must be present in the approved allowlist')
+            elif self.llm_backend == 'ollama':
+                local = urlsplit(self.ollama_base_url)
+                try:
+                    local_port = local.port
+                except ValueError as error:
+                    raise ValueError('Ollama requires the approved loopback URL') from error
+                if (
+                    local.scheme != 'http'
+                    or local.hostname not in ('127.0.0.1', '::1', 'localhost')
+                    or local_port != 11434
+                    or local.path.rstrip('/') != '/v1'
+                    or local.username is not None
+                    or local.password is not None
+                    or local.query
+                    or local.fragment
+                ):
+                    raise ValueError('Ollama requires the approved loopback URL')
+                if self.ollama_model != APPROVED_LOCAL_OLLAMA_MODEL:
+                    raise ValueError('Ollama requires the approved local model')
+                if self.openrouter_api_key:
+                    raise ValueError('Ollama portfolio mode forbids an OpenRouter API key')
+                if self.portfolio_free_model_allowlist or self.portfolio_model_catalog_path:
+                    raise ValueError('Ollama portfolio mode forbids external model configuration')
+                self.llm_model = self.ollama_model
+            else:
+                raise ValueError('Portfolio mode requires OpenRouter or local Ollama and forbids Codex fallback')
             if self.worker_concurrency != 1:
                 raise ValueError('Portfolio mode requires exactly one worker')
             if self.environment != 'production':
@@ -137,7 +165,7 @@ class Settings(BaseSettings):
                 raise ValueError('Portfolio mode forbids remote MCP configuration')
             if not self.portfolio_public_origin:
                 raise ValueError('Portfolio mode requires an explicit public origin')
-            if not self.portfolio_model_catalog_path:
+            if self.llm_backend == 'openrouter' and not self.portfolio_model_catalog_path:
                 raise ValueError('Portfolio mode requires an approved model catalog path')
             public = urlsplit(self.portfolio_public_origin)
             if (

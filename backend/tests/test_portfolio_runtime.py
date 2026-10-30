@@ -37,6 +37,15 @@ BASE = {
     "portfolio_model_catalog_path": "C:/synthetic/openrouter-models.json",
 }
 
+OLLAMA_BASE = BASE | {
+    "llm_backend": "ollama",
+    "openrouter_api_key": "",
+    "portfolio_free_model_allowlist": "",
+    "portfolio_model_catalog_path": "",
+    "ollama_base_url": "http://127.0.0.1:11434/v1",
+    "ollama_model": "qwen3.5:4b-q4_K_M",
+}
+
 
 def test_portfolio_settings_accept_only_explicit_free_runtime():
     settings = Settings(**BASE)
@@ -44,6 +53,37 @@ def test_portfolio_settings_accept_only_explicit_free_runtime():
     assert settings.is_portfolio is True
     assert settings.portfolio_free_models == ("example/model:free",)
     assert settings.portfolio_daily_llm_call_limit == 40
+
+
+def test_portfolio_settings_accept_exact_loopback_ollama_runtime():
+    settings = Settings(**OLLAMA_BASE)
+
+    assert settings.is_portfolio is True
+    assert settings.llm_backend == "ollama"
+    assert settings.ollama_base_url == "http://127.0.0.1:11434/v1"
+    assert settings.ollama_model == "qwen3.5:4b-q4_K_M"
+    assert settings.llm_model == "qwen3.5:4b-q4_K_M"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"ollama_base_url": "https://ollama.com/v1"},
+        {"ollama_base_url": "http://192.168.0.2:11434/v1"},
+        {"ollama_base_url": "http://user:pass@127.0.0.1:11434/v1"},
+        {"ollama_base_url": "http://127.0.0.1:11434/v1?cloud=1"},
+        {"ollama_base_url": "http://127.0.0.1:11434"},
+        {"ollama_model": "qwen3.5:4b-cloud"},
+        {"ollama_model": "qwen3.5:9b-q4_K_M"},
+        {"openrouter_api_key": "must-not-be-used"},
+        {"portfolio_free_model_allowlist": "example/model:free"},
+        {"portfolio_model_catalog_path": "C:/synthetic/openrouter-models.json"},
+        {"worker_concurrency": 2},
+    ],
+)
+def test_ollama_portfolio_rejects_nonlocal_or_unapproved_runtime(change):
+    with pytest.raises((ValidationError, ValueError)):
+        Settings(**(OLLAMA_BASE | change))
 
 
 @pytest.mark.parametrize(
