@@ -101,6 +101,97 @@ _POINT_PERSPECTIVE_CUES = {
 }
 
 
+def _matches_both(text: str, first: str, second: str) -> tuple[str, ...]:
+    """Return evidence only when both sides of a visual relation are present."""
+    first_match = re.search(first, text, re.IGNORECASE)
+    second_match = re.search(second, text, re.IGNORECASE)
+    if first_match is None or second_match is None:
+        return ()
+    return tuple(dict.fromkeys((first_match.group(0), second_match.group(0))))
+
+
+def _body_shape_direction(text: str) -> str | None:
+    """Resolve upper/lower width relations without substring label matching."""
+    upper = r"(?:\uc5b4\uae68|\uc0c1\uccb4|\uc717\ubd80\ubd84)"
+    lower = r"(?:\uc544\ub798|\uc544\ub7ab\ubd80\ubd84|\uace8\ubc18|\uc5c9\ub369\uc774|\ud558\uccb4)"
+    narrow = r"(?:\uc881|\uac00\ub298|\ud3ed\uc774?\s*\uc791)"
+    wide = r"(?:\ub113|\uad75|\ud3ed\uc774?\s*(?:\ud06c|\ucee4))"
+    upper_narrow = re.search(
+        rf"{upper}(?:(?!{lower}).){{0,12}}{narrow}|{narrow}.{{0,8}}{upper}", text
+    )
+    upper_wide = re.search(
+        rf"{upper}(?:(?!{lower}).){{0,12}}{wide}|{wide}.{{0,8}}{upper}", text
+    )
+    lower_narrow = re.search(
+        rf"{lower}(?:(?!{upper}).){{0,14}}(?:{narrow}|\uc904\uc5b4)|(?:{narrow}|\uc904\uc5b4).{{0,8}}{lower}",
+        text,
+    )
+    lower_wide = re.search(
+        rf"{lower}(?:(?!{upper}).){{0,14}}(?:{wide}|\ud37c\uc9c0)|(?:{wide}|\ud37c\uc9c0).{{0,8}}{lower}",
+        text,
+    )
+    if upper_narrow and lower_wide:
+        return "body_triangle"
+    if upper_wide and lower_narrow:
+        return "body_inverted_triangle"
+    return None
+
+
+def _structural_evidence(term_id: str, text: str) -> tuple[str, ...]:
+    normalized = normalize_input_text(text).casefold()
+    if term_id == "view_high_angle":
+        return _matches_both(
+            normalized,
+            r"(?:\uc704|\ub192|\uc0c1\uacf5|\uc9c0\ubd95|\uba38\ub9ac.{0,6}\uc704)",
+            r"(?:\uc544\ub798|\ubc14\ub2e5.{0,8}\ubcf4|\ub0b4\ub824\ub2e4\ubcf4)",
+        )
+    if term_id == "perspective_two_point":
+        return _matches_both(
+            normalized,
+            r"(?:\ubaa8\uc11c\ub9ac|\uadc0\ud241\uc774|\ucf54\ub108|\uc591\ucabd\s*\ubcbd|\ub450\s*\ubcbd)",
+            r"(?:\uc11c\ub85c\s*(?:\ub2e4\ub978|\ubc18\ub300)\s*\ubc29\ud5a5|\uc88c\uc6b0.{0,8}(?:\ub2e4\ub978|\ubc8c\uc5b4|\ud5a5\ud558))",
+        )
+    if term_id == "perspective_foreshortening":
+        return _matches_both(
+            normalized,
+            r"(?:\ub208\uc55e|\uce74\uba54\ub77c.{0,8}(?:\uac00\uae4c|\uc55e)|\uac00\uae4c\uc6b4)",
+            r"(?:\uba40\ub9ac|\uba3c|\ub4a4\ucabd|\ud6c4\ubc29).{0,12}(?:\uc791|\uc881|\uc9e7)",
+        )
+    direction = _body_shape_direction(normalized)
+    if term_id == direction:
+        relation = re.search(
+            r"(?:\uc5b4\uae68|\uc0c1\uccb4|\uc544\ub798|\uace8\ubc18|\ud558\uccb4).{0,24}(?:\uc881|\ub113|\uc904\uc5b4|\ud37c\uc9c0)",
+            normalized,
+        )
+        return (relation.group(0),) if relation else ()
+    return ()
+
+
+def _requires_stronger_pose_relation(term_id: str, text: str, label: str) -> bool:
+    normalized = normalize_input_text(text).casefold()
+    if _has_affirmed_phrase(normalized, label.casefold()):
+        return False
+    if term_id == "pose_contrapposto":
+        weight_leg = _matches_both(
+            normalized,
+            r"(?:(?:\ud55c\ucabd|\uc67c|\uc624\ub978)\s*(?:\ubc1c|\ub2e4\ub9ac))",
+            r"(?:\uccb4\uc911|\ubb34\uac8c|\uc911\uc2ec).{0,8}(?:\uc2e3|\ub450|\uac78|\ubab0)",
+        )
+        counter_tilt = _matches_both(
+            normalized,
+            r"\uc5b4\uae68.{0,14}(?:\uae30\uc6b8|\uacbd\uc0ac)",
+            r"\uace8\ubc18.{0,14}(?:\ubc18\ub300|\uc5ed\ubc29\ud5a5|\uae30\uc6b8|\uacbd\uc0ac)",
+        )
+        return not (weight_leg or counter_tilt)
+    if term_id == "pose_supine":
+        lying = re.search(
+            r"(?:\ubc14\ub2e5|\uce68\ub300|\ub9e4\ud2b8).{0,12}(?:\ub204\uc6cc|\ub208|\ub4f1\uc744\s*\ub300)|(?:\ubc18\ub4ef\uc774|\ucc9c\uc7a5).{0,8}(?:\ub204\uc6cc|\ubcf4)",
+            normalized,
+        )
+        return lying is None
+    return False
+
+
 @dataclass(frozen=True)
 class _Candidate:
     term_id: str
@@ -198,6 +289,10 @@ def _token_matches(query: str, signal: str) -> bool:
 
 
 def _score_card(request_text: str, term_id: str, card: dict) -> _Candidate | None:
+    if _requires_stronger_pose_relation(
+        term_id, request_text, str(card["label_ko"])
+    ):
+        return None
     request_pairs = _token_pairs(request_text, reject_negated=True)
     request_tokens = tuple(canonical for canonical, _raw in request_pairs)
     label_tokens = _tokens(str(card["label_ko"]))
@@ -238,6 +333,11 @@ def _score_card(request_text: str, term_id: str, card: dict) -> _Candidate | Non
         score = max(score, 16.0)
         evidence.append(match.group(0))
 
+    structural_evidence = _structural_evidence(term_id, request_text)
+    if structural_evidence:
+        score = max(score, 18.0)
+        evidence.extend(structural_evidence)
+
     cue_groups = _TERM_CUE_GROUPS.get(term_id)
     if cue_groups:
         cue_evidence: list[str] = []
@@ -272,6 +372,10 @@ def _score_card(request_text: str, term_id: str, card: dict) -> _Candidate | Non
 
 def _contradicted(term_id: str, request_text: str) -> bool:
     text = normalize_input_text(request_text).casefold()
+    body_direction = _body_shape_direction(text)
+    if term_id in {"body_triangle", "body_inverted_triangle"}:
+        if body_direction is not None and body_direction != term_id:
+            return True
     if term_id == "body_triangle" and "역삼각형" in text:
         return True
     if term_id == "body_hourglass" and re.search(
@@ -489,7 +593,11 @@ def _has_affirmed_phrase(text: str, phrase: str) -> bool:
     for match in re.finditer(re.escape(phrase), text, re.IGNORECASE):
         before = text[max(0, match.start() - 12):match.start()]
         after = text[match.end():match.end() + 12]
-        if re.search("(?:\ub9d0\uace0|\uc544\ub2cc|\uc81c\uc678|\ube7c\uace0|\uc544\ub2c8\ub77c)", after):
+        if re.search(
+            r"^(?:\uc740|\ub294|\uc774|\uac00|\uc744|\ub97c|\uc5d0\uc11c|\uc73c\ub85c)?\s*"
+            r"(?:\ub9d0\uace0|\uc544\ub2cc|\uc81c\uc678|\ube7c\uace0|\uc544\ub2c8\ub77c)",
+            after,
+        ):
             continue
         if re.search(r"(?:not|except|exclude)\s*$", before, re.IGNORECASE):
             continue

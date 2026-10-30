@@ -375,3 +375,51 @@ def test_internal_id_is_removed_before_a_grounded_answer_is_used(snapshot):
     assert result.model_answer_sanitized is True
     assert result.model_evidence_accepted is True
     assert "body_inverted_triangle" not in result.interpretation.answer_text
+
+
+@pytest.mark.parametrize(
+    ("request_text", "expected_terms"),
+    [
+        (
+            "\uc9c0\ubd95\uc774 \ubcf4\uc774\ub3c4\ub85d \ub192\uc740 \uacf3\uc5d0\uc11c \uc544\ub798\ub97c \ub0b4\ub824\ub2e4\ubcf8 \uc778\ubb3c",
+            {"view_high_angle"},
+        ),
+        (
+            "\ub85c\uc6b0 \uc575\uae00\uc740 \uc81c\uc678\ud558\uace0 \uc704\uc5d0\uc11c \ub0b4\ub824\ub2e4\ubcf4\ub294 \uc2dc\uc810\ub9cc",
+            {"view_high_angle"},
+        ),
+        (
+            "\uc591\ucabd \ubcbd\uba74\uc774 \uc11c\ub85c \ub2e4\ub978 \ubc29\ud5a5\uc73c\ub85c \uba40\uc5b4\uc9c0\ub294 \uac74\ubb3c \ubaa8\uc11c\ub9ac",
+            {"perspective_two_point"},
+        ),
+        (
+            "\ud55c \uc190\uc740 \ub208\uc55e\uc5d0 \uc788\uace0 \ubab8\ud1b5\uc740 \uba40\ub9ac \uc791\uac8c \ubcf4\uc774\ub294 \ud3ec\uc988",
+            {"perspective_foreshortening"},
+        ),
+        (
+            "\uc5b4\uae68\uac00 \uc881\uace0 \uc544\ub798\ub85c \uac08\uc218\ub85d \ub113\uc5b4\uc9c0\ub294 \uccb4\ud615",
+            {"body_triangle"},
+        ),
+        (
+            "\ub4f1\uc744 \ubcbd\uc5d0 \ub300\uace0 \ud55c\ucabd \ubc1c\ub85c\ub9cc \ubc14\ub2e5\uc744 \ubc1b\uce5c \uc790\uc138",
+            {"pose_support_wall"},
+        ),
+    ],
+)
+def test_planner_preserves_relations_in_development_paraphrases(
+    snapshot, request_text, expected_terms
+):
+    result = plan_grounded_request(request_text, snapshot)
+
+    assert result.interpretation_state.value == "select_terms"
+    assert {selection.term_id for selection in result.selections} == expected_terms
+
+
+def test_planner_does_not_cross_body_part_clauses(snapshot):
+    result = plan_grounded_request(
+        "\uc0c1\uccb4\ub294 \ub113\uace0 \uace8\ubc18\uc740 \uc881\uc740 \uccb4\ud615", snapshot
+    )
+
+    assert {selection.term_id for selection in result.selections} == {
+        "body_inverted_triangle"
+    }
