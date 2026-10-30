@@ -119,3 +119,20 @@ def test_login_test_mode_compose_parses_without_openrouter_key():
     assert services["api"]["environment"]["LOGIN_TEST_MODE"] == "1"
     assert services["api"]["environment"]["OPENROUTER_API_KEY"] == ""
 
+
+def test_local_ollama_settings_are_value_safe_and_forwarded_without_credentials():
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    sample = (ROOT / ".env.example").read_text(encoding="utf-8")
+    guide = (ROOT / "docs/local-ollama.md").read_text(encoding="utf-8")
+
+    assert "LLM_BACKEND: ${LLM_BACKEND:-openrouter}" in compose
+    assert "OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://127.0.0.1:11434/v1}" in compose
+    assert "OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b-q4_K_M}" in compose
+    assert "OLLAMA_API_KEY" not in compose
+    assert "LLM_BACKEND=openrouter" in sample
+    assert "OLLAMA_BASE_URL=http://127.0.0.1:11434/v1" in sample
+    assert "OLLAMA_MODEL=qwen3.5:4b-q4_K_M" in sample
+    assert "100% GPU" in guide
+    assert "외부 터널" in guide
+    assert "호스트에서" in guide
+

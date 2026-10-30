@@ -1,8 +1,11 @@
 x-app-environment: &app-environment
   DATABASE_URL: ${DATABASE_URL:-postgresql://uhkegryo:uhkegryo-local-only@app-db:5432/uhkegryo}
+  LLM_BACKEND: ${LLM_BACKEND:-openrouter}
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
   LOGIN_TEST_MODE: ${LOGIN_TEST_MODE:-0}
   OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://127.0.0.1:11434/v1}
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b-q4_K_M}
   LLM_MODEL: ${LLM_MODEL:-openai/gpt-4.1-mini}
   LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-180}
   WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
