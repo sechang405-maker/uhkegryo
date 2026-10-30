@@ -36,6 +36,7 @@ def snapshot():
         ("마르고 팔다리가 긴 캐릭터 체형 자료를 찾고 싶어", {"body_slim"}),
         ("한쪽 다리에 체중을 싣고 골반이 기운 자연스러운 서기 자세", {"pose_contrapposto"}),
         ("아래에서 올려다본 채 바닥에 앉아 있는 인물", {"view_low_angle", "pose_sitting"}),
+        ("아래에서 올려다보는 로우 앵글 2점 투시로 건물을 그리고 싶어.", {"view_low_angle", "perspective_two_point"}),
         ("정면에서 머리부터 발끝까지 보이는 캐릭터 자료", {"view_front", "view_full_body"}),
         ("어깨는 넓고 허리와 하체는 좁은 역삼각형 체형", {"body_inverted_triangle"}),
         ("복도 끝 한 점으로 선이 모이는 배경 원근", {"perspective_one_point", "perspective_vanishing_point"}),

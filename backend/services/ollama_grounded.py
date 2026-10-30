@@ -92,6 +92,11 @@ _TERM_CUE_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         (r"포즈", r"스탠딩", r"팔다리"),
     ),
 }
+_POINT_PERSPECTIVE_CUES = {
+    "perspective_one_point": r"(?:1|한|일)\s*점\s*(?:투시|원근)",
+    "perspective_two_point": r"(?:2|두|이)\s*점\s*(?:투시|원근)",
+    "perspective_three_point": r"(?:3|세|삼)\s*점\s*(?:투시|원근)",
+}
 
 
 @dataclass(frozen=True)
@@ -201,6 +206,11 @@ def _score_card(request_text: str, term_id: str, card: dict) -> _Candidate | Non
         if phrase_score > score:
             score = phrase_score
         evidence.extend(raw for _query, raw in matches)
+
+    point_cue = _POINT_PERSPECTIVE_CUES.get(term_id)
+    if point_cue and (match := re.search(point_cue, request_text, re.IGNORECASE)):
+        score = max(score, 16.0)
+        evidence.append(match.group(0))
 
     cue_groups = _TERM_CUE_GROUPS.get(term_id)
     if cue_groups:
