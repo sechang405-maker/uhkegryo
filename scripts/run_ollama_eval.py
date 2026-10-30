@@ -38,7 +38,11 @@ DATASET_VERSION = "ollama-30-v1"
 DATASET = ROOT / f"evals/{DATASET_VERSION}.json"
 CATALOG = ROOT / "docs/domains/illustration-reference/term-cards"
 PROMPT = ROOT / "prompts/uhkegryo-interpreter-v4.md"
-MODEL = "qwen3.5:4b-q4_K_M"
+DEFAULT_MODEL = "qwen3.5:4b-q4_K_M"
+APPROVED_MODELS = frozenset({
+    DEFAULT_MODEL,
+    "qwen3.5:9b-q4_K_M",
+})
 BASE_URL = "http://127.0.0.1:11434/v1"
 QUANTIZATION = "Q4_K_M"
 
@@ -66,12 +70,12 @@ def load_cases(ids):
     return cases
 
 
-def make_adapter():
+def make_adapter(model=DEFAULT_MODEL):
     settings = SimpleNamespace(
         llm_backend="ollama",
         ollama_base_url=BASE_URL,
-        ollama_model=MODEL,
-        llm_model=MODEL,
+        ollama_model=model,
+        llm_model=model,
         openrouter_api_key="",
         openrouter_base_url="https://openrouter.ai/api/v1",
         llm_timeout_seconds=180.0,
@@ -85,7 +89,7 @@ def make_adapter():
     return LLMInterpretationAdapter(settings=settings, prompt_path=PROMPT)
 
 
-def metadata(commit: str, execute: bool, snapshot) -> dict:
+def metadata(commit: str, execute: bool, snapshot, model: str = DEFAULT_MODEL) -> dict:
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("Supply a full reviewed source commit SHA")
     sources = [
@@ -100,7 +104,7 @@ def metadata(commit: str, execute: bool, snapshot) -> dict:
         "dataset_version": DATASET_VERSION,
         "dataset_sha256": digest(DATASET),
         "selected_case_ids": list(CASE_IDS),
-        "requested_model": MODEL,
+        "requested_model": model,
         "provider": "local_ollama",
         "base_url_scope": "loopback",
         "quantization": QUANTIZATION,
@@ -199,14 +203,14 @@ async def _run_personal_term(adapter, case):
     }
 
 
-def _write_review(path: Path, rows: list[dict]) -> None:
+def _write_review(path: Path, rows: list[dict], model: str = DEFAULT_MODEL) -> None:
     counts: dict[str, int] = {}
     for row in rows:
         counts[row["status"]] = counts.get(row["status"], 0) + 1
     lines = [
         "# Ollama 30-case human review",
         "",
-        f"- Model: `{MODEL}` (`{QUANTIZATION}`)",
+        f"- Model: `{model}` (`{QUANTIZATION}`)",
         f"- Status counts: `{json.dumps(counts, ensure_ascii=False, sort_keys=True)}`",
         "- Automated checks cover schemas, gates, catalog IDs, and expected categories only.",
         "- Korean explanation usefulness and drawing accuracy require human review.",
@@ -222,10 +226,20 @@ def _write_review(path: Path, rows: list[dict]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-async def run(directory, ids, commit, *, execute=False, adapter_factory=None):
+async def run(
+    directory,
+    ids,
+    commit,
+    *,
+    execute=False,
+    adapter_factory=None,
+    model=DEFAULT_MODEL,
+):
+    if model not in APPROVED_MODELS:
+        raise ValueError("Use an approved evaluation model")
     cases = load_cases(ids)
     snapshot = load_catalog(CATALOG)
-    info = metadata(commit, execute, snapshot)
+    info = metadata(commit, execute, snapshot, model)
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False)
     (directory / "metadata.json").write_text(
@@ -234,7 +248,7 @@ async def run(directory, ids, commit, *, execute=False, adapter_factory=None):
     if not execute:
         return info
 
-    adapter = (adapter_factory or make_adapter)()
+    adapter = adapter_factory() if adapter_factory else make_adapter(model)
     stopped = False
     rows = []
     with (directory / "results.jsonl").open("x", encoding="utf-8") as output:
@@ -267,11 +281,11 @@ async def run(directory, ids, commit, *, execute=False, adapter_factory=None):
                 elif case["kind"] == "interpretation":
                     row["adapter_attempts"] = 1
                     row.update(await _run_interpretation(adapter, case, snapshot))
-                    row.update(status="completed", verified_model=MODEL)
+                    row.update(status="completed", verified_model=model)
                 else:
                     row["adapter_attempts"] = 1
                     row.update(await _run_personal_term(adapter, case))
-                    row.update(status="completed", verified_model=MODEL)
+                    row.update(status="completed", verified_model=model)
             except LLMConfigurationError:
                 row.update(status="configuration_error", failure_code="CONFIGURATION_ERROR")
                 stopped = True
@@ -287,7 +301,7 @@ async def run(directory, ids, commit, *, execute=False, adapter_factory=None):
             output.flush()
             rows.append(row)
             print(f"{case['id']}: {row['status']}", flush=True)
-    _write_review(directory / "review.md", rows)
+    _write_review(directory / "review.md", rows, model)
     return info
 
 
@@ -296,6 +310,7 @@ def main():
     parser.add_argument("--case-ids", required=True, help=",".join(CASE_IDS))
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--model", choices=sorted(APPROVED_MODELS), default=DEFAULT_MODEL)
     parser.add_argument("--execute", action="store_true", help="Run the approved local GPU model once per case")
     args = parser.parse_args()
     try:
@@ -304,6 +319,7 @@ def main():
             args.case_ids.split(","),
             args.source_commit,
             execute=args.execute,
+            model=args.model,
         ))
     except Exception:
         raise SystemExit(

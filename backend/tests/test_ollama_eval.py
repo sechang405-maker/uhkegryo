@@ -72,6 +72,34 @@ def test_fixed_selection_and_dry_run_do_not_construct_transport(tmp_path, monkey
     assert not (tmp_path / "dry" / "results.jsonl").exists()
 
 
+def test_dry_run_records_approved_9b_model(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "make_adapter", lambda *_args: pytest.fail("transport created"))
+
+    info = asyncio.run(runner.run(
+        tmp_path / "dry-9b",
+        runner.CASE_IDS,
+        "e" * 40,
+        model="qwen3.5:9b-q4_K_M",
+    ))
+
+    assert info["requested_model"] == "qwen3.5:9b-q4_K_M"
+    assert info["quantization"] == "Q4_K_M"
+
+
+def test_unapproved_eval_model_is_rejected_before_output(tmp_path):
+    output = tmp_path / "unapproved"
+
+    with pytest.raises(ValueError, match="approved evaluation model"):
+        asyncio.run(runner.run(
+            output,
+            runner.CASE_IDS,
+            "f" * 40,
+            model="some-other-model",
+        ))
+
+    assert not output.exists()
+
+
 def test_execute_calls_each_model_backed_case_at_most_once(tmp_path):
     fake = FakeAdapter()
 
