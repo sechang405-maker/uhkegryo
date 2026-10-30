@@ -12,8 +12,9 @@ if (Test-Path -LiteralPath $envPath) {
 
 function New-HexSecret([int]$bytes) {
     $buffer = [byte[]]::new($bytes)
-    [Security.Cryptography.RandomNumberGenerator]::Fill($buffer)
-    return [Convert]::ToHexString($buffer).ToLowerInvariant()
+    $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $generator.GetBytes($buffer) } finally { $generator.Dispose() }
+    return ([BitConverter]::ToString($buffer) -replace '-', '').ToLowerInvariant()
 }
 
 $startedAt = [DateTimeOffset]::UtcNow

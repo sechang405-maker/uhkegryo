@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 import yaml
 
@@ -130,3 +131,25 @@ def test_windows_ollama_host_scripts_are_explicit_nonpersistent_and_value_safe()
     assert " down -v" not in stop and "--volumes" not in stop
     assert "http://127.0.0.1:3120" in tunnel
     assert "--url" in tunnel
+
+
+def test_windows_secret_primitives_run_on_the_supported_powershell():
+    generator = (ROOT / "scripts/portfolio-host-new-env.ps1").read_text(encoding="utf-8")
+    assert "RandomNumberGenerator]::Create()" in generator
+    assert "BitConverter]::ToString" in generator
+    assert "RandomNumberGenerator]::Fill" not in generator
+    assert "Convert]::ToHexString" not in generator
+    result = subprocess.run(
+        [
+            "powershell.exe", "-NoProfile", "-Command",
+            "$b=[byte[]]::new(32);$g=[Security.Cryptography.RandomNumberGenerator]::Create();"
+            "$g.GetBytes($b);$g.Dispose();(([BitConverter]::ToString($b)-replace '-','').Length)",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "64"
