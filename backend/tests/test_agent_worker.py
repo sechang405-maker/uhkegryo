@@ -524,6 +524,36 @@ def test_grounded_ollama_worker_uses_only_validated_query_fragments(monkeypatch)
     assert recovery.failures == []
 
 
+def test_grounded_ollama_empty_session_clarifies_without_memory_json(monkeypatch):
+    from pathlib import Path
+    from backend.services.catalog_repository import load_catalog
+
+    snapshot = load_catalog(
+        Path(__file__).parents[2] / "docs/domains/illustration-reference/term-cards"
+    )
+
+    class NoStructuredMemoryAdapter(FakeAdapter):
+        async def memory(self, *args, **kwargs):
+            raise AssertionError("grounded empty sessions must not ask Ollama for memory JSON")
+
+        async def _request(self, *args, **kwargs):
+            raise AssertionError("clarification must not call the model")
+
+    adapter = NoStructuredMemoryAdapter()
+    jobs = FakeJobs({**JOB, "request_text": "좀 더 역동적으로 해줘."})
+    recovery = FakeRecovery()
+    worker = _worker(
+        monkeypatch, jobs, recovery, snapshot, adapter, grounded_ollama=True
+    )
+
+    _run(worker.run_once())
+
+    result = jobs.writes[-1][1]
+    assert result.agent_status is AgentStatus.NEEDS_CLARIFICATION
+    assert result.clarifying_question
+    assert recovery.failures == []
+
+
 def test_worker_guidance_uses_single_interpretation_without_search(monkeypatch, snapshot_factory):
     output = InterpretationOutput(interpretation_state='needs_clarification',
         clarification_type='catalog_limitation', unresolved_constraints=['조합 미지원'],

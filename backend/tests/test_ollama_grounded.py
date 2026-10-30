@@ -65,6 +65,8 @@ def test_planner_selects_literal_catalog_evidence_without_model(
     ("request_text", "clarification_type"),
     [
         ("그냥 멋지고 자연스러운 좋은 자세를 찾아줘", "insufficient_visual_evidence"),
+        ("좀 더 역동적으로 해줘.", "insufficient_visual_evidence"),
+        ("서 있는 자세", "insufficient_visual_evidence"),
         ("한 인물을 완전한 정면이면서 완전한 뒷모습으로 보여줘", "conflicting_constraints"),
         ("사진처럼 좋은 체형 자료가 필요해", "insufficient_visual_evidence"),
     ],

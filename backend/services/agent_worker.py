@@ -206,9 +206,16 @@ class AgentJobWorker:
             if recommendation_intent:
                 recalled, recall_only = None, False
             else:
+                recall_query = (
+                    routed.route
+                    if routed is not None
+                    else conversation_context.grounded_memory_route(context)
+                    if self._grounded_ollama
+                    else None
+                )
                 recalled, recall_only = await conversation_context.recall(
                     self._memory, job, context, self._adapter, trace,
-                    **({"query": routed.route} if routed is not None else {}))
+                    **({"query": recall_query} if recall_query is not None else {}))
             state = context["state"]
             if recall_only:
                 result = recalled

@@ -55,6 +55,33 @@ def trace_args(job):
             for key in ("job_id", "session_id", "attempt", "max_attempts")}
 
 
+def grounded_memory_route(context):
+    """Keep empty Ollama sessions out of model-generated memory state.
+
+    With no prior turn or stored state there is nothing to recall, refresh, or
+    merge.  Returning a typed server decision lets the grounded planner handle
+    both ordinary requests and honest clarification without asking the local
+    model to manufacture RecallQuery JSON.
+    """
+    state = context.get("state") or {}
+    meaningful_state = {
+        key: value
+        for key, value in state.items()
+        if key not in {"memory_version", "constraints", "pending_question"}
+        and value
+    }
+    if (
+        not context.get("recent")
+        and not context.get("sources")
+        and not context.get("previous_result")
+        and not state.get("constraints")
+        and not state.get("pending_question")
+        and not meaningful_state
+    ):
+        return RecallQuery(mode="none")
+    return None
+
+
 async def recall(memory, job, context, adapter, trace, query: RecallQuery | None = None):
     if query is None and is_clear_new_request(job["request_text"], context):
         return None, False
