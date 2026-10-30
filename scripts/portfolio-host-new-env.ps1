@@ -18,13 +18,12 @@ function New-HexSecret([int]$bytes) {
 }
 
 $startedAt = [DateTimeOffset]::UtcNow
-$endsAt = $startedAt.AddDays(7)
 $lines = @(
     "PORTFOLIO_POSTGRES_PASSWORD=$(New-HexSecret 32)",
     "PORTFOLIO_SEARXNG_SECRET=$(New-HexSecret 32)",
     "PORTFOLIO_GATEWAY_SECRET=$(New-HexSecret 48)",
     "PORTFOLIO_EVALUATION_STARTED_AT=$($startedAt.ToString('o'))",
-    "PORTFOLIO_EVALUATION_ENDS_AT=$($endsAt.ToString('o'))",
+    "PORTFOLIO_EVALUATION_ENDS_AT=disabled",
     "PORTFOLIO_PUBLIC_ORIGIN=$($PublicOrigin.TrimEnd('/'))",
     "PORTFOLIO_DB_PORT=55434",
     "PORTFOLIO_SEARXNG_PORT=8081",

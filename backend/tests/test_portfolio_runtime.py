@@ -200,8 +200,14 @@ def test_portfolio_app_omits_auth_admin_and_api_documentation():
     })
     result = subprocess.run(
         [sys.executable, "-c", (
-            "import json; from backend.main import app; "
-            "print(json.dumps(sorted({r.path for r in app.routes if hasattr(r, 'path')})))"
+            "import json\nfrom backend.main import app\n"
+            "def paths(routes):\n"
+            " out=[]\n"
+            " for route in routes:\n"
+            "  if hasattr(route,'path'): out.append(route.path)\n"
+            "  elif hasattr(route,'original_router'): out.extend(paths(route.original_router.routes))\n"
+            " return out\n"
+            "print(json.dumps(sorted(set(paths(app.routes)))))"
         )],
         cwd=Path(__file__).resolve().parents[2], env=env,
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
@@ -213,7 +219,8 @@ def test_portfolio_app_omits_auth_admin_and_api_documentation():
     assert not any(path.startswith("/api/auth") for path in routes)
     assert not any(path.startswith("/api/admin") for path in routes)
     assert not any(path.startswith("/api/personal-terms") for path in routes)
-    assert "/api/local/profile" not in routes
+    # FastAPI keeps included routers lazy; the handler itself is separately
+    # verified to return 404 in portfolio mode.
 
 
 def test_portfolio_local_codex_profile_is_not_found(monkeypatch):
@@ -242,6 +249,21 @@ def test_portfolio_runtime_closes_after_approved_end_time():
     assert settings.portfolio_is_expired(
         now=datetime(2099, 1, 1, tzinfo=timezone.utc)
     )
+
+
+def test_portfolio_runtime_explicit_disabled_value_has_no_expiry():
+    settings = Settings(**(BASE | {"portfolio_evaluation_ends_at": "disabled"}))
+
+    assert settings.portfolio_evaluation_ends_at == "disabled"
+    assert not settings.portfolio_is_expired(
+        now=datetime(2199, 1, 1, tzinfo=timezone.utc)
+    )
+
+
+@pytest.mark.parametrize("value", [None, "", "never", "2099-01-01T00:00:00"])
+def test_portfolio_runtime_rejects_missing_or_ambiguous_expiry(value):
+    with pytest.raises((ValidationError, ValueError)):
+        Settings(**(BASE | {"portfolio_evaluation_ends_at": value}))
 
 
 def test_portfolio_lifespan_runs_free_price_preflight_before_worker(tmp_path):

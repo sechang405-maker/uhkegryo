@@ -58,7 +58,10 @@ class Settings(BaseSettings):
 
     # Isolated, explicitly started instructor portfolio runtime.
     portfolio_public_origin: str = ''
-    portfolio_evaluation_ends_at: datetime | None = None
+    # A timestamp preserves the old bounded evaluation mode.  The exact
+    # sentinel ``disabled`` opts into manual start/stop with no date expiry.
+    # ``None`` remains fail-closed in portfolio mode.
+    portfolio_evaluation_ends_at: datetime | Literal['disabled'] | None = None
     portfolio_free_model_allowlist: str = ''
     portfolio_daily_llm_call_limit: int = Field(default=40, ge=1, le=40)
     portfolio_max_pending_jobs: int = Field(default=8, ge=1, le=8)
@@ -107,8 +110,13 @@ class Settings(BaseSettings):
         ))
 
     def portfolio_is_expired(self, *, now: datetime | None = None) -> bool:
-        if not self.is_portfolio or self.portfolio_evaluation_ends_at is None:
+        if (
+            not self.is_portfolio
+            or self.portfolio_evaluation_ends_at == 'disabled'
+        ):
             return False
+        if self.portfolio_evaluation_ends_at is None:
+            return True
         current = now or datetime.now(timezone.utc)
         return current.astimezone(timezone.utc) >= self.portfolio_evaluation_ends_at.astimezone(
             timezone.utc
@@ -183,8 +191,12 @@ class Settings(BaseSettings):
             if origins != (self.portfolio_public_origin.rstrip('/'),):
                 raise ValueError('Portfolio CORS origin must exactly match the public origin')
             if self.portfolio_evaluation_ends_at is None:
-                raise ValueError('Portfolio mode requires an evaluation end time')
+                raise ValueError(
+                    'Portfolio mode requires an evaluation end time or explicit disabled value'
+                )
             end_time = self.portfolio_evaluation_ends_at
+            if end_time == 'disabled':
+                return self
             if end_time.tzinfo is None or end_time.utcoffset() is None:
                 raise ValueError('Portfolio evaluation end time must include a timezone')
             if end_time <= datetime.now(timezone.utc):

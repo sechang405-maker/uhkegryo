@@ -47,6 +47,45 @@ origin before starting so secure cookies, CORS, and mutation-origin checks agree
 This mode keeps the public page at one Vercel production origin while the
 isolated portfolio backend runs only during an evaluation window.
 
+### Windows Ollama host: manual lifetime
+
+The host environment must set `PORTFOLIO_EVALUATION_ENDS_AT=disabled` to opt
+into manual lifetime management. A missing, blank, misspelled, or otherwise
+invalid value fails closed; an ISO-8601 timestamp still enables the older
+automatic-close behavior. `disabled` removes only the date cutoff. The UTC-day
+40-call budget, one worker, gateway secret, exact-origin checks, route allowlist,
+and owner-scoped cookies remain enforced.
+
+Run the host stack explicitly:
+
+```powershell
+.\scripts\portfolio-host-stop.ps1
+.\scripts\portfolio-host-start.ps1
+```
+
+Running stop first is safe after a reboot: PID records include both the process
+ID and start time, so a reused PID is not terminated, and stale records are
+removed. Compose `down` does not remove volumes, so isolated conversations,
+personal terms, and the daily usage counter survive a stop or reboot. Start
+refuses an existing PID record or occupied loopback port instead of killing an
+unrelated process. The ignored environment file is reused; do not run
+`portfolio-host-new-env.ps1` on every start because it intentionally creates
+new secrets.
+
+The start command launches only the loopback database/search/API/frontend. It
+does not start Cloudflare or update Vercel. After every reboot, start the Quick
+Tunnel separately:
+
+```powershell
+.\scripts\portfolio-host-tunnel.ps1
+```
+
+Read the newly written `.local-run/portfolio-host/tunnel-origin.txt`, replace
+only Vercel's server-side `PORTFOLIO_GATEWAY_ORIGIN`, and redeploy production.
+Quick Tunnel hostnames change after restart; the gateway secret must be reused,
+not regenerated. No Windows login task, service, firewall rule, or router port
+forward is installed by these scripts.
+
 ### Public and private paths
 
 - Vercel serves `/` and its static assets. Its Node Route Handlers own

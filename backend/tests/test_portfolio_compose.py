@@ -118,7 +118,8 @@ def test_windows_ollama_host_scripts_are_explicit_nonpersistent_and_value_safe()
     tunnel = (ROOT / "scripts/portfolio-host-tunnel.ps1").read_text(encoding="utf-8")
 
     assert "RandomNumberGenerator" in generator
-    assert "AddDays(7)" in generator
+    assert '"PORTFOLIO_EVALUATION_ENDS_AT=disabled"' in generator
+    assert "AddDays(7)" not in generator
     assert "qwen3.5:4b-q4_K_M" in generator
     assert "OPENROUTER_API_KEY=" in generator
     assert "PORTFOLIO_GATEWAY_SECRET=" in generator
@@ -130,6 +131,7 @@ def test_windows_ollama_host_scripts_are_explicit_nonpersistent_and_value_safe()
     assert "ollama show qwen3.5:4b-q4_K_M" in start
     assert "ollama list" not in start
     assert "PORTFOLIO_GATEWAY_REQUIRED" in start
+    assert '$env:PORTFOLIO_EVALUATION_ENDS_AT -ne "disabled"' in start
     assert "Start-Process" in start and "-WindowStyle Hidden" in start
     assert "Get-NetTCPConnection" in start
     assert "owning_process" in start

@@ -20,7 +20,13 @@ foreach ($name in @("PORTFOLIO_POSTGRES_PASSWORD", "PORTFOLIO_SEARXNG_SECRET", "
     if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name, "Process"))) { throw "Required portfolio setting is missing: $name" }
 }
 if ($env:PORTFOLIO_GATEWAY_SECRET.Length -lt 64) { throw "Gateway secret is too short." }
-if ([DateTimeOffset]::Parse($env:PORTFOLIO_EVALUATION_ENDS_AT) -le [DateTimeOffset]::UtcNow) { throw "Portfolio evaluation window has expired." }
+if ($env:PORTFOLIO_EVALUATION_ENDS_AT -ne "disabled") {
+    $evaluationEndsAt = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse($env:PORTFOLIO_EVALUATION_ENDS_AT, [ref]$evaluationEndsAt)) {
+        throw "Portfolio evaluation end must be an ISO timestamp or the exact value disabled."
+    }
+    if ($evaluationEndsAt -le [DateTimeOffset]::UtcNow) { throw "Portfolio evaluation window has expired." }
+}
 
 function Assert-PortFree([int]$port) {
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $port)
