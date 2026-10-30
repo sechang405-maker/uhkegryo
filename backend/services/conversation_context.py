@@ -56,16 +56,7 @@ def trace_args(job):
 
 
 async def recall(memory, job, context, adapter, trace, query: RecallQuery | None = None):
-    state = context.get("state") or {}
-    empty_session = (
-        not context.get("recent")
-        and not context.get("sources")
-        and not context.get("previous_result")
-        and not state.get("constraints")
-        and not state.get("pending_question")
-        and not (set(state) - {"memory_version", "constraints", "pending_question"})
-    )
-    if query is None and (empty_session or is_clear_new_request(job["request_text"], context)):
+    if query is None and is_clear_new_request(job["request_text"], context):
         return None, False
     with trace.stage("memory-recall"):
         if query is None:
@@ -117,7 +108,7 @@ def is_clear_new_request(text, context):
     if re.search(historical, text):
         return False
     return bool(re.search(r"체형|자세|포즈|시점|원근|배치|캐릭터|레퍼런스|\b(reference|pose|character|perspective)\b", text)
-                and re.search(r"찾아|그려|보여|검색|\b(find|draw|show|search)\b", text))
+                and re.search(r"찾아|그려|그리(?:고|려|기|는|면|자|거나|다가)|그릴|그린|보여|검색|\b(find|draw|show|search)\b", text))
 
 
 async def validate(memory, job, interpretation, snapshot, *, context=None, updates_only=False):
