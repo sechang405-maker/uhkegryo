@@ -13,6 +13,15 @@ Pydantic 검증과 resolver는 그대로 사용한다.
 못했다. 결정론 gate 4건은 모두 통과했다. 이 결과만으로 현재 4B 모델을 공개 평가용
 품질로 승인하지 않는다.
 
+같은 입력을 같은 모델로 최소 비교한 결과도 기록했다. 현재 설정
+(`reasoning_effort=none`, 800, JSON Schema)은 442 completion token에서 `stop`했지만
+`select_terms`와 함께 빈 `clarifying_question`, clarification type을 동시에 내어
+`state_rules`에 실패했고, `body_slim` 대신 `body_triangle`을 선택했다. 출력 상한을
+1600으로 늘려도 442 token의 같은 실패가 재현되어 현재 실패의 주원인은 잘림이
+아니다. thinking 기본값은 800 token에서 `length`로 끝나고 content가 비었으며, 단순
+JSON mode는 29 token만에 필수 계약 필드를 누락했다. 따라서 JSON Schema는 출력 형태를
+유도하지만 이 4B 모델의 교차 필드 규칙과 의미 선택까지 보장하지 못했다.
+
 ## 설치·확인
 
 Windows용 Ollama 0.40.13에서 다음 한 모델만 평가했다.

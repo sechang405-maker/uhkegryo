@@ -257,8 +257,9 @@ class LLMInterpretationAdapter:
             Path(__file__).resolve().parents[2] / "skills/drawing-dialogue/SKILL.md")
         self._user_template = user_template
         self._call_reserver = call_reserver
+        self._llm_backend = getattr(self.settings, "llm_backend", "openrouter")
         if client is None:
-            local_ollama = self.settings.llm_backend == "ollama"
+            local_ollama = self._llm_backend == "ollama"
             client = openai.AsyncOpenAI(
                 api_key="ollama" if local_ollama else self.settings.openrouter_api_key,
                 base_url=(
@@ -389,14 +390,14 @@ class LLMInterpretationAdapter:
             request = {
                 "model": (
                     self.settings.ollama_model
-                    if self.settings.llm_backend == "ollama"
+                    if self._llm_backend == "ollama"
                     else self.settings.llm_model
                 ),
                 "messages": messages,
                 "temperature": 0.0,
                 "max_tokens": self.settings.llm_max_tokens,
             }
-            if self.settings.llm_backend == "ollama":
+            if self._llm_backend == "ollama":
                 request["reasoning_effort"] = "none"
             if output_format is not None:
                 request["response_format"] = output_format
@@ -407,7 +408,7 @@ class LLMInterpretationAdapter:
             if tool_choice is not None:
                 request["tool_choice"] = tool_choice
             if (
-                self.settings.llm_backend == "openrouter"
+                self._llm_backend == "openrouter"
                 and (output_format is not None or tools is not None)
             ):
                 request["extra_body"] = {"provider": {"require_parameters": True}}
