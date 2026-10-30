@@ -28,8 +28,8 @@ function Assert-PortFree([int]$port) {
 }
 foreach ($port in @([int]$env:PORTFOLIO_DB_PORT, [int]$env:PORTFOLIO_SEARXNG_PORT, [int]$env:PORTFOLIO_API_PORT, [int]$env:PORTFOLIO_FRONTEND_PORT)) { Assert-PortFree $port }
 
-$modelList = & ollama list
-if ($LASTEXITCODE -ne 0 -or ($modelList -join "`n") -notmatch '^qwen3\.5:4b-q4_K_M\s') { throw "Approved Ollama model is not installed." }
+& ollama show qwen3.5:4b-q4_K_M | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Approved Ollama model is not installed." }
 
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
 docker compose --env-file $envPath -f $composeFile up -d --build --wait db searxng

@@ -125,6 +125,8 @@ def test_windows_ollama_host_scripts_are_explicit_nonpersistent_and_value_safe()
     for source in (start, stop):
         assert "compose.portfolio-ollama-host.yml" in source
     assert "127.0.0.1" in start
+    assert "ollama show qwen3.5:4b-q4_K_M" in start
+    assert "ollama list" not in start
     assert "PORTFOLIO_GATEWAY_REQUIRED" in start
     assert "Start-Process" in start and "-WindowStyle Hidden" in start
     assert "Set-Service" not in start and "New-Service" not in start
