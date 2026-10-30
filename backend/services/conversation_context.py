@@ -108,7 +108,7 @@ def is_clear_new_request(text, context):
     if re.search(historical, text):
         return False
     return bool(re.search(r"체형|자세|포즈|시점|원근|배치|캐릭터|레퍼런스|\b(reference|pose|character|perspective)\b", text)
-                and re.search(r"찾아|그려|그리(?:고|려|기|는|면|자|거나|다가)|그릴|그린|보여|검색|\b(find|draw|show|search)\b", text))
+                and re.search(r"찾아|그려|그리(?:고|려|기|는|면|자|거나|다가)|그릴|그린|보여|검색|설명|\b(find|draw|show|search|explain)\b", text))
 
 
 async def validate(memory, job, interpretation, snapshot, *, context=None, updates_only=False):
