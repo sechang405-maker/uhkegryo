@@ -139,6 +139,8 @@ def test_windows_ollama_host_scripts_are_explicit_nonpersistent_and_value_safe()
     assert " down -v" not in stop and "--volumes" not in stop
     assert "http://127.0.0.1:3120" in tunnel
     assert "--url" in tunnel
+    assert "Get-Command" in tunnel
+    assert "Program Files (x86)\\cloudflared\\cloudflared.exe" in tunnel
     assert tunnel.index("Remove-Item -LiteralPath $logFile") < tunnel.index("Start-Process")
     assert tunnel.index("Remove-Item -LiteralPath $originFile") < tunnel.index("Start-Process")
 

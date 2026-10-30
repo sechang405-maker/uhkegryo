@@ -7,6 +7,17 @@ $pidFile = Join-Path $runDir "tunnel-pid.json"
 $originFile = Join-Path $runDir "tunnel-origin.txt"
 $logFile = Join-Path $runDir "tunnel.log"
 if (Test-Path -LiteralPath $pidFile) { throw "Tunnel PID record already exists." }
+$resolvedCloudflared = Get-Command $Cloudflared -ErrorAction SilentlyContinue
+if ($resolvedCloudflared) {
+    $Cloudflared = $resolvedCloudflared.Source
+} elseif ($Cloudflared -eq "cloudflared.exe") {
+    $officialInstall = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+    if (Test-Path -LiteralPath $officialInstall -PathType Leaf) {
+        $Cloudflared = $officialInstall
+    } else {
+        throw "Official cloudflared executable was not found."
+    }
+}
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
 Remove-Item -LiteralPath $logFile -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $originFile -Force -ErrorAction SilentlyContinue

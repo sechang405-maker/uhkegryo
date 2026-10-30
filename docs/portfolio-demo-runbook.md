@@ -80,6 +80,9 @@ Tunnel separately:
 .\scripts\portfolio-host-tunnel.ps1
 ```
 
+The tunnel helper resolves `cloudflared.exe` from `PATH` and then the official
+Winget install location used on this PC. It fails closed if neither exists.
+
 Read the newly written `.local-run/portfolio-host/tunnel-origin.txt`, replace
 only Vercel's server-side `PORTFOLIO_GATEWAY_ORIGIN`, and redeploy production.
 Quick Tunnel hostnames change after restart; the gateway secret must be reused,
